@@ -23,9 +23,11 @@ app = typer.Typer(help=f"Kaizen Cross-Check v{__version__} — deterministic, ex
 dataset_app = typer.Typer(help="Synthetic golden dataset commands.", no_args_is_help=True)
 terminology_app = typer.Typer(help="Terminology relationships: explicit, versioned business rules.", no_args_is_help=True)
 runs_app = typer.Typer(help="Runs recorded in the workspace.", no_args_is_help=True)
+review_app = typer.Typer(help="Review policy and open reviewer sessions.", no_args_is_help=True)
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(terminology_app, name="terminology")
 app.add_typer(runs_app, name="runs")
+app.add_typer(review_app, name="review")
 console = Console()
 
 
@@ -306,6 +308,44 @@ def terminology_import(ctx: typer.Context, path: Path, by: str = typer.Option("i
 
 
 # ---- runs -------------------------------------------------------------------------------------------------
+@review_app.command("policy")
+def review_policy(
+    ctx: typer.Context,
+    set_to: Optional[str] = typer.Option(None, "--set", help="required (reviewer 2 is always blind) or optional (reviewer 2 may unblind)."),
+    by: str = typer.Option("cli", "--by", help="Who is changing the policy (recorded in the audit log)."),
+) -> None:
+    """Show or change the blind-review policy. Only reachable from the command line, never from the UI."""
+    from kaizen.review.sessions import SessionStore
+
+    sessions = SessionStore(_ws(ctx).db)
+    if set_to:
+        try:
+            sessions.set_policy(set_to.strip().lower(), by=by)
+        except ValueError as e:
+            raise typer.BadParameter(str(e))
+    current = sessions.policy()
+    console.print(f"Blind review policy: [bold]{current}[/bold]")
+    console.print("  required — reviewer 2 never sees reviewer 1's decision on a row until they have recorded their own." if current == "required"
+                  else "  optional — reviewer 2 may choose to review unblinded. Independence is no longer enforced.")
+
+
+@review_app.command("sessions")
+def review_sessions(ctx: typer.Context, end: Optional[str] = typer.Option(None, "--end", help="End the session for this reviewer name.")) -> None:
+    """List open reviewer sessions (and optionally end one)."""
+    from kaizen.review.sessions import SessionStore
+
+    sessions = SessionStore(_ws(ctx).db)
+    if end:
+        ended = [s for s in sessions.active() if s.reviewer.lower() == end.strip().lower()]
+        for s in ended:
+            sessions.end(s.token)
+        console.print(f"Ended {len(ended)} session(s) for {end}.")
+    active = sessions.active()
+    for s in active:
+        typer.echo(f"{s.reviewer:<20} slot {s.slot}  blind {'yes' if s.blind else 'no ':<3}  opened {s.created_at}")
+    typer.echo(f"{len(active)} open session(s)")
+
+
 @runs_app.command("list")
 def runs_list(ctx: typer.Context) -> None:
     """List runs recorded in the workspace."""

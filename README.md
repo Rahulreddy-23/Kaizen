@@ -21,6 +21,8 @@ PCOs and label revisions, with the reviewer as the final decision-maker. Built f
   severity, explanation and evidence (file, SHA-256, page, bounding box, raw text).
 - Uses explicit, versioned terminology relationships (global / product-family / SKU, item-anchored) that
   reviewers create, edit, import/export, and that runs pin by version.
+- Holds reviewer identity, slot and blind mode in a **server-side session**, so a second reviewer cannot
+  unblind themselves from the browser, and every decision carries a real name.
 - Supports two reviewers with blind independent review, disagreement detection, finalisation, action items
   and verify-and-close on corrective reruns; suggests new relationships from repeated pairings (human approval
   required).
@@ -40,7 +42,7 @@ cd ui && npm install && npm run build && cd ..   # reviewer UI (optional; API wo
 ## Run
 ```bash
 .venv/bin/kaizen run <folder> --out out/myrun   # one SKU set per sub-folder (bom.*, label.pdf, label_old.pdf, drawing.pdf) plus pco/*.xlsx|pdf
-.venv/bin/kaizen serve                          # local API + UI at http://127.0.0.1:8765
+.venv/bin/kaizen serve                          # local API + UI at http://127.0.0.1:8765 (sign in with your name and slot)
 ```
 Outputs: `run.json` (documents, items, evidence, results, audit), `report.xlsx`. Reviewer decisions,
 terminology and action items live in the workspace database (`./kaizen-workspace/kaizen.db`; change with
@@ -67,6 +69,7 @@ rm -rf kaizen-workspace
 | `eval` | Run a dataset with `ground-truth.json` and report accuracy; `--fail-under` for CI. |
 | `demo`, `serve`, `perf` | Demo run; local API + UI; performance series. |
 | `terminology list/show/add/update/deactivate/activate/delete/history/import/export/sync-defaults` | Manage relationships (every change is a new version). |
+| `review policy [--set required\|optional]`, `review sessions [--end <name>]` | Blind-review policy (server-side, never changeable from the UI); open reviewer sessions. |
 | `runs list`, `runs relationships <run>` | Runs in the workspace; reconstruct the exact relationship versions a run used. |
 | `dataset build` | Regenerate the synthetic golden dataset (byte-stable). |
 
@@ -104,6 +107,7 @@ Semantic matching (L4) accepts any local embedding function (`kaizen.matching.se
 OCR uses `rapidocr-onnxruntime` when installed (offline).
 
 ## Documents
-`docs/solution-overview.md` (plain-language overview for presenting), `docs/problem-understanding.md` (problem and proposal), `docs/implementation-plan.md` (plan and status),
+`docs/solution-overview.md` (plain-language overview for presenting), `docs/system-description.md` (what was built, module by module),
+`docs/problem-understanding.md` (problem and proposal), `docs/implementation-plan.md` (plan and status),
 `docs/final-architecture.md`, `docs/api-contract.md`, `docs/demo-script.md`, `docs/test-strategy.md`,
 `docs/known-limitations.md`, `docs/security-review.md`, `datasets/golden/SCENARIOS.md`.

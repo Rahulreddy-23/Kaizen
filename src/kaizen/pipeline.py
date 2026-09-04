@@ -39,9 +39,9 @@ CAPABILITIES = {
     "Duplicate BOM rows for one item merged before comparison": "IMPLEMENTED",
     "Non-physical / zero-qty / inactive BOM lines excluded (listed on Documents sheet)": "IMPLEMENTED",
     "Match ladder L1 exact / L2 relationship / L3 fuzzy": "IMPLEMENTED",
-    "Redlines: PDF FreeText annotations": "IMPLEMENTED (captured into row attributes; not yet applied to comparisons)",
+    "Redlines: PDF FreeText annotations": "IMPLEMENTED (captured into row attributes and used by the PCO ↔ BOM check)",
     "Redlines: hand-drawn or scanned": "NOT IMPLEMENTED",
-    "OCR for scanned / image-only documents": "NOT IMPLEMENTED",
+    "OCR for scanned / image-only BOM and drawing pages": "NOT IMPLEMENTED",
     "PCO parsing (FM00835 form, XLSX/CSV/PDF)": "IMPLEMENTED",
     "Check: PCO ↔ BOM (ADD / DELETE / SUBSTITUTE / MODIFY, redline-aware)": "IMPLEMENTED",
     "Coverage: BOM present for every PCO affected code": "IMPLEMENTED",
@@ -49,9 +49,10 @@ CAPABILITIES = {
     "Checks: BOM ↔ Drawing, Label ↔ Drawing (presence/identity, drawing rev)": "IMPLEMENTED",
     "Check: Old ↔ New label (semantic change report, PCO-derived expected changes)": "IMPLEMENTED",
     "Label revision roles by filename token (old/prev vs new/current)": "IMPLEMENTED",
-    "Semantic (embedding) matching L4": "PLANNED (P2; plug-in point exists in the match ladder)",
+    "Semantic (embedding) matching L4": "IMPLEMENTED as an opt-in rung (needs a local embedding model; can only yield POTENTIAL)",
     "OCR for image-only label pages": "IMPLEMENTED when rapidocr-onnxruntime is installed; otherwise reported as NOT AVAILABLE",
-    "Reviewer workflow persistence / UI": "PLANNED (P1)",
+    "Reviewer workflow: two reviewers, server-side blind mode, decisions, action items, mining, Excel round-trip": "IMPLEMENTED",
+    "Reviewer UI (local React app served by `kaizen serve`)": "IMPLEMENTED",
 }
 
 

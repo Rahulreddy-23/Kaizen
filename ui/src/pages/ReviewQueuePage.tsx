@@ -13,7 +13,8 @@ export default function ReviewQueuePage() {
   const { runId = "" } = useParams();
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
-  const { reviewer, viewerParams, name } = useReviewer();
+  const { session, viewerParams, name } = useReviewer();
+  const slot: 1 | 2 = session?.slot ?? 1;
   const run = useAsync(() => api.getRun(runId), [runId]);
   const query = queueQueryFromParams(sp, viewerParams);
   const page = useAsync(() => api.getResults(runId, query), [runId, sp.toString(), viewerParams.viewer, viewerParams.blind]);
@@ -43,7 +44,7 @@ export default function ReviewQueuePage() {
     setBulkErr(null);
     try {
       // Rows the API will accept: no validation needed and not yet decided by this slot.
-      const other = reviewer.slot === 1 ? "REVIEWER_2_COMPLETE" : "REVIEWER_1_COMPLETE";
+      const other = slot === 1 ? "REVIEWER_2_COMPLETE" : "REVIEWER_1_COMPLETE";
       const [a, b] = await Promise.all([
         api.getResults(runId, { needs_validation: false, state: "ENGINE_RECOMMENDED", limit: 1 }),
         api.getResults(runId, { needs_validation: false, state: other, limit: 1 }),
@@ -57,8 +58,8 @@ export default function ReviewQueuePage() {
     setBulkBusy(true);
     setBulkErr(null);
     try {
-      const res = await api.bulkAccept(runId, reviewer.slot, name);
-      setBulkMsg(`Accepted ${res.accepted} clean row${res.accepted === 1 ? "" : "s"} as ${name} (slot ${reviewer.slot}). Each carries the comment "bulk accept: exact/equivalent with no discrepancy".`);
+      const res = await api.bulkAccept(runId);
+      setBulkMsg(`Accepted ${res.accepted} clean row${res.accepted === 1 ? "" : "s"} as ${name} (slot ${slot}). Each carries the comment "bulk accept: exact/equivalent with no discrepancy".`);
       setBulkOpen(false);
       page.reload();
       run.reload();
@@ -222,7 +223,7 @@ export default function ReviewQueuePage() {
       {bulkOpen && (
         <ConfirmDialog title="Accept all clean rows" confirmLabel={bulkCount ? `Accept ${bulkCount} rows` : "Accept"} onConfirm={doBulk} onCancel={() => setBulkOpen(false)} busy={bulkBusy || bulkCount === null}>
           <p>
-            Records an ACCEPT decision as <b>{name}</b> (slot {reviewer.slot}) on every row that has <b>no discrepancy and does not need validation</b>. Rows already decided by slot {reviewer.slot} are skipped.
+            Records an ACCEPT decision as <b>{name}</b> (slot {slot}) on every row that has <b>no discrepancy and does not need validation</b>. Rows already decided by slot {slot} are skipped.
           </p>
           {bulkCount === null && !bulkErr && <Loading label="Counting eligible rows…" />}
           {bulkCount !== null && (

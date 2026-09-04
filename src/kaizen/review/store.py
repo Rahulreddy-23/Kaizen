@@ -125,6 +125,11 @@ class ReviewStore:
             out.append({"event": "final", **asdict(final)})
         return out
 
+    @staticmethod
+    def is_blind_hidden(decisions: dict[int, Decision], viewer_slot: int, blind: bool) -> bool:
+        """True when reviewer 1's work must stay hidden: a blind reviewer 2 who has not yet decided."""
+        return bool(blind) and viewer_slot == 2 and 2 not in decisions
+
     def rows_for_viewer(self, run_id: str, results: list[CheckResult], viewer_slot: int = 1, blind: bool = False) -> list[dict[str, Any]]:
         """Rows with decisions merged. In blind mode reviewer 2 does not see reviewer 1's decision until they
         have submitted their own; the engine recommendation is always visible."""
@@ -135,8 +140,12 @@ class ReviewStore:
             decisions = all_d.get(r.row_id, {})
             final = finals.get(r.row_id)
             view = {slot: (asdict(decisions[slot]) if slot in decisions else None) for slot in (1, 2)}
-            if blind and viewer_slot == 2 and 2 not in decisions:
+            if self.is_blind_hidden(decisions, viewer_slot, blind):
+                # Hide reviewer 1 completely: the decision itself, the state that reveals they have
+                # decided, any final taken without reviewer 2, and any override that would otherwise
+                # leak through the effective classification.
                 view[1] = None
+                decisions, final = {}, None
             out.append({
                 "row_id": r.row_id, "sku": r.sku, "check": r.check.value, "role": r.role,
                 "engine": {"classification": r.classification.value, "match_level": r.match_level.value, "score": r.score, "relationship_id": r.relationship_id, "requires_validation": r.requires_validation, "severity": r.severity.value if r.severity else None, "discrepancies": [d.type.value for d in r.discrepancies], "explanation": r.explanation},
@@ -155,12 +164,17 @@ class ReviewStore:
             n += 1
         return n
 
-    def state_counts(self, run_id: str, results: list[CheckResult]) -> dict[str, int]:
+    def state_counts(self, run_id: str, results: list[CheckResult], viewer_slot: int = 1, blind: bool = False) -> dict[str, int]:
+        """Counts as this viewer may see them: rows hidden from a blind reviewer 2 count as undecided."""
         all_d = self.all_decisions(run_id)
         finals = self.finals(run_id)
         counts = {s: 0 for s in STATES}
         for r in results:
-            counts[self.state_of(all_d.get(r.row_id, {}), finals.get(r.row_id))] += 1
+            decisions = all_d.get(r.row_id, {})
+            final = finals.get(r.row_id)
+            if self.is_blind_hidden(decisions, viewer_slot, blind):
+                decisions, final = {}, None
+            counts[self.state_of(decisions, final)] += 1
         return counts
 
     def clear_run(self, run_id: str) -> None:

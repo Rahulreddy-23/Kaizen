@@ -17,6 +17,8 @@ import type {
   RelationshipHistory,
   ResultsPage,
   ResultsQuery,
+  CurrentSession,
+  ReviewSession,
   ReviewState,
   RowDetail,
   RunListItem,
@@ -74,22 +76,17 @@ const enc = encodeURIComponent;
 
 export interface DecisionBody {
   row_id: string;
-  slot: 1 | 2;
-  reviewer: string;
   decision: DecisionKind;
   comment?: string;
   override_classification?: Classification;
-  blind?: boolean;
 }
 export interface FinalizeBody {
   row_id: string;
   final_decision: DecisionKind;
-  by: string;
   note?: string;
 }
 export interface FromRowBody {
   row_id: string;
-  by: string;
   scope?: string;
   anchor?: boolean;
   canonical?: string;
@@ -134,16 +131,21 @@ export const api = {
 
   // ---- results / evidence
   getResults: (runId: string, q: ResultsQuery) => request<ResultsPage>(`/api/runs/${enc(runId)}/results${qs(q as Params)}`),
-  getRow: (runId: string, rowId: string, v: ViewerParams) =>
-    request<RowDetail>(`/api/runs/${enc(runId)}/results/${enc(rowId)}${qs({ viewer: v.viewer, blind: v.blind || undefined })}`),
+  // The session decides which decisions are visible; `_v` only forces a refetch when it changes.
+  getRow: (runId: string, rowId: string, _v: ViewerParams) =>
+    request<RowDetail>(`/api/runs/${enc(runId)}/results/${enc(rowId)}`),
   pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110) =>
     `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi })}`,
 
   // ---- decisions
   postDecision: (runId: string, body: DecisionBody) => request<DecisionResponse>(`/api/runs/${enc(runId)}/decisions`, json("POST", body)),
   finalize: (runId: string, body: FinalizeBody) => request<{ row_id: string; state: ReviewState }>(`/api/runs/${enc(runId)}/finalize`, json("POST", body)),
-  bulkAccept: (runId: string, slot: 1 | 2, reviewer: string) =>
-    request<{ accepted: number }>(`/api/runs/${enc(runId)}/bulk-accept`, json("POST", { slot, reviewer })),
+  bulkAccept: (runId: string) => request<{ accepted: number }>(`/api/runs/${enc(runId)}/bulk-accept`, json("POST", {})),
+
+  // ---- reviewer session: identity, slot and blind mode are held by the server
+  currentSession: () => request<CurrentSession>("/api/sessions/current"),
+  signIn: (reviewer: string, slot: 1 | 2, blind?: boolean) => request<ReviewSession>("/api/sessions", json("POST", { reviewer, slot, blind })),
+  signOut: () => request<{ ended: boolean }>("/api/sessions/current", { method: "DELETE" }),
   relationshipFromRow: (runId: string, body: FromRowBody) => request<Relationship>(`/api/runs/${enc(runId)}/relationships/from-row`, json("POST", body)),
 
   // ---- documents

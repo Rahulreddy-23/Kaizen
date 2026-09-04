@@ -58,7 +58,6 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
     try {
       const rel = await api.relationshipFromRow(runId, {
         row_id: rowId,
-        by: name,
         scope,
         anchor,
         canonical: canonical.trim(),

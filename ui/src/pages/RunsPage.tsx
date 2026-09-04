@@ -136,7 +136,7 @@ export default function RunsPage() {
                         </Link>
                       </td>
                       <td className="whitespace-nowrap">{fmtDate(r.created_at)}</td>
-                      <td className="mono text-gray-600 break-all">{r.input_root}</td>
+                      <td className="mono text-gray-600 max-w-[18rem] truncate" title={r.input_root}>{r.input_root}</td>
                       <td className="text-right tabular-nums">{r.summary.skus}</td>
                       <td className="text-right tabular-nums">{r.summary.documents}</td>
                       <td className="text-right tabular-nums">{r.summary.rows}</td>

@@ -31,8 +31,11 @@ JDE / MasterControl output, which has not been available.
 - PCO affected codes must match BOM parent items exactly.
 
 ## Review workflow
-- Reviewer identity is a typed name (no authentication); blind mode is a request parameter chosen by the
-  client, so it relies on reviewer discipline on a shared machine.
+- Reviewer identity, slot and blind mode are a server-side session and cannot be changed from the browser,
+  but this is identification, not authentication: anyone with access to the machine can sign in under any
+  name. A shared deployment needs SSO. The session cookie is not marked `Secure` because the local server
+  is plain HTTP.
+- Sessions do not expire on their own; end one with "Sign out" or `kaizen review sessions --end <name>`.
 - Decisions live in the local workspace database; there is no multi-user server. Re-running the same inputs
   with the same code and terminology reproduces the same run id and row ids, so decisions re-attach; a code
   change produces a new run id and decisions are not carried over automatically.

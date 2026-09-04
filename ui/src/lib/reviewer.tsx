@@ -1,58 +1,72 @@
-// Reviewer identity (name + slot + blind mode), persisted in localStorage. There is no authentication in
-// this local tool; the name is recorded verbatim on every decision for the audit trail.
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { ViewerParams } from "../types";
-
-export interface ReviewerIdentity {
-  name: string;
-  slot: 1 | 2;
-  blind: boolean;
-}
-
-const KEY = "kaizen.reviewer";
-const DEFAULT: ReviewerIdentity = { name: "", slot: 1, blind: false };
-
-function load(): ReviewerIdentity {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as Partial<ReviewerIdentity>;
-      return { name: String(p.name ?? ""), slot: p.slot === 2 ? 2 : 1, blind: Boolean(p.blind) };
-    }
-  } catch {
-    /* ignore */
-  }
-  return DEFAULT;
-}
+// Reviewer identity is a server-side session, not browser state. The name, the slot and the blind flag
+// are decided when the session is opened and are enforced by the backend for every request; the token
+// lives in an HttpOnly cookie this code cannot read. Blind mode therefore cannot be switched off from
+// the browser — that is the whole point. See docs/security-review.md.
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { api } from "../api";
+import type { ReviewSession, ViewerParams } from "../types";
 
 interface Ctx {
-  reviewer: ReviewerIdentity;
-  setReviewer: (r: ReviewerIdentity) => void;
-  /** Query parameters for result fetches: blind mode only applies to slot 2. */
+  session: ReviewSession | null;
+  policy: string;
+  loading: boolean;
+  error: string | null;
+  signIn: (reviewer: string, slot: 1 | 2, blind?: boolean) => Promise<void>;
+  signOut: () => Promise<void>;
+  /** Refetch key: changes when the session changes, so pages reload with the right visibility. */
   viewerParams: ViewerParams;
-  /** Name used on API writes; empty when the reviewer has not identified themselves. */
+  /** Reviewer name, or "" when nobody is signed in. */
   name: string;
 }
 
 const ReviewerContext = createContext<Ctx | null>(null);
 
 export function ReviewerProvider({ children }: { children: ReactNode }) {
-  const [reviewer, setReviewer] = useState<ReviewerIdentity>(load);
+  const [session, setSession] = useState<ReviewSession | null>(null);
+  const [policy, setPolicy] = useState<string>("required");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(reviewer));
-    } catch {
-      /* ignore */
-    }
-  }, [reviewer]);
+    let live = true;
+    api
+      .currentSession()
+      .then((r) => {
+        if (!live) return;
+        setSession(r.session);
+        setPolicy(r.blind_review_policy);
+      })
+      .catch((e: Error) => live && setError(e.message))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const signIn = useCallback(async (reviewer: string, slot: 1 | 2, blind?: boolean) => {
+    setError(null);
+    const s = await api.signIn(reviewer, slot, blind);
+    setSession(s);
+    setPolicy(s.blind_review_policy);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await api.signOut();
+    setSession(null);
+  }, []);
+
   const value = useMemo<Ctx>(
     () => ({
-      reviewer,
-      setReviewer,
-      viewerParams: { viewer: reviewer.slot, blind: reviewer.slot === 2 && reviewer.blind },
-      name: reviewer.name.trim(),
+      session,
+      policy,
+      loading,
+      error,
+      signIn,
+      signOut,
+      viewerParams: { viewer: session?.slot ?? 1, blind: session?.blind ?? false },
+      name: session?.reviewer ?? "",
     }),
-    [reviewer],
+    [session, policy, loading, error, signIn, signOut],
   );
   return <ReviewerContext.Provider value={value}>{children}</ReviewerContext.Provider>;
 }

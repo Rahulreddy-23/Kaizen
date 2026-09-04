@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pymupdf
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, Cookie, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Response as FastResponse
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -19,9 +20,14 @@ from kaizen.reporting.excel import export_with_review
 from kaizen.review.action_items import ActionItemStore
 from kaizen.review.business import BusinessAssumptions, business_case
 from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_suggestion
+from kaizen.review.sessions import POLICY_REQUIRED, ReviewSession, SessionStore
 from kaizen.review.store import ReviewStore
 from kaizen.terminology.exchange import export_xlsx, import_csv, import_xlsx
 from kaizen.workspace import Workspace
+
+SESSION_COOKIE = "kaizen_session"
+SIGN_IN_HINT = "Sign in first: POST /api/sessions with your reviewer name and slot."
+BLIND_REFUSAL = "Not available while you are reviewing blind: it would reveal reviewer 1's decisions. End your blind session or ask reviewer 1."
 
 SEVERITY_RANK = {"BLOCKER": 0, "MAJOR": 1, "MINOR": 2, "INFO": 3, None: 4}
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -59,7 +65,7 @@ class RunCache:
         return path
 
 
-def _summary(run: Run, review: ReviewStore) -> dict[str, Any]:
+def _summary(run: Run, review: ReviewStore, viewer_slot: int = 1, blind: bool = False) -> dict[str, Any]:
     from kaizen.review.business import reviewable
 
     rev = reviewable(run)
@@ -76,7 +82,7 @@ def _summary(run: Run, review: ReviewStore) -> dict[str, Any]:
         "coverage": [c.model_dump() for c in run.coverage], "groups": [g.model_dump() for g in run.groups], "warnings": run.warnings,
         "parser_warnings": [{"document": Path(d.path).name, "doc_id": d.id, "warnings": d.warnings} for d in run.documents if d.warnings],
         "low_confidence_rows": sum(1 for r in run.results for d in r.discrepancies if d.type.value == "LOW_EXTRACTION_CONFIDENCE"),
-        "state_counts": review.state_counts(run.metadata.run_id, run.results), "terminology_version": run.metadata.terminology_version, "terminology_count": run.metadata.terminology_count,
+        "state_counts": review.state_counts(run.metadata.run_id, run.results, viewer_slot, blind), "terminology_version": run.metadata.terminology_version, "terminology_count": run.metadata.terminology_count,
         "relationships_used": run.relationships_used, "capabilities": run.metadata.capabilities, "thresholds": run.metadata.thresholds.model_dump(),
         "inputs": [i.model_dump() for i in run.metadata.inputs],
     }
@@ -102,6 +108,33 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
     cache = RunCache(ws)
     review = ReviewStore(ws.db)
     items = ActionItemStore(ws.db)
+    sessions = SessionStore(ws.db)
+
+    # ---- reviewer sessions --------------------------------------------------------------------
+    # Identity, slot and blind mode are server-side. The token lives in an HttpOnly cookie so page
+    # scripts cannot read or forge it, and `viewer`/`blind` query parameters are ignored whenever a
+    # session is present.
+
+    def _open_session(kaizen_session: str | None = Cookie(default=None)) -> ReviewSession | None:
+        return sessions.resolve(kaizen_session)
+
+    def _identified(session: ReviewSession | None = Depends(_open_session)) -> ReviewSession | None:
+        if session is None and sessions.policy() == POLICY_REQUIRED:
+            raise HTTPException(401, SIGN_IN_HINT)
+        return session
+
+    def _view_of(session: ReviewSession | None, viewer: int = 1, blind: bool = False) -> tuple[int, bool]:
+        """The slot and blind flag actually used. A session always wins over the query string."""
+        if session is not None:
+            return session.slot, session.blind
+        return (viewer if viewer in (1, 2) else 1), bool(blind)
+
+    def _actor(session: ReviewSession | None, fallback: str) -> str:
+        return session.reviewer if session is not None else (fallback or "reviewer")
+
+    def _refuse_if_blind(session: ReviewSession | None) -> None:
+        if session is not None and session.blind:
+            raise HTTPException(403, BLIND_REFUSAL)
 
     def run_path(path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -111,6 +144,26 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return _summary(run, review)
 
     # ---- runs ---------------------------------------------------------------------------------
+    @app.post("/api/sessions")
+    def open_session(response: FastResponse, payload: dict = Body(...)):
+        """Start a review session. The server decides blind mode from the workspace policy."""
+        try:
+            s = sessions.open(payload.get("reviewer", ""), int(payload.get("slot", 1)), payload.get("blind"))
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, str(e))
+        response.set_cookie(SESSION_COOKIE, s.token, httponly=True, samesite="lax", path="/")
+        return s.to_dict(sessions.policy())
+
+    @app.get("/api/sessions/current")
+    def current_session(session: ReviewSession | None = Depends(_open_session)):
+        return {"session": session.to_dict(sessions.policy()) if session else None, "blind_review_policy": sessions.policy()}
+
+    @app.delete("/api/sessions/current")
+    def end_session(response: FastResponse, kaizen_session: str | None = Cookie(default=None)):
+        ended = sessions.end(kaizen_session)
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return {"ended": ended}
+
     @app.get("/api/health")
     def health():
         return {"status": "ok", "version": __version__, "workspace": str(ws.path)}
@@ -145,11 +198,13 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return run_path(src)
 
     @app.get("/api/runs/{run_id}")
-    def get_run(run_id: str):
+    def get_run(run_id: str, session: ReviewSession | None = Depends(_identified)):
+        slot, blind = _view_of(session)
         return _summary(cache.get(run_id), review)
 
     @app.get("/api/runs/{run_id}/results")
-    def get_results(run_id: str, check: str | None = None, sku: str | None = None, classification: str | None = None, severity: str | None = None, discrepancy: str | None = None, needs_validation: bool | None = None, state: str | None = None, role: str | None = None, viewer: int = 1, blind: bool = False, limit: int = 500, offset: int = 0, search: str | None = None):
+    def get_results(run_id: str, check: str | None = None, sku: str | None = None, classification: str | None = None, severity: str | None = None, discrepancy: str | None = None, needs_validation: bool | None = None, state: str | None = None, role: str | None = None, viewer: int = 1, blind: bool = False, limit: int = 500, offset: int = 0, search: str | None = None, session: ReviewSession | None = Depends(_identified)):
+        slot, blind = _view_of(session, viewer, blind)
         run = cache.get(run_id)
         rows = run.results
         if check:
@@ -170,7 +225,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
             s = search.lower()
             rows = [r for r in rows if s in (r.source_a.description if r.source_a else "").lower() or s in (r.source_b.description if r.source_b else "").lower() or s in (r.source_a.item_number or "" if r.source_a else "").lower() or s in r.explanation.lower()]
         rows = sorted(rows, key=_queue_sort_key)
-        merged = review.rows_for_viewer(run_id, rows, viewer_slot=viewer, blind=blind)
+        merged = review.rows_for_viewer(run_id, rows, viewer_slot=slot, blind=blind)
         if state:
             merged = [m for m in merged if m["state"] == state]
         total = len(merged)
@@ -182,7 +237,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
             m["b"] = {"item_number": r.source_b.item_number, "description": r.source_b.description, "quantity": str(r.source_b.quantity) if r.source_b.quantity is not None else None, "page": r.source_b.evidence.page, "locator": r.source_b.evidence.locator, "file_name": Path(r.source_b.evidence.file).name} if r.source_b else None
             m["discrepancies"] = [d.model_dump() for d in r.discrepancies]
             m["action_items"] = [a.id for a in items.for_row(run_id, r.row_id)]
-        return {"total": total, "offset": offset, "limit": limit, "rows": page}
+        return {"total": total, "offset": offset, "limit": limit, "rows": page, "viewer": {"slot": slot, "blind": blind, "reviewer": session.reviewer if session else None}}
 
     def _find(run: Run, row_id: str):
         r = next((r for r in run.results if r.row_id == row_id), None)
@@ -191,11 +246,13 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return r
 
     @app.get("/api/runs/{run_id}/results/{row_id}")
-    def get_row(run_id: str, row_id: str, viewer: int = 1, blind: bool = False):
+    def get_row(run_id: str, row_id: str, viewer: int = 1, blind: bool = False, session: ReviewSession | None = Depends(_identified)):
+        slot, blind = _view_of(session, viewer, blind)
         run = cache.get(run_id)
         r = _find(run, row_id)
-        merged = review.rows_for_viewer(run_id, [r], viewer_slot=viewer, blind=blind)[0]
-        return {"result": r.model_dump(mode="json"), "evidence": {"a": _evidence(r.source_a), "b": _evidence(r.source_b)}, "decisions": {str(k): v for k, v in merged["decisions"].items()}, "state": merged["state"], "final": merged["final"], "effective_classification": merged["effective_classification"], "history": review.history(run_id, row_id) if not (blind and viewer == 2 and 2 not in review.decisions(run_id, row_id)) else [{"event": "engine", "detail": "engine recommendation recorded with the run"}], "action_items": [asdict(a) for a in items.for_row(run_id, row_id)]}
+        merged = review.rows_for_viewer(run_id, [r], viewer_slot=slot, blind=blind)[0]
+        hidden = ReviewStore.is_blind_hidden(review.decisions(run_id, row_id), slot, blind)
+        return {"result": r.model_dump(mode="json"), "evidence": {"a": _evidence(r.source_a), "b": _evidence(r.source_b)}, "decisions": {str(k): v for k, v in merged["decisions"].items()}, "state": merged["state"], "final": merged["final"], "effective_classification": merged["effective_classification"], "history": [{"event": "engine", "detail": "engine recommendation recorded with the run"}] if hidden else review.history(run_id, row_id), "viewer": {"slot": slot, "blind": blind, "reviewer": session.reviewer if session else None}, "action_items": [asdict(a) for a in items.for_row(run_id, row_id)]}
 
     @app.get("/api/runs/{run_id}/documents")
     def get_documents(run_id: str):
@@ -238,32 +295,39 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
 
     # ---- review -------------------------------------------------------------------------------
     @app.post("/api/runs/{run_id}/decisions")
-    def post_decision(run_id: str, payload: dict = Body(...)):
+    def post_decision(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         run = cache.get(run_id)
         _find(run, payload["row_id"])
+        slot, blind = _view_of(session, int(payload.get("slot", 1)), bool(payload.get("blind", False)))
+        if session is not None and "slot" in payload and int(payload["slot"]) != session.slot:
+            raise HTTPException(400, f"this session reviews in slot {session.slot}; open a new session to review in slot {payload['slot']}")
         try:
-            review.decide(run_id, payload["row_id"], int(payload.get("slot", 1)), payload.get("reviewer", "reviewer"), payload["decision"], payload.get("comment", ""), payload.get("override_classification"), bool(payload.get("blind", False)))
+            review.decide(run_id, payload["row_id"], slot, _actor(session, payload.get("reviewer", "")), payload["decision"], payload.get("comment", ""), payload.get("override_classification"), blind)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        view = review.row_state(run_id, payload["row_id"])
-        return {"row_id": payload["row_id"], "state": view.state, "decisions": {str(k): asdict(v) for k, v in view.decisions.items()}, "effective_classification": view.effective_classification}
+        merged = review.rows_for_viewer(run_id, [_find(run, payload["row_id"])], viewer_slot=slot, blind=blind)[0]
+        return {"row_id": payload["row_id"], "state": merged["state"], "decisions": {str(k): v for k, v in merged["decisions"].items()}, "effective_classification": merged["effective_classification"]}
 
     @app.post("/api/runs/{run_id}/finalize")
-    def post_final(run_id: str, payload: dict = Body(...)):
+    def post_final(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         cache.get(run_id)
+        slot, blind = _view_of(session)
+        if ReviewStore.is_blind_hidden(review.decisions(run_id, payload["row_id"]), slot, blind):
+            raise HTTPException(403, "Record your own decision on this row before closing it: you cannot see reviewer 1's yet.")
         try:
-            review.finalize(run_id, payload["row_id"], payload["final_decision"], payload.get("by", "reviewer"), payload.get("note", ""))
+            review.finalize(run_id, payload["row_id"], payload["final_decision"], _actor(session, payload.get("by", "")), payload.get("note", ""))
         except ValueError as e:
             raise HTTPException(400, str(e))
         return {"row_id": payload["row_id"], "state": review.row_state(run_id, payload["row_id"]).state}
 
     @app.post("/api/runs/{run_id}/bulk-accept")
-    def post_bulk(run_id: str, payload: dict = Body(...)):
+    def post_bulk(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         run = cache.get(run_id)
-        return {"accepted": review.bulk_accept_clean(run_id, run.results, int(payload.get("slot", 1)), payload.get("reviewer", "reviewer"))}
+        slot, _ = _view_of(session, int(payload.get("slot", 1)))
+        return {"accepted": review.bulk_accept_clean(run_id, run.results, slot, _actor(session, payload.get("reviewer", "")))}
 
     @app.post("/api/runs/{run_id}/relationships/from-row")
-    def relationship_from_row(run_id: str, payload: dict = Body(...)):
+    def relationship_from_row(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         run = cache.get(run_id)
         r = _find(run, payload["row_id"])
         if r.source_a is None or r.source_b is None:
@@ -271,8 +335,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         canonical = payload.get("canonical") or r.source_b.description
         aliases = payload.get("aliases") or [r.source_a.description]
         anchors = [r.source_a.item_number] if payload.get("anchor") and r.source_a.item_number else []
-        rel = ws.repository.create(canonical=canonical, aliases=aliases, scope=payload.get("scope", "global"), doc_types=payload.get("doc_types", []), item_anchors=anchors, provenance="learned", created_by=payload.get("by", "reviewer"), notes=payload.get("notes") or f"Saved from run {run_id} row {r.row_id} ({r.check.value}, {r.sku}); engine said {r.classification.value}")
-        ws.db.audit(payload.get("by", "reviewer"), "relationship.learned", f"{rel.id} from {run_id} {r.row_id}")
+        rel = ws.repository.create(canonical=canonical, aliases=aliases, scope=payload.get("scope", "global"), doc_types=payload.get("doc_types", []), item_anchors=anchors, provenance="learned", created_by=_actor(session, payload.get("by", "")), notes=payload.get("notes") or f"Saved from run {run_id} row {r.row_id} ({r.check.value}, {r.sku}); engine said {r.classification.value}")
+        ws.db.audit(_actor(session, payload.get("by", "")), "relationship.learned", f"{rel.id} from {run_id} {r.row_id}")
         ws.db.conn.commit()
         return rel.model_dump(mode="json")
 
@@ -289,23 +353,23 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return s
 
     @app.post("/api/runs/{run_id}/mining/approve")
-    def approve(run_id: str, payload: dict = Body(...)):
+    def approve(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         s = _suggestion(run_id, payload["a_key"], payload["b_key"])
-        return approve_suggestion(ws.repository, s, payload.get("by", "reviewer"), payload.get("scope", "global"), bool(payload.get("anchor", False)), payload.get("notes", "")).model_dump(mode="json")
+        return approve_suggestion(ws.repository, s, _actor(session, payload.get("by", "")), payload.get("scope", "global"), bool(payload.get("anchor", False)), payload.get("notes", "")).model_dump(mode="json")
 
     @app.post("/api/runs/{run_id}/mining/reject")
-    def reject(run_id: str, payload: dict = Body(...)):
+    def reject(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         s = _suggestion(run_id, payload["a_key"], payload["b_key"])
-        reject_suggestion(ws.db, s, payload.get("by", "reviewer"), payload.get("note", ""))
+        reject_suggestion(ws.db, s, _actor(session, payload.get("by", "")), payload.get("note", ""))
         return {"rejected": s.pair_key}
 
     # ---- action items ------------------------------------------------------------------------
     @app.post("/api/runs/{run_id}/action-items")
-    def create_action_item(run_id: str, payload: dict = Body(...)):
+    def create_action_item(run_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         run = cache.get(run_id)
         r = _find(run, payload["row_id"])
         try:
-            return asdict(items.create_from_result(run, r, payload.get("reviewer", "reviewer"), payload.get("owner", "")))
+            return asdict(items.create_from_result(run, r, _actor(session, payload.get("reviewer", "")), payload.get("owner", "")))
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -315,9 +379,9 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return [asdict(a) for a in out]
 
     @app.patch("/api/action-items/{ai_id}")
-    def patch_action_item(ai_id: str, payload: dict = Body(...)):
+    def patch_action_item(ai_id: str, payload: dict = Body(...), session: ReviewSession | None = Depends(_identified)):
         try:
-            return asdict(items.update(ai_id, payload.get("by", "reviewer"), payload.get("status"), payload.get("owner"), payload.get("note", "")))
+            return asdict(items.update(ai_id, _actor(session, payload.get("by", "")), payload.get("status"), payload.get("owner"), payload.get("note", "")))
         except KeyError:
             raise HTTPException(404, "action item not found")
         except ValueError as e:
@@ -333,13 +397,15 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
 
     # ---- exports -----------------------------------------------------------------------------
     @app.get("/api/runs/{run_id}/export.xlsx")
-    def export_run(run_id: str):
+    def export_run(run_id: str, session: ReviewSession | None = Depends(_identified)):
+        _refuse_if_blind(session)
         run = cache.get(run_id)
         path = export_with_review(ws, run, ws.runs_dir / run_id / "report.xlsx")
         return FileResponse(path, media_type=XLSX, filename=f"kaizen-{run_id}.xlsx")
 
     @app.get("/api/runs/{run_id}/annotated-bom/{doc_id}")
-    def annotated_bom(run_id: str, doc_id: str):
+    def annotated_bom(run_id: str, doc_id: str, session: ReviewSession | None = Depends(_identified)):
+        _refuse_if_blind(session)
         run = cache.get(run_id)
         d = _doc(run, doc_id)
         decisions = review.all_decisions(run_id)
@@ -423,7 +489,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return [{"version": h.version, "change_type": h.change_type, "changed_by": h.changed_by, "changed_at": h.changed_at.isoformat(), "change_note": h.change_note, "payload": h.payload.model_dump(mode="json")} for h in ws.repository.history(rel_id)]
 
     @app.get("/api/audit")
-    def audit(limit: int = 200):
+    def audit(limit: int = 200, session: ReviewSession | None = Depends(_identified)):
+        _refuse_if_blind(session)
         return [dict(r) for r in ws.db.conn.execute("SELECT * FROM audit ORDER BY seq DESC LIMIT ?", (limit,))]
 
     if ui_dir and ui_dir.exists():

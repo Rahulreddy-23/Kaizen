@@ -219,6 +219,20 @@ export interface ViewerParams {
   blind: boolean;
 }
 
+/** A server-side review session. The token is in an HttpOnly cookie and never reaches this code. */
+export interface ReviewSession {
+  reviewer: string;
+  slot: 1 | 2;
+  blind: boolean;
+  created_at: string;
+  blind_review_policy: string;
+}
+
+export interface CurrentSession {
+  session: ReviewSession | null;
+  blind_review_policy: string;
+}
+
 export interface BBox {
   x0: number;
   y0: number;

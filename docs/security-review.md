@@ -14,8 +14,10 @@ self-review of a hackathon prototype, not a formal assessment, and it makes no r
 | Deterministic hashes | PASS | SHA-256 of every input, terminology snapshot hash, and content-derived run ids; verified by tests (`test_run_id_is_deterministic_for_same_inputs`, `test_build_is_deterministic`). |
 | Audit content | PASS | Audit rows contain actor, action, ids and short notes. Reviewer comments are stored as entered by reviewers (they are business content, not secrets). |
 | Dependencies | INFO | Runtime: pydantic, PyMuPDF, openpyxl, rapidfuzz, typer, rich; API extra: fastapi, uvicorn, python-multipart. No dependency performs network calls at runtime. Optional: `rapidocr-onnxruntime` (offline OCR), `sentence-transformers` (local embeddings), `anthropic` (opt-in). |
-| Authentication / blind mode | GAP (accepted for prototype) | Reviewer identity is a typed name and blind mode is a request parameter, so a reviewer could switch it off client-side. Suitable for a single reviewer machine; a shared deployment needs SSO and a server-side reviewer session that fixes the slot and blind flag. |
+| Reviewer identity / blind mode | PARTIAL | Identity, slot and blind mode are a server-side session (`src/kaizen/review/sessions.py`): the token is in an HttpOnly cookie, the `viewer`/`blind` query parameters are ignored when a session exists, and the blind flag is derived from the workspace policy rather than the request. A blind reviewer 2 cannot see reviewer 1's decision, the row state that implies it, an override through `effective_classification`, a final taken without them, the row history, the Excel export, the annotated BOM or the audit log. The policy is changed only from the command line. Remaining gap: this is identification, not authentication — anyone with access to the machine can open a session under any name, and the cookie is not `Secure` because the server is plain HTTP on localhost. |
 | Multi-user concurrency | PARTIAL | Writes to the workspace database are serialised with a process lock (verified by a 25-thread test); SQLite in one process is adequate for a local tool, not for a shared server. |
 
-Recommendations before any shared deployment: put the API behind SSO, run it on a server with a proper
-database, and decide the retention policy for uploaded documents and rendered page images.
+Recommendations before any shared deployment: put the API behind SSO so a session proves *who* the
+reviewer is (the slot and blind machinery is already server-side and would carry over), serve it over
+HTTPS and mark the session cookie `Secure`, run it on a server with a proper database, and decide the
+retention policy for uploaded documents and rendered page images.

@@ -16,8 +16,9 @@ interface Props {
 
 /** Reviewer decisions are stored beside the engine recommendation, never over it. */
 export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
-  const { reviewer, viewerParams, name } = useReviewer();
-  const slotKey = String(reviewer.slot) as Slot;
+  const { session, viewerParams, name } = useReviewer();
+  const slot: 1 | 2 = session?.slot ?? 1;
+  const slotKey = String(slot) as Slot;
   const mine = detail.decisions[slotKey];
 
   const [decision, setDecision] = useState<DecisionKind | null>(mine?.decision ?? null);
@@ -43,7 +44,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     const d1 = detail.decisions["1"];
     setFinalDecision(detail.final?.final_decision ?? d2?.decision ?? d1?.decision ?? "ACCEPT");
     setFinalNote(detail.final?.note ?? "");
-  }, [rowId, reviewer.slot, mine?.decision, mine?.override_classification, mine?.comment, detail.decisions, detail.final]);
+  }, [rowId, slot, mine?.decision, mine?.override_classification, mine?.comment, detail.decisions, detail.final]);
 
   const submit = async () => {
     if (!decision || !name) return;
@@ -53,14 +54,11 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     try {
       const res = await api.postDecision(runId, {
         row_id: rowId,
-        slot: reviewer.slot,
-        reviewer: name,
         decision,
         comment,
         override_classification: decision === "OVERRIDE" ? override : undefined,
-        blind: viewerParams.blind,
       });
-      setOk(`Recorded as reviewer ${reviewer.slot}. Row state is now ${res.state.replace(/_/g, " ")}.`);
+      setOk(`Recorded as reviewer ${slot}. Row state is now ${res.state.replace(/_/g, " ")}.`);
       onChanged();
     } catch (e) {
       setErr(errorMessage(e));
@@ -74,7 +72,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     setFinalBusy(true);
     setFinalErr(null);
     try {
-      await api.finalize(runId, { row_id: rowId, final_decision: finalDecision, by: name, note: finalNote });
+      await api.finalize(runId, { row_id: rowId, final_decision: finalDecision, note: finalNote });
       onChanged();
     } catch (e) {
       setFinalErr(errorMessage(e));
@@ -105,7 +103,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
         <div className="space-y-2">
           <div className="text-xs">
             Deciding as{" "}
-            {name ? <b>{name}</b> : <span className="text-red-800 font-semibold">(no name: enter your name in the top bar)</span>} · slot {reviewer.slot}{" "}
+            <b>{name}</b> · slot {slot}{" "}
             {viewerParams.blind && <span className="chip border-blue-700 text-blue-800">BLIND</span>}
           </div>
           <div className="flex flex-wrap gap-1">

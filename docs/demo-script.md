@@ -6,6 +6,7 @@ Start: `.venv/bin/kaizen serve` → open http://127.0.0.1:8765. Everything is lo
 
 | # | Beat | Where | What to say / show |
 |---|---|---|---|
+| 0 | Sign in | Name + reviewer slot | Identity is server-side: every decision is recorded against this name, and slot 2 is blind whether or not the reviewer wants to be. |
 | 1 | The manual process | Slide 7 of the brief | An hour per SKU per reviewer, coloured pens, a separate tracker; the independent reviewer is only free half a day. |
 | 2 | Drop the documents | Home → "Load demo dataset" (or drop the `datasets/golden` folder) | 10 SKU sets: BOM (PDF/XLSX/CSV), labels incl. old revisions, drawings, two PCOs. |
 | 3 | Grouping | Dashboard → groups | Sets formed per folder / product family; documents by type; unrecognised files listed. |
@@ -22,7 +23,7 @@ Start: `.venv/bin/kaizen serve` → open http://127.0.0.1:8765. Everything is lo
 | 14 | A real quantity mismatch | Queue → 1295108FNS, MISMATCH | Gauze 10 on the BOM vs 8 on the label; END CAP 2 vs 1. |
 | 15 | PCO change not applied | Queue → PCO_BOM, 1395108QNS | Scissors still on the BOM although the PCO deletes them; evidence is the BOM row. |
 | 16 | A missing item | Queue → MISSING | Absorbent drape missing from the label (1395108QNS); label item without BOM line (1175108NS). |
-| 17 | Blind independent review | Reviewer identity → slot 2, blind ON | Reviewer 2 sees evidence and the system recommendation, not reviewer 1's decision. |
+| 17 | Blind independent review | Sign out, sign in as reviewer 2 | The BLIND chip appears. Reviewer 2 sees the evidence and the engine recommendation, never reviewer 1's decision, and the export and audit log are refused with a 403. Adding `&blind=false` to the URL changes nothing: the server decides. |
 | 18 | Second review | Decide CONFIRM_DISCREPANCY | State becomes DISAGREEMENT when the two differ. |
 | 19 | Disagreement | Evidence view | Both decisions side by side; finalize with a note from the cross-check meeting. |
 | 20 | Export Excel | Dashboard → Export | Sheets per check, Action Items, Coverage, Manual Checklist, Relationships Used with versions. |

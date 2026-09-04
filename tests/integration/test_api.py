@@ -17,6 +17,8 @@ def env(tmp_path_factory):
     golden = build_golden(root / "golden")
     ws = Workspace(root / "ws")
     client = TestClient(create_app(ws))
+    # Reviewer identity is server-side now, so the shared client signs in as the facilitator.
+    assert client.post("/api/sessions", json={"reviewer": "Dharma", "slot": 1}).status_code == 200
     r = client.post("/api/runs/from-path", json={"path": str(golden)})
     assert r.status_code == 200, r.text
     return client, golden, ws, r.json()["run_id"]
@@ -70,19 +72,23 @@ def test_decisions_blind_mode_disagreement_and_finalize(env):
     client, golden, ws, run_id = env
     row = client.get(f"/api/runs/{run_id}/results", params={"check": "BOM_LABEL", "sku": "1295108FNS", "classification": "MISMATCH"}).json()["rows"][0]
     rid = row["row_id"]
-    r = client.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "slot": 1, "reviewer": "Dharma", "decision": "CONFIRM_DISCREPANCY", "comment": "qty"})
+    r = client.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "decision": "CONFIRM_DISCREPANCY", "comment": "qty"})
     assert r.status_code == 200 and r.json()["state"] == "REVIEWER_1_COMPLETE"
-    blind = client.get(f"/api/runs/{run_id}/results/{rid}", params={"viewer": 2, "blind": "true"}).json()
+
+    reviewer2 = TestClient(create_app(ws))
+    assert reviewer2.post("/api/sessions", json={"reviewer": "Hemant", "slot": 2}).json()["blind"] is True
+    blind = reviewer2.get(f"/api/runs/{run_id}/results/{rid}").json()
     assert blind["decisions"]["1"] is None and blind["result"]["classification"] == "MISMATCH"
-    r = client.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "slot": 2, "reviewer": "Hemant", "decision": "ACCEPT", "blind": True})
+    r = reviewer2.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "decision": "ACCEPT"})
     assert r.json()["state"] == "DISAGREEMENT"
-    after = client.get(f"/api/runs/{run_id}/results/{rid}", params={"viewer": 2, "blind": "true"}).json()
+    after = reviewer2.get(f"/api/runs/{run_id}/results/{rid}").json()
     assert after["decisions"]["1"]["decision"] == "CONFIRM_DISCREPANCY"
-    r = client.post(f"/api/runs/{run_id}/finalize", json={"row_id": rid, "final_decision": "CONFIRM_DISCREPANCY", "by": "Dharma", "note": "meeting"})
+
+    r = client.post(f"/api/runs/{run_id}/finalize", json={"row_id": rid, "final_decision": "CONFIRM_DISCREPANCY", "note": "meeting"})
     assert r.json()["state"] == "FINALIZED"
-    bad = client.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "slot": 1, "reviewer": "x", "decision": "MAYBE"})
+    bad = client.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "decision": "MAYBE"})
     assert bad.status_code == 400
-    n = client.post(f"/api/runs/{run_id}/bulk-accept", json={"slot": 1, "reviewer": "Dharma"}).json()["accepted"]
+    n = client.post(f"/api/runs/{run_id}/bulk-accept", json={}).json()["accepted"]
     assert n > 100
 
 
@@ -163,3 +169,110 @@ def test_upload_and_demo(env):
     assert r.json()["skus"] == 1
     d = client.post("/api/demo/load")
     assert d.status_code == 200 and d.json()["skus"] >= 8
+
+
+# ---- reviewer sessions ---------------------------------------------------------------------------
+# Identity and blind mode are server-side. These tests use their own clients so the module fixture's
+# cookie jar is not disturbed.
+
+
+def _fresh(ws):
+    return TestClient(create_app(ws))
+
+
+def sign_in(client, name: str, slot: int) -> dict:
+    r = client.post("/api/sessions", json={"reviewer": name, "slot": slot})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_session_lifecycle_and_cookie(env):
+    _, _, ws, _ = env
+    c = _fresh(ws)
+    assert c.get("/api/sessions/current").json()["session"] is None
+    s = sign_in(c, "Dharma", 1)
+    assert s["reviewer"] == "Dharma" and s["slot"] == 1 and s["blind"] is False
+    assert "token" not in s, "the token belongs in the cookie, not the response body"
+    assert c.get("/api/sessions/current").json()["session"]["reviewer"] == "Dharma"
+    assert c.delete("/api/sessions/current").json()["ended"] is True
+    assert c.get("/api/sessions/current").json()["session"] is None
+    assert c.post("/api/sessions", json={"reviewer": "  ", "slot": 1}).status_code == 400
+    assert c.post("/api/sessions", json={"reviewer": "Dharma", "slot": 7}).status_code == 400
+
+
+def test_review_endpoints_refuse_an_anonymous_caller(env):
+    _, _, ws, run_id = env
+    c = _fresh(ws)
+    for path in (f"/api/runs/{run_id}/results", f"/api/runs/{run_id}/export.xlsx", "/api/audit"):
+        assert c.get(path).status_code == 401, path
+    assert c.post(f"/api/runs/{run_id}/decisions", json={"row_id": "x", "decision": "ACCEPT"}).status_code == 401
+    assert c.get(f"/api/runs/{run_id}").status_code == 401
+
+
+def test_blind_mode_is_taken_from_the_session_not_the_query_string(env):
+    _, _, ws, run_id = env
+    c1 = _fresh(ws)
+    sign_in(c1, "Dharma", 1)
+    row = c1.get(f"/api/runs/{run_id}/results", params={"check": "BOM_LABEL", "classification": "MISMATCH"}).json()["rows"][0]
+    rid = row["row_id"]
+    c1.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "decision": "OVERRIDE", "override_classification": "EQUIVALENT", "comment": "same part"})
+
+    c2 = _fresh(ws)
+    s = sign_in(c2, "Hemant", 2)
+    assert s["blind"] is True and s["blind_review_policy"] == "required"
+    # The old client-controlled parameters are ignored.
+    page = c2.get(f"/api/runs/{run_id}/results", params={"viewer": 1, "blind": "false", "check": "BOM_LABEL"}).json()
+    assert page["viewer"]["slot"] == 2 and page["viewer"]["blind"] is True
+    mine = next(r for r in page["rows"] if r["row_id"] == rid)
+    assert mine["decisions"]["1"] is None
+    assert mine["effective_classification"] == "MISMATCH", "reviewer 1's override leaked to a blind reviewer"
+    assert mine["state"] == "ENGINE_RECOMMENDED"
+
+    detail = c2.get(f"/api/runs/{run_id}/results/{rid}", params={"viewer": 1, "blind": "false"}).json()
+    assert detail["decisions"]["1"] is None and len(detail["history"]) == 1
+
+    c2.post(f"/api/runs/{run_id}/decisions", json={"row_id": rid, "decision": "ACCEPT"})
+    after = c2.get(f"/api/runs/{run_id}/results/{rid}").json()
+    assert after["decisions"]["1"]["decision"] == "OVERRIDE" and after["state"] == "DISAGREEMENT"
+
+
+def test_decision_identity_comes_from_the_session(env):
+    _, _, ws, run_id = env
+    c = _fresh(ws)
+    sign_in(c, "Hemant", 2)
+    row = c.get(f"/api/runs/{run_id}/results", params={"check": "BOM_DRAWING"}).json()["rows"][0]
+    # A caller claiming a different slot or name is refused / ignored, not believed.
+    bad = c.post(f"/api/runs/{run_id}/decisions", json={"row_id": row["row_id"], "slot": 1, "decision": "ACCEPT"})
+    assert bad.status_code == 400 and "slot" in bad.json()["detail"].lower()
+    ok = c.post(f"/api/runs/{run_id}/decisions", json={"row_id": row["row_id"], "reviewer": "Dharma", "decision": "ACCEPT"}).json()
+    assert ok["decisions"]["2"]["reviewer"] == "Hemant" and ok["decisions"]["2"]["blind"] is True
+    assert "1" not in {k for k, v in ok["decisions"].items() if v}
+
+
+def test_blind_reviewer_cannot_read_the_audit_log_or_export_the_workbook(env):
+    _, _, ws, run_id = env
+    c = _fresh(ws)
+    sign_in(c, "Hemant", 2)
+    for path in ("/api/audit", f"/api/runs/{run_id}/export.xlsx"):
+        r = c.get(path)
+        assert r.status_code == 403, path
+        assert "blind" in r.json()["detail"].lower()
+    c2 = _fresh(ws)
+    sign_in(c2, "Dharma", 1)
+    assert c2.get("/api/audit").status_code == 200
+    assert c2.get(f"/api/runs/{run_id}/export.xlsx").status_code == 200
+
+
+def test_policy_can_be_relaxed_and_then_reviewer_two_may_be_unblinded(env):
+    _, _, ws, run_id = env
+    from kaizen.review.sessions import POLICY_OPTIONAL, POLICY_REQUIRED, SessionStore
+
+    sessions = SessionStore(ws.db)
+    sessions.set_policy(POLICY_OPTIONAL, by="Rahul")
+    try:
+        c = _fresh(ws)
+        assert c.post("/api/sessions", json={"reviewer": "Hemant", "slot": 2, "blind": False}).json()["blind"] is False
+        anon = _fresh(ws)
+        assert anon.get(f"/api/runs/{run_id}/results").status_code == 200, "optional policy keeps the anonymous path open"
+    finally:
+        sessions.set_policy(POLICY_REQUIRED, by="Rahul")

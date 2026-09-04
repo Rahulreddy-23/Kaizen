@@ -84,7 +84,9 @@ def test_blind_view_hides_reviewer_one_until_reviewer_two_submits(ws_and_run, st
     row = _row(run, Classification.POTENTIAL)
     store.decide(rid, row.row_id, slot=1, reviewer="Dharma", decision="ACCEPT")
     hidden = store.rows_for_viewer(rid, [row], viewer_slot=2, blind=True)[0]
-    assert hidden["decisions"].get(1) is None and hidden["state"] == "REVIEWER_1_COMPLETE"
+    # The row state is masked too: "REVIEWER_1_COMPLETE" would tell reviewer 2 that reviewer 1 had
+    # already decided this row, which blind review is meant to withhold.
+    assert hidden["decisions"].get(1) is None and hidden["state"] == "ENGINE_RECOMMENDED"
     assert hidden["engine"]["classification"] == "POTENTIAL"  # system recommendation stays visible
     store.decide(rid, row.row_id, slot=2, reviewer="Hemant", decision="ACCEPT", blind=True)
     shown = store.rows_for_viewer(rid, [row], viewer_slot=2, blind=True)[0]

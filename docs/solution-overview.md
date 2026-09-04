@@ -236,6 +236,15 @@ figures are calculated, not yet observed with real reviewers; validating them is
 - The review database is local and single-user. A shared server with login would be the production step.
 - Case labels are not parsed yet, only unit labels.
 
+## 12a. Where the details are
+
+| Question | Document |
+|---|---|
+| How does each module work? | [`system-description.md`](system-description.md) |
+| Why was it designed this way? | [`final-architecture.md`](final-architecture.md) |
+| How do I demo it? | [`demo-script.md`](demo-script.md) |
+| What are the honest gaps? | [`known-limitations.md`](known-limitations.md), [`security-review.md`](security-review.md) |
+
 ## 13. Glossary
 
 | Term | Meaning |

@@ -37,8 +37,8 @@ class MatchLevel(str, Enum):
     EXACT = "L1_EXACT"
     RELATIONSHIP = "L2_RELATIONSHIP"
     FUZZY = "L3_FUZZY"
-    SEMANTIC = "L4_SEMANTIC"  # PLANNED — not implemented in week 1
-    LLM = "L5_LLM"  # PLANNED — not implemented in week 1
+    SEMANTIC = "L4_SEMANTIC"  # opt-in; can only yield POTENTIAL
+    LLM = "L5_LLM"  # opt-in AI suggestion; can only yield POTENTIAL, never authoritative
     NONE = "NONE"
 
 
@@ -50,7 +50,6 @@ class DiscrepancyType(str, Enum):
     REF_PARENT_MISMATCH = "REF_PARENT_MISMATCH"
     AMBIGUOUS_MATCH = "AMBIGUOUS_MATCH"
     LOW_EXTRACTION_CONFIDENCE = "LOW_EXTRACTION_CONFIDENCE"
-    # Reserved for later checks (drawing, PCO, label revisions)
     MISSING_IN_DRAWING = "MISSING_IN_DRAWING"
     EXTRA_ON_DRAWING = "EXTRA_ON_DRAWING"
     PCO_CHANGE_NOT_APPLIED = "PCO_CHANGE_NOT_APPLIED"
@@ -70,7 +69,7 @@ class Severity(str, Enum):
 
 class CheckType(str, Enum):
     BOM_LABEL = "BOM_LABEL"
-    BOM_DRAWING = "BOM_DRAWING"  # PLANNED
-    LABEL_DRAWING = "LABEL_DRAWING"  # PLANNED
-    PCO_BOM = "PCO_BOM"  # PLANNED
-    LABEL_REVISION = "LABEL_REVISION"  # PLANNED
+    BOM_DRAWING = "BOM_DRAWING"
+    LABEL_DRAWING = "LABEL_DRAWING"
+    PCO_BOM = "PCO_BOM"
+    LABEL_REVISION = "LABEL_REVISION"
