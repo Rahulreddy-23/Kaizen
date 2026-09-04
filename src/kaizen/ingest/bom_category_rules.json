@@ -1,0 +1,18 @@
+{
+  "version": "2",
+  "description": "Ordered rules that decide what a BOM line is. First matching keyword rule wins, then item-number prefix rules, then the quantity default. Patterns are phrase-level on purpose: a single word such as INSERT, INK or BOX must not remove a physical kit component from the comparison. Edit to suit the site; the reason string is reported with every categorisation.",
+  "keyword_rules": [
+    {"pattern": "\\bQUALITY\\b|\\bINSPECTION\\b|\\bRECORD\\b|FIRST/LAST|FIRST LAST", "category": "QUALITY", "reason": "description mentions a quality/inspection record"},
+    {"pattern": "\\bPRODUCING\\b|\\bSTERILI[SZ]", "category": "PROCESS", "reason": "description describes a process step"},
+    {"pattern": "TRANSFER RIBBON|PRINT(?:ER)? RIBBON|\\bRIBBON, (?:THERMAL|PRINT)|\\bTONER\\b|\\bINK, PRINT|\\bPRINTER INK\\b", "category": "PROCESS", "reason": "description is a label-printing consumable"},
+    {"pattern": "\\bIFU\\b|INSTRUCTIONS? FOR USE|\\bLEAFLET\\b|\\bBOOKLET\\b|PACKAGE INSERT|\\bINSERT, (?:IFU|INSTRUCTION|LEAFLET|PRODUCT|PACKAGE)", "category": "DOCUMENT", "reason": "description is printed documentation (IFU/insert)"},
+    {"pattern": "\\bLABELS?\\b|\\bLBL\\b", "category": "LABEL", "reason": "description mentions LABEL"},
+    {"pattern": "\\bCARTON\\b|\\bSHIPPER\\b|\\bBLISTER\\b|^LID\\b|\\bLID,|\\bTRAY\\b|\\bPOUCH, (?:STERIL|PEEL|TYVEK)|\\bBOX, (?:SHIP|INNER|OUTER|UNIT|CORRUGATED)|\\bFOAM INSERT\\b", "category": "PACKAGING", "reason": "description names a packaging component"}
+  ],
+  "prefix_rules": [
+    {"prefix": "MPS", "category": "PROCESS", "reason": "item prefix MPS denotes a manufacturing process step"},
+    {"prefix": "FM", "category": "QUALITY", "reason": "item prefix FM denotes a form/record"},
+    {"prefix": "BAW", "category": "LABEL", "reason": "item prefix BAW denotes label artwork"},
+    {"prefix": "PK", "category": "PACKAGING", "reason": "item prefix PK denotes packaging"}
+  ]
+}

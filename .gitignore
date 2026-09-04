@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+out/
+build/
+dist/
+.DS_Store
+kaizen-workspace/
+
+# The hackathon brief is BD-internal material; keep it local, never in the public repo.
+docs/reference/*.pdf

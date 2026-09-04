@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "relationships": [
+    {
+      "id": "REL-001",
+      "canonical": "Surgical Tape",
+      "aliases": [
+        "TAPE ANCHOR PER-Q-CATH",
+        "TAPE ANCHOR",
+        "TAPE, SURGICAL"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "brief",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "Brief example: 'Tape Anchor = Surgical Tape = Tape Measure'. Tape Measure is kept as a separate relationship (REL-002) because the label lists Measuring Tape as its own item.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-002",
+      "canonical": "Measuring Tape",
+      "aliases": [
+        "TAPE MEASURE",
+        "TAPE, MEASURING"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "brief",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "Drawing callout reads TAPE MEASURE; label reads Measuring Tape.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-003",
+      "canonical": "Mask",
+      "aliases": [
+        "MASK PROCEDURE",
+        "MASK, PROCEDURE",
+        "FACE MASK"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "kaizen",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "ERP descriptions qualify the mask type; the label just says Mask.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-004",
+      "canonical": "Gauze, 10 cm x 10 cm (4 in. x 4 in.)",
+      "aliases": [
+        "GAUZE 4X4",
+        "GAUZE SPONGE 4X4",
+        "GAUZE 4IN X 4IN"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "kaizen",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "Metric/imperial gauze sizes. Must not be confused with REL-005.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-005",
+      "canonical": "Gauze, 5 cm x 5 cm (2 in. x 2 in.)",
+      "aliases": [
+        "GAUZE 2X2",
+        "GAUZE SPONGE 2X2",
+        "GAUZE 2IN X 2IN"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "kaizen",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-006",
+      "canonical": "Introducer, Safety Peripheral IV Catheter, 20 G (1.1 mm OD x 45 mm Length)",
+      "aliases": [
+        "INTRODUCER SAFETY IV CATH 20G",
+        "INTRODUCER, SAFETY IV CATHETER 20G",
+        "SAFETY IV CATHETER INTRODUCER 20G"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "kaizen",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "ERP abbreviates CATHETER as CATH.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-007",
+      "canonical": "Gloves",
+      "aliases": [
+        "GLOVES EXAM",
+        "GLOVES, EXAM NITRILE"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [
+        "2300001"
+      ],
+      "provenance": "learned",
+      "created_by": "reviewer",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "Learned from a reviewer decision; anchored to BOM item 2300001 so any description under that item number resolves to Gloves.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-008",
+      "canonical": "Mask",
+      "aliases": [
+        "MASK PROCEDURE EARLOOP"
+      ],
+      "scope": "family:3131910",
+      "doc_types": [],
+      "item_anchors": [],
+      "provenance": "manual",
+      "created_by": "kaizen",
+      "created_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "Family-scoped: only the 3131910 family uses the earloop mask description.",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "REL-009",
+      "canonical": "Dual-Lumen PICC, 5.0 F (1.81 mm OD) x 55 cm, with Sherlock 3CG™ TPS Stylet/T-Lock Assembly and Stylet Funnel",
+      "aliases": [
+        "PICC DUAL LUMEN 5F 55CM SHERLOCK 3CG TPS",
+        "PICC CATHETER 5F DUAL LUMEN"
+      ],
+      "scope": "global",
+      "doc_types": [],
+      "item_anchors": [
+        "3330010"
+      ],
+      "provenance": "manual",
+      "created_by": "kaizen",
+      "created_at": "2026-09-03T00:00:00Z",
+      "updated_at": "2026-09-03T00:00:00Z",
+      "active": true,
+      "notes": "Main product line: the label spells out the full configuration, the BOM and drawing abbreviate it. Anchored to item 3330010.",
+      "version": 1
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kaizen-crosscheck"
+version = "0.1.0"
+description = "Kaizen Cross-Check: deterministic, traceable BOM / label / drawing / PCO cross-check engine"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+dependencies = [
+    "pydantic>=2.7,<3",
+    "pymupdf>=1.24",
+    "openpyxl>=3.1",
+    "rapidfuzz>=3.6",
+    "typer>=0.12",
+    "rich>=13",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
+dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
+
+[project.scripts]
+kaizen = "kaizen.cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kaizen = ["**/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    "error::DeprecationWarning:kaizen.*",
+    "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
+    "ignore:builtin type Swig:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 200
+target-version = "py312"
+
+[tool.ruff.lint]
+# Pinned rule set so local runs and CI agree regardless of the ruff release's defaults.
+select = ["E4", "E7", "E9", "F", "I", "B", "RUF100"]
+ignore = [
+    "E741",  # single-letter loop variables (l) are used deliberately in the parsers
+    "B008",  # FastAPI's Body(...)/File(...) defaults are the framework idiom
+    "B904",  # re-raise chaining is not required in the API error handlers
+    "B905",  # zip(strict=...) would change behaviour on unequal lengths
+]

@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 13px;
+  }
+  body {
+    @apply bg-[#f3f4f6] text-gray-900 antialiased;
+  }
+  h1 {
+    @apply text-base font-semibold text-gray-900;
+  }
+  a {
+    @apply text-gray-900;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-white border border-gray-300 rounded-sm;
+  }
+  .panel-title {
+    @apply px-3 py-1.5 border-b border-gray-200 text-2xs font-semibold uppercase tracking-wide text-gray-600 flex items-center gap-2;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 border border-gray-400 bg-white text-gray-800 text-xs font-medium rounded-sm whitespace-nowrap hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply border-gray-900 bg-gray-900 text-white hover:bg-gray-700;
+  }
+  .btn-danger {
+    @apply border-red-700 text-red-800 hover:bg-red-50;
+  }
+  .btn-sm {
+    @apply px-1.5 py-0.5 text-2xs;
+  }
+  .input {
+    @apply border border-gray-400 bg-white px-2 py-1 text-xs rounded-sm focus:outline-none focus:border-gray-900 disabled:bg-gray-100;
+  }
+  .tbl {
+    @apply w-full text-xs border-collapse;
+  }
+  .tbl th {
+    @apply text-left font-semibold text-gray-600 uppercase tracking-wide text-2xs px-2 py-1.5 border-b border-gray-300 bg-gray-50 whitespace-nowrap;
+  }
+  .tbl td {
+    @apply px-2 py-1 border-b border-gray-200 align-top;
+  }
+  .tbl tr.clickable {
+    @apply cursor-pointer;
+  }
+  .tbl tr.clickable:hover td {
+    @apply bg-amber-50;
+  }
+  .tbl tr.selected td {
+    @apply bg-amber-100;
+  }
+  .mono {
+    @apply font-mono text-[12px];
+  }
+  .kv {
+    @apply grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs;
+  }
+  .kv dt {
+    @apply text-gray-500 whitespace-nowrap;
+  }
+  .kv dd {
+    @apply text-gray-900 break-words min-w-0;
+  }
+  .label {
+    @apply text-2xs uppercase tracking-wide text-gray-500 font-semibold;
+  }
+  .chip {
+    @apply inline-block border border-gray-300 bg-gray-50 px-1 py-0 text-2xs rounded-sm text-gray-700;
+  }
+}

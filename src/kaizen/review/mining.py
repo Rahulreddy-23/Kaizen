@@ -1,0 +1,87 @@
+"""Relationship mining: repeated fuzzy pairings across SKUs become SUGGESTIONS with evidence. A human approves
+or rejects; nothing is created automatically."""
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from kaizen.matching.normalize import normalize
+from kaizen.models import MatchLevel, Relationship, Run
+from kaizen.review.store import ReviewStore
+from kaizen.storage.db import Database
+from kaizen.terminology.repository import TerminologyRepository
+
+
+@dataclass
+class Suggestion:
+    a_text: str
+    b_text: str
+    a_key: str
+    b_key: str
+    sku_count: int
+    skus: list[str]
+    check_types: list[str]
+    row_ids: list[str]
+    confirmed: int = 0
+    contradicted: int = 0
+    item_anchors: list[str] = field(default_factory=list)
+    relationship_id: str | None = None
+
+    @property
+    def pair_key(self) -> str:
+        return f"{self.a_key}|{self.b_key}"
+
+    @property
+    def evidence(self) -> str:
+        parts = [f"seen in {self.sku_count} SKU(s)", f"checks: {', '.join(self.check_types)}"]
+        parts.append(f"confirmed by reviewers in {self.confirmed} comparison(s)" if self.confirmed else "not yet confirmed by a reviewer")
+        parts.append(f"contradicted in {self.contradicted} comparison(s)" if self.contradicted else "never contradicted")
+        return "; ".join(parts)
+
+
+def mine_suggestions(run: Run, review: ReviewStore, repo: TerminologyRepository, min_skus: int = 2) -> list[Suggestion]:
+    store = repo.store()
+    rejected = {r[0] for r in repo.conn.execute("SELECT pair_key FROM mining_rejections")}
+    decisions = review.all_decisions(run.metadata.run_id)
+    groups: dict[tuple[str, str], Suggestion] = {}
+    for r in run.results:
+        if r.match_level is not MatchLevel.FUZZY or r.source_a is None or r.source_b is None:
+            continue
+        na, nb = normalize(r.source_a.description), normalize(r.source_b.description)
+        key = (na.sorted_key, nb.sorted_key)
+        if store.lookup(na, nb, sku=r.sku, item_number=r.source_a.item_number) is not None:
+            continue
+        s = groups.get(key)
+        if s is None:
+            s = Suggestion(r.source_a.description, r.source_b.description, na.sorted_key, nb.sorted_key, 0, [], [], [])
+            groups[key] = s
+        if r.sku not in s.skus:
+            s.skus.append(r.sku)
+        if r.check.value not in s.check_types:
+            s.check_types.append(r.check.value)
+        s.row_ids.append(r.row_id)
+        if r.source_a.item_number and r.source_a.item_number not in s.item_anchors:
+            s.item_anchors.append(r.source_a.item_number)
+        for d in decisions.get(r.row_id, {}).values():
+            if d.decision == "ACCEPT" or (d.decision == "OVERRIDE" and d.override_classification in ("EQUIVALENT", "EXACT")):
+                s.confirmed += 1
+            elif d.decision == "CONFIRM_DISCREPANCY" or (d.decision == "OVERRIDE" and d.override_classification in ("MISMATCH", "MISSING")):
+                s.contradicted += 1
+    out = []
+    for s in groups.values():
+        s.sku_count = len(s.skus)
+        if s.sku_count >= min_skus and s.pair_key not in rejected:
+            out.append(s)
+    out.sort(key=lambda s: (-s.sku_count, -s.confirmed, s.contradicted, s.a_text))
+    return out
+
+
+def approve_suggestion(repo: TerminologyRepository, s: Suggestion, by: str, scope: str = "global", anchor: bool = False, notes: str = "") -> Relationship:
+    rel = repo.create(canonical=s.b_text, aliases=[s.a_text], scope=scope, item_anchors=s.item_anchors if anchor else [], provenance="learned", created_by=by, notes=notes or f"Approved from mining suggestion: {s.evidence}")
+    s.relationship_id = rel.id
+    return rel
+
+
+def reject_suggestion(db: Database, s: Suggestion, by: str, note: str = "") -> None:
+    db.conn.execute("INSERT OR REPLACE INTO mining_rejections VALUES (?,?,?,?)", (s.pair_key, by, datetime.now(timezone.utc).isoformat(timespec="seconds"), note))
+    db.audit(by, "mining.rejected", f"{s.a_text} = {s.b_text}: {note}".strip())
+    db.conn.commit()

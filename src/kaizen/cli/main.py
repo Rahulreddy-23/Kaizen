@@ -1,0 +1,399 @@
+"""Kaizen Cross-Check command line. The CLI is the source of truth: every capability is reachable here."""
+
+from pathlib import Path
+from typing import Annotated, Optional
+
+import typer
+from rich.console import Console
+
+from kaizen import __version__
+from kaizen.datasets.build import build_golden
+from kaizen.evaluation.ground_truth import load_ground_truth
+from kaizen.evaluation.harness import evaluate
+from kaizen.evaluation.report import render_console, write_json
+from kaizen.ingest.detect import parse_document
+from kaizen.models import Classification, Run, Thresholds
+from kaizen.pipeline import discover_files, load_run, run_folder, save_run
+from kaizen.reporting.excel import write_report
+from kaizen.terminology.exchange import export_csv, export_xlsx, import_csv, import_xlsx
+from kaizen.terminology.store import RelationshipStore
+from kaizen.workspace import Workspace
+
+app = typer.Typer(help=f"Kaizen Cross-Check v{__version__} — deterministic, explainable BOM ↔ Label cross-checking.", no_args_is_help=True, add_completion=False)
+dataset_app = typer.Typer(help="Synthetic golden dataset commands.", no_args_is_help=True)
+terminology_app = typer.Typer(help="Terminology relationships: explicit, versioned business rules.", no_args_is_help=True)
+runs_app = typer.Typer(help="Runs recorded in the workspace.", no_args_is_help=True)
+app.add_typer(dataset_app, name="dataset")
+app.add_typer(terminology_app, name="terminology")
+app.add_typer(runs_app, name="runs")
+console = Console()
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    workspace: Annotated[Optional[Path], typer.Option("--workspace", "-w", envvar="KAIZEN_WORKSPACE", help="Workspace folder holding kaizen.db (terminology, runs, decisions). Default ./kaizen-workspace")] = None,
+) -> None:
+    ctx.obj = {"workspace": workspace}
+
+
+def _ws(ctx: typer.Context) -> Workspace:
+    return Workspace.resolve((ctx.obj or {}).get("workspace"))
+
+RelOpt = Annotated[Optional[Path], typer.Option("--relationships", "-r", help="Relationships JSON file (default: packaged defaults).")]
+PotOpt = Annotated[Optional[float], typer.Option("--potential", help="Min token similarity for a POTENTIAL match (default 0.85).")]
+FloorOpt = Annotated[Optional[float], typer.Option("--floor", help="Candidate floor below which pairs are not considered (default 0.60).")]
+DeltaOpt = Annotated[Optional[float], typer.Option("--ambiguity-delta", help="Top-2 candidates closer than this are AMBIGUOUS (default 0.05).")]
+
+
+def _store(ctx: typer.Context, path: Path | None) -> RelationshipStore:
+    return RelationshipStore.load(path) if path else _ws(ctx).repository.store()
+
+
+def _thresholds(potential: float | None, floor: float | None, delta: float | None) -> Thresholds:
+    t = Thresholds()
+    updates = {k: v for k, v in (("potential", potential), ("floor", floor), ("ambiguity_delta", delta)) if v is not None}
+    return t.model_copy(update=updates) if updates else t
+
+
+def _print_summary(run: Run) -> None:
+    typer.echo(f"Run {run.metadata.run_id}: {len(run.documents)} documents, {len(run.groups)} SKU sets, {len(run.results)} rows, terminology {run.metadata.terminology_version[:12]} ({run.metadata.terminology_count} relationships)")
+    for g in run.groups:
+        rows = [r for r in run.results if r.sku == g.sku]
+        counts = {c.value: sum(1 for r in rows if r.classification is c) for c in Classification}
+        needs = sum(1 for r in rows if r.requires_validation)
+        blockers = sum(1 for r in rows for d in r.discrepancies if d.severity.value == "BLOCKER")
+        status = "BLOCKED" if blockers else "NEEDS REVIEW" if needs else "AUTO-CLEARED" if rows else "NOT CHECKED"
+        typer.echo(f"  SKU {g.sku}: {len(rows)} rows | EXACT {counts['EXACT']} EQUIVALENT {counts['EQUIVALENT']} POTENTIAL {counts['POTENTIAL']} MISMATCH {counts['MISMATCH']} MISSING {counts['MISSING']} | needs validation {needs} | {status}")
+        for w in g.warnings:
+            typer.echo(f"      warning: {w}")
+    for w in run.warnings:
+        typer.echo(f"  warning: {w}")
+
+
+def _out_dir(out: Path | None, run: Run) -> Path:
+    return out if out is not None else Path("out") / run.metadata.run_id
+
+
+@app.command()
+def run(
+    ctx: typer.Context,
+    folder: Annotated[Path, typer.Argument(help="Folder with BOM/label documents (one SKU set per sub-folder, or flat).")],
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output folder (default out/<run-id>).")] = None,
+    relationships: RelOpt = None,
+    potential: PotOpt = None,
+    floor: FloorOpt = None,
+    ambiguity_delta: DeltaOpt = None,
+) -> None:
+    """Ingest, check and report in one step: writes run.json and report.xlsx."""
+    r = run_folder(folder, _store(ctx, relationships), _thresholds(potential, floor, ambiguity_delta))
+    out_dir = _out_dir(out, r)
+    path = save_run(r, out_dir / "run.json")
+    write_report(r, out_dir / "report.xlsx")
+    _ws(ctx).register_run(r, path, record_usage=relationships is None)
+    _print_summary(r)
+    typer.echo(f"Wrote {out_dir / 'run.json'} and {out_dir / 'report.xlsx'}")
+
+
+@app.command()
+def ingest(folder: Annotated[Path, typer.Argument(help="Folder to scan.")]) -> None:
+    """Detect and parse documents; print what was found (no comparison)."""
+    files = discover_files(folder)
+    if not files:
+        typer.echo("no supported files found (.pdf, .xlsx, .csv)")
+        raise typer.Exit(code=1)
+    for f in files:
+        outcome = parse_document(f)
+        rel = f.relative_to(folder).as_posix() if f.is_relative_to(folder) else str(f)
+        if outcome.document is None:
+            typer.echo(f"{rel}: {outcome.doc_type.value if outcome.doc_type else 'UNKNOWN'} — skipped: {outcome.reason}")
+            continue
+        d = outcome.document
+        typer.echo(f"{rel}: {d.doc_type.value} sku/ref={d.sku} parser={d.parser_name} v{d.parser_version} items={len(d.items)} sha256={d.sha256[:12]}")
+        for w in d.warnings:
+            typer.echo(f"    warning: {w}")
+
+
+@app.command()
+def check(
+    ctx: typer.Context,
+    folder: Annotated[Path, typer.Argument(help="Folder with BOM/label documents.")],
+    out: Annotated[Optional[Path], typer.Option("--out", "-o")] = None,
+    relationships: RelOpt = None,
+    potential: PotOpt = None,
+    floor: FloorOpt = None,
+    ambiguity_delta: DeltaOpt = None,
+) -> None:
+    """Ingest and check; write run.json only (use `report` to produce the workbook)."""
+    r = run_folder(folder, _store(ctx, relationships), _thresholds(potential, floor, ambiguity_delta))
+    out_dir = _out_dir(out, r)
+    path = save_run(r, out_dir / "run.json")
+    _ws(ctx).register_run(r, path, record_usage=relationships is None)
+    _print_summary(r)
+    typer.echo(f"Wrote {out_dir / 'run.json'}")
+
+
+@app.command()
+def report(
+    ctx: typer.Context,
+    run_json: Annotated[Path, typer.Argument(help="run.json written by `check` or `run`.")],
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Workbook path (default report.xlsx next to run.json).")] = None,
+) -> None:
+    """Write the Excel workbook for a saved run (reviewer decisions from the workspace are merged in)."""
+    from kaizen.reporting.excel import export_with_review
+
+    r = load_run(run_json)
+    ws = _ws(ctx)
+    target = out or run_json.with_name("report.xlsx")
+    path = export_with_review(ws, r, target) if ws.runs.get(r.metadata.run_id) else write_report(r, target)
+    typer.echo(f"Wrote {path}")
+
+
+@app.command("eval")
+def eval_cmd(
+    ctx: typer.Context,
+    dataset: Annotated[Path, typer.Argument(help="Dataset folder containing ground-truth.json and SKU folders.")],
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="Output folder (default out/eval-<run-id>).")] = None,
+    ground_truth: Annotated[Optional[Path], typer.Option("--ground-truth", help="Ground truth file (default <dataset>/ground-truth.json).")] = None,
+    relationships: RelOpt = None,
+    potential: PotOpt = None,
+    floor: FloorOpt = None,
+    ambiguity_delta: DeltaOpt = None,
+    fail_under: Annotated[Optional[float], typer.Option("--fail-under", help="Exit non-zero if discrepancy precision or recall is below this.")] = None,
+) -> None:
+    """Run against a golden dataset and measure accuracy versus ground truth."""
+    gt = load_ground_truth(ground_truth or dataset / "ground-truth.json")
+    r = run_folder(dataset, _store(ctx, relationships), _thresholds(potential, floor, ambiguity_delta))
+    m = evaluate(r, gt)
+    out_dir = out if out is not None else Path("out") / f"eval-{r.metadata.run_id}"
+    path = save_run(r, out_dir / "run.json")
+    _ws(ctx).register_run(r, path, record_usage=relationships is None)
+    write_json(m, out_dir / "metrics.json")
+    write_report(r, out_dir / "report.xlsx", metrics=m.to_dict())
+    render_console(m, console)
+    typer.echo(f"Wrote {out_dir / 'metrics.json'}, {out_dir / 'run.json'}, {out_dir / 'report.xlsx'}")
+    if fail_under is not None and (m.overall.precision < fail_under or m.overall.recall < fail_under):
+        typer.echo(f"FAIL: precision {m.overall.precision:.3f} / recall {m.overall.recall:.3f} below {fail_under}")
+        raise typer.Exit(code=2)
+
+
+# ---- terminology ------------------------------------------------------------------------------------------
+def _print_rel(rel, usage: dict[str, int] | None = None) -> None:
+    used = f" | used in {usage.get(rel.id, 0)} comparisons" if usage is not None else ""
+    typer.echo(f"{rel.id} v{rel.version} [{rel.scope}] {'active' if rel.active else 'INACTIVE'}: {rel.canonical} = {' = '.join(rel.aliases) or '(no aliases)'}{used}")
+    extras = []
+    if rel.item_anchors:
+        extras.append(f"anchors {', '.join(rel.item_anchors)}")
+    if rel.doc_types:
+        extras.append(f"doc types {', '.join(d.value for d in rel.doc_types)}")
+    extras.append(f"{rel.provenance} by {rel.created_by} {rel.created_at.date()}")
+    if rel.notes:
+        extras.append(rel.notes)
+    typer.echo("    " + " | ".join(extras))
+
+
+@terminology_app.command("list")
+def terminology_list(ctx: typer.Context, scope: Optional[str] = typer.Option(None, "--scope"), search: Optional[str] = typer.Option(None, "--search", "-s"), show_all: bool = typer.Option(False, "--all", help="Include inactive relationships")) -> None:
+    """List relationships (active by default)."""
+    repo = _ws(ctx).repository
+    usage = repo.usage_counts()
+    rels = repo.list(active_only=not show_all, scope=scope, search=search)
+    for rel in rels:
+        _print_rel(rel, usage)
+    typer.echo(f"{len(rels)} relationship(s)")
+
+
+@terminology_app.command("show")
+def terminology_show(ctx: typer.Context, rel_id: str) -> None:
+    """Show one relationship and why it exists."""
+    repo = _ws(ctx).repository
+    rel = repo.get(rel_id)
+    if rel is None:
+        typer.echo(f"{rel_id} not found (it may have been deleted; see `terminology history {rel_id}`)")
+        raise typer.Exit(code=1)
+    _print_rel(rel, repo.usage_counts())
+
+
+@terminology_app.command("add")
+def terminology_add(
+    ctx: typer.Context,
+    canonical: str = typer.Option(..., "--canonical", "-c"),
+    alias: list[str] = typer.Option([], "--alias", "-a", help="Repeatable"),
+    scope: str = typer.Option("global", "--scope"),
+    doc_type: list[str] = typer.Option([], "--doc-type", help="Repeatable: BOM, LABEL, DRAWING, PCO"),
+    anchor: list[str] = typer.Option([], "--anchor", help="Repeatable BOM item numbers"),
+    provenance: str = typer.Option("manual", "--provenance"),
+    by: str = typer.Option("cli", "--by"),
+    notes: str = typer.Option("", "--notes"),
+) -> None:
+    """Create a relationship."""
+    rel = _ws(ctx).repository.create(canonical=canonical, aliases=alias, scope=scope, doc_types=[d.upper() for d in doc_type], item_anchors=anchor, provenance=provenance, created_by=by, notes=notes)
+    typer.echo(f"Created {rel.id} v{rel.version}: {rel.canonical} = {' = '.join(rel.aliases)}")
+
+
+@terminology_app.command("update")
+def terminology_update(
+    ctx: typer.Context,
+    rel_id: str,
+    canonical: Optional[str] = typer.Option(None, "--canonical", "-c"),
+    alias: list[str] = typer.Option([], "--alias", "-a", help="Repeatable; replaces the alias list when given"),
+    scope: Optional[str] = typer.Option(None, "--scope"),
+    anchor: list[str] = typer.Option([], "--anchor", help="Repeatable; replaces anchors when given"),
+    notes: Optional[str] = typer.Option(None, "--notes"),
+    by: str = typer.Option("cli", "--by"),
+    note: str = typer.Option("", "--note", help="Why this change was made"),
+) -> None:
+    """Update a relationship (records a new version)."""
+    fields = {k: v for k, v in (("canonical", canonical), ("scope", scope), ("notes", notes)) if v is not None}
+    if alias:
+        fields["aliases"] = alias
+    if anchor:
+        fields["item_anchors"] = anchor
+    rel = _ws(ctx).repository.update(rel_id, changed_by=by, change_note=note, **fields)
+    typer.echo(f"Updated {rel.id} → v{rel.version}")
+
+
+@terminology_app.command("deactivate")
+def terminology_deactivate(ctx: typer.Context, rel_id: str, by: str = typer.Option("cli", "--by"), note: str = typer.Option("", "--note")) -> None:
+    rel = _ws(ctx).repository.deactivate(rel_id, changed_by=by, change_note=note)
+    typer.echo(f"Deactivated {rel.id} → v{rel.version}")
+
+
+@terminology_app.command("activate")
+def terminology_activate(ctx: typer.Context, rel_id: str, by: str = typer.Option("cli", "--by"), note: str = typer.Option("", "--note")) -> None:
+    rel = _ws(ctx).repository.activate(rel_id, changed_by=by, change_note=note)
+    typer.echo(f"Activated {rel.id} → v{rel.version}")
+
+
+@terminology_app.command("delete")
+def terminology_delete(ctx: typer.Context, rel_id: str, by: str = typer.Option("cli", "--by"), note: str = typer.Option("", "--note")) -> None:
+    """Delete a relationship (history is kept; historical runs still reconstruct)."""
+    _ws(ctx).repository.delete(rel_id, changed_by=by, change_note=note)
+    typer.echo(f"Deleted {rel_id} (history retained)")
+
+
+@terminology_app.command("history")
+def terminology_history(ctx: typer.Context, rel_id: str) -> None:
+    """Show every version of a relationship."""
+    for h in _ws(ctx).repository.history(rel_id):
+        p = h.payload
+        typer.echo(f"v{h.version} {h.change_type} by {h.changed_by} at {h.changed_at.isoformat(timespec='seconds')}: {p.canonical} = {' = '.join(p.aliases)} [{p.scope}] {'active' if p.active else 'inactive'} — {h.change_note}")
+
+
+@terminology_app.command("sync-defaults")
+def terminology_sync(ctx: typer.Context, by: str = typer.Option("cli", "--by")) -> None:
+    """Add packaged default relationships missing from this workspace; refresh unedited ones. Never touches edited relationships."""
+    added, refreshed = _ws(ctx).repository.sync_defaults(changed_by=by)
+    typer.echo(f"Synced packaged defaults: {added} added, {refreshed} refreshed")
+
+
+@terminology_app.command("export")
+def terminology_export(ctx: typer.Context, path: Path) -> None:
+    """Export relationships to .xlsx or .csv."""
+    repo = _ws(ctx).repository
+    out = export_csv(repo, path) if path.suffix.lower() == ".csv" else export_xlsx(repo, path)
+    typer.echo(f"Exported {len(repo.list())} relationships to {out}")
+
+
+@terminology_app.command("import")
+def terminology_import(ctx: typer.Context, path: Path, by: str = typer.Option("import", "--by")) -> None:
+    """Import relationships from .xlsx or .csv (creates or versions)."""
+    repo = _ws(ctx).repository
+    result = import_csv(repo, path, imported_by=by) if path.suffix.lower() == ".csv" else import_xlsx(repo, path, imported_by=by)
+    typer.echo(f"Import {path.name}: {result.summary()}")
+    for e in result.errors:
+        typer.echo(f"  error: {e}")
+
+
+# ---- runs -------------------------------------------------------------------------------------------------
+@runs_app.command("list")
+def runs_list(ctx: typer.Context) -> None:
+    """List runs recorded in the workspace."""
+    for r in _ws(ctx).runs.list():
+        s = r["summary"]
+        typer.echo(f"{r['run_id']} {r['created_at'][:19]} {r['input_root']} | {s['skus']} SKUs, {s['rows']} rows, needs validation {s['needs_validation']} | terminology {r['terminology_version'][:12]} | {r['json_path']}")
+
+
+@runs_app.command("relationships")
+def runs_relationships(ctx: typer.Context, run_id: str) -> None:
+    """Reconstruct the exact relationship versions a run used, even if they were edited or deleted since."""
+    rows = _ws(ctx).repository.relationships_for_run(run_id)
+    if not rows:
+        typer.echo("no relationship usage recorded for this run")
+        raise typer.Exit(code=1)
+    for rr in rows:
+        p = rr.relationship
+        typer.echo(f"{p.id} v{p.version}: {p.canonical} = {' = '.join(p.aliases)} [{p.scope}] used in {rr.used_count} row(s)")
+
+
+@app.command()
+def serve(
+    ctx: typer.Context,
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address (local by default; no external exposure)."),
+    port: int = typer.Option(8765, "--port"),
+    ui: Optional[Path] = typer.Option(None, "--ui", help="Folder with the built reviewer UI (default: bundled ui/dist if present)."),
+) -> None:
+    """Start the local API + reviewer UI (http://127.0.0.1:8765). Everything stays on this machine."""
+    import uvicorn
+
+    from kaizen.api.app import create_app
+
+    ui_dir = ui or Path(__file__).resolve().parents[3] / "ui" / "dist"
+    application = create_app(_ws(ctx), ui_dir if ui_dir.exists() else None)
+    typer.echo(f"Kaizen Cross-Check API on http://{host}:{port}  (workspace {_ws(ctx).path}; UI {'served' if ui_dir.exists() else 'not built — API only'})")
+    uvicorn.run(application, host=host, port=port, log_level="warning")
+
+
+@app.command()
+def demo(
+    ctx: typer.Context,
+    out: Annotated[Optional[Path], typer.Option("--out", "-o")] = None,
+    dataset: Annotated[Optional[Path], typer.Option("--dataset", help="Demo dataset folder (default: datasets/golden or a fresh build).")] = None,
+) -> None:
+    """Deterministic demo run on the golden dataset: run + eval + workbook, registered in the workspace."""
+    from kaizen.api.app import _demo_dataset_path
+
+    src = dataset or _demo_dataset_path()
+    if src is None:
+        src = build_golden(_ws(ctx).path / "demo-data")
+    ws = _ws(ctx)
+    r = run_folder(src, ws.repository.store(), Thresholds())
+    out_dir = out if out is not None else ws.runs_dir / r.metadata.run_id
+    path = save_run(r, out_dir / "run.json")
+    ws.register_run(r, path)
+    gt = src / "ground-truth.json"
+    metrics = evaluate(r, load_ground_truth(gt)).to_dict() if gt.exists() else None
+    from kaizen.reporting.excel import export_with_review
+
+    export_with_review(ws, r, out_dir / "report.xlsx", metrics=metrics)
+    _print_summary(r)
+    if metrics:
+        typer.echo(f"Measured against ground truth: precision {metrics['overall']['precision']:.3f}, recall {metrics['overall']['recall']:.3f}, {metrics['scored_rows']} scored rows")
+    typer.echo(f"Demo run {r.metadata.run_id} ready: {out_dir / 'report.xlsx'}. Start the UI with `kaizen serve`.")
+
+
+@app.command()
+def perf(
+    skus: list[int] = typer.Option([8, 25, 50, 100], "--skus", help="Dataset sizes to measure (repeatable)."),
+    out: Path = typer.Option(Path("out/perf"), "--out"),
+) -> None:
+    """Measure ingest / matching / report time (and peak memory) on synthetic datasets of N SKUs."""
+    from kaizen.perf import run_series
+
+    results = run_series(out, tuple(skus))
+    typer.echo(f"{'SKUs':>5} {'docs':>5} {'rows':>7} {'ingest s':>9} {'match s':>8} {'report s':>9} {'total s':>8} {'s/SKU':>6} {'peak MB':>8}")
+    for m in results:
+        d = m.to_dict()
+        typer.echo(f"{m.skus:>5} {m.documents:>5} {m.rows:>7} {m.ingest_seconds:>9.2f} {m.matching_seconds:>8.2f} {m.report_seconds:>9.2f} {m.total_seconds:>8.2f} {d['seconds_per_sku']:>6.2f} {str(m.peak_memory_mb):>8}")
+    typer.echo(f"Wrote {out / 'perf-results.json'}")
+
+
+@dataset_app.command("build")
+def dataset_build(out: Annotated[Path, typer.Option("--out", "-o", help="Destination folder.")] = Path("datasets/golden")) -> None:
+    """Generate the synthetic golden dataset (documents, ground truth, SCENARIOS.md)."""
+    root = build_golden(out)
+    typer.echo(f"Built golden dataset in {root} ({sum(1 for p in root.iterdir() if p.is_dir() and p.name.startswith('sku-'))} SKUs, {sum(1 for _ in (root / 'pco').glob('*'))} PCOs)")
+
+
+if __name__ == "__main__":
+    app()
