@@ -545,6 +545,16 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         return [dict(r) for r in ws.db.conn.execute("SELECT * FROM audit ORDER BY seq DESC LIMIT ?", (limit,))]
 
     if ui_dir and ui_dir.exists():
+
+        @app.middleware("http")
+        async def no_cache_index(request, call_next):
+            """The bundle's asset names are hashed, but index.html is not: a stale cached index would keep
+            pointing at an old bundle after a rebuild. Ask the browser to revalidate it every time."""
+            response = await call_next(request)
+            if request.url.path in ("/", "/index.html"):
+                response.headers["Cache-Control"] = "no-cache"
+            return response
+
         app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
     return app
 

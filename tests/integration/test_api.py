@@ -325,3 +325,15 @@ def test_excel_round_trip_through_the_api(env):
     assert d["decision"] == "CONFIRM_DISCREPANCY" and d["reviewer"] == "Dharma" and d["comment"] == "decided in Excel"
     wrong = client.post(f"/api/runs/{run_id}/decisions/import", files={"file": ("x.xlsx", b"not a workbook", XLSX_MIME)})
     assert wrong.status_code == 400
+
+
+def test_index_page_is_served_with_no_cache(tmp_path):
+    """A rebuilt bundle must show up on the next load: index.html is never cached, hashed assets may be."""
+    ui = tmp_path / "dist"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><title>t</title>")
+    (ui / "app.js").write_text("// bundle")
+    c = TestClient(create_app(Workspace(tmp_path / "ws"), ui_dir=ui))
+    assert c.get("/").headers.get("cache-control") == "no-cache"
+    assert c.get("/index.html").headers.get("cache-control") == "no-cache"
+    assert c.get("/app.js").status_code == 200 and c.get("/app.js").headers.get("cache-control") is None

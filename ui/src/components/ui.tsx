@@ -66,16 +66,16 @@ export function Card({ className = "", children, ...rest }: React.HTMLAttributes
 
 export function CardHead({ title, description, actions, icon, count, className = "" }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; icon?: ReactNode; count?: ReactNode; className?: string }) {
   return (
-    <header className={`card-head ${className}`}>
+    <header className={`card-head flex-wrap gap-y-2 ${className}`}>
       {icon && <span className="text-brand-600 shrink-0">{icon}</span>}
-      <div className="min-w-0 flex-1">
+      <div className="card-head-title">
         <h2 className="card-title flex items-baseline gap-2">
           <span className="truncate">{title}</span>
           {count !== undefined && <span className="text-sm font-normal text-ink-3 num">{count}</span>}
         </h2>
         {description && <p className="text-xs text-ink-3 mt-0.5">{description}</p>}
       </div>
-      {actions && <div className="flex items-center gap-1.5 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-1.5 ml-auto max-w-full">{actions}</div>}
     </header>
   );
 }
@@ -83,7 +83,7 @@ export function CardHead({ title, description, actions, icon, count, className =
 export function PageHeader({ title, description, actions, meta, back }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; meta?: ReactNode; back?: { to: string; label: string } }) {
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-3 mb-5">
-      <div className="min-w-0 flex-1">
+      <div className="head-title">
         {back && (
           <Link to={back.to} className="inline-flex items-center gap-1 text-xs text-ink-3 hover:text-brand-600 no-underline mb-1">
             ← {back.label}
@@ -93,7 +93,7 @@ export function PageHeader({ title, description, actions, meta, back }: { title:
         {description && <p className="text-sm text-ink-3 mt-1 max-w-[72ch]">{description}</p>}
         {meta && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3 mt-2">{meta}</div>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 max-w-full">{actions}</div>}
     </div>
   );
 }

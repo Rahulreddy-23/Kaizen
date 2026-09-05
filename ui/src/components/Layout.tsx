@@ -111,9 +111,9 @@ export function Layout() {
 
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-14 bg-surface border-b border-line flex items-center gap-4 px-5 sticky top-0 z-30">
-          <label className="flex items-center gap-2 text-sm min-w-0">
-            <span className="text-ink-3 shrink-0">Run</span>
-            <select className="input input-sm mono max-w-[22rem]" value={runId ?? ""} onChange={(e) => e.target.value && nav(`/runs/${enc(e.target.value)}`)} aria-label="Current run">
+          <label className="flex items-center gap-2 text-sm min-w-0 flex-1 max-w-[26rem]">
+            <span className="text-ink-3 shrink-0 hidden sm:inline">Run</span>
+            <select className="input input-sm mono min-w-0 w-full" value={runId ?? ""} onChange={(e) => e.target.value && nav(`/runs/${enc(e.target.value)}`)} aria-label="Current run">
               <option value="">Select a run</option>
               {(runs.data ?? []).map((x) => (
                 <option key={x.run_id} value={x.run_id}>
@@ -123,13 +123,13 @@ export function Layout() {
               {runId && !(runs.data ?? []).some((x) => x.run_id === runId) && <option value={runId}>{runId}</option>}
             </select>
           </label>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3 shrink-0">
             {session ? (
-              <div className="flex items-center gap-2.5" title="Identity, slot and blind mode are held by the server for this session">
-                <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs font-semibold" aria-hidden>
+              <div className="flex items-center gap-2.5" title={`${session.reviewer} · reviewer ${session.slot}${session.blind ? " · blind" : ""}. Identity, slot and blind mode are held by the server for this session.`}>
+                <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs font-semibold shrink-0" aria-hidden>
                   {initials(session.reviewer)}
                 </span>
-                <span className="leading-tight">
+                <span className="leading-tight hidden md:block whitespace-nowrap">
                   <span className="block text-sm font-medium text-ink">{session.reviewer}</span>
                   <span className="block text-2xs text-ink-3">{session.slot === 1 ? "Reviewer 1 · facilitator" : "Reviewer 2 · independent"}</span>
                 </span>

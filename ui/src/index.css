@@ -205,6 +205,16 @@
   .card-body {
     @apply p-4;
   }
+  /* Title blocks keep a real minimum width so action rows wrap under them instead of crushing them. */
+  .head-title {
+    flex: 1 1 auto;
+    min-width: min(100%, 24rem);
+    max-width: 100%;
+  }
+  .card-head-title {
+    flex: 1 1 auto;
+    min-width: min(100%, 12rem);
+  }
   /* Aliases kept for pages not yet migrated. */
   .panel {
     @apply card;
