@@ -1,3 +1,4 @@
+import { ArrowLeft, ArrowRight } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -6,13 +7,16 @@ import { DecisionPanel } from "../components/DecisionPanel";
 import { EvidenceCard } from "../components/EvidenceCard";
 import { ErrorBox, Loading } from "../components/Feedback";
 import { HotkeyHelp, HotkeyHint } from "../components/HotkeyHelp";
-import { useHotkeys } from "../lib/hotkeys";
 import { ActionItemPanel, SaveRelationshipPanel } from "../components/RowActions";
+import { Button, Card, LinkButton, PageHeader } from "../components/ui";
 import { enc, fmtScore } from "../lib/format";
+import { useHotkeys } from "../lib/hotkeys";
 import { PAGE_SIZE, queueParams, queueQueryFromParams } from "../lib/queue";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
 import type { ViewerParams } from "../types";
+
+const CHECK_LABEL: Record<string, string> = { BOM_LABEL: "BOM to label", BOM_DRAWING: "BOM to drawing", LABEL_DRAWING: "Label to drawing", PCO_BOM: "PCO to BOM", LABEL_REVISION: "Label revision" };
 
 interface Neighbor {
   id: string;
@@ -74,142 +78,153 @@ export default function EvidencePage() {
   );
 
   if (detail.error) return <ErrorBox error={detail.error} onRetry={detail.reload} />;
-  if (!detail.data) return <Loading label="Loading row…" />;
+  if (!detail.data) return <Loading label="Loading row" lines={6} />;
   const d = detail.data;
   const res = d.result;
+  const topSeverity = res.discrepancies.length > 0 ? [...res.discrepancies].sort((a, b) => sevRank(a.severity) - sevRank(b.severity))[0].severity : null;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <HotkeyHelp open={help} onClose={() => setHelp(false)} />
-        <Link className="btn" to={queueLink} title="Back to the queue (Esc)">
-          ← Queue
-        </Link>
-        <h1 className="mono">{res.row_id}</h1>
-        <HotkeyHint />
-        <span className="text-xs">
-          SKU <b className="mono">{res.sku}</b>
-        </span>
-        <span className="mono text-xs">{res.check}</span>
-        <RoleTag value={res.role} />
-        {res.discrepancies.length > 0 && <SeverityBadge value={[...res.discrepancies].sort((a, b) => sevRank(a.severity) - sevRank(b.severity))[0].severity} />}
-        <div className="ml-auto flex items-center gap-1 text-xs">
-          {nb.data?.index !== null && nb.data && (
-            <span className="text-gray-500 mr-1">
-              {nb.data.index} / {nb.data.total} in queue
+    <div>
+      <HotkeyHelp open={help} onClose={() => setHelp(false)} />
+      <PageHeader
+        back={{ to: queueLink, label: "Queue" }}
+        title={
+          <>
+            <span className="mono text-xl whitespace-nowrap">{res.row_id}</span>
+            {topSeverity && <SeverityBadge value={topSeverity} size="md" />}
+            <RoleTag value={res.role} />
+          </>
+        }
+        meta={
+          <>
+            <span>
+              SKU <span className="mono text-ink">{res.sku}</span>
             </span>
-          )}
-          {nb.data && nb.data.index === null && !nb.loading && <span className="text-gray-400 mr-1">not in the current queue filter</span>}
-          {nb.data?.prev ? (
-            <Link className="btn" to={rowLink(nb.data.prev)} title="Previous row (k or [)">
-              ← Prev
-            </Link>
-          ) : (
-            <button className="btn" disabled>
-              ← Prev
-            </button>
-          )}
-          {nb.data?.next ? (
-            <Link className="btn" to={rowLink(nb.data.next)} title="Next row ( ] )">
-              Next →
-            </Link>
-          ) : (
-            <button className="btn" disabled>
-              Next →
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ---- what / why: the engine's recommendation */}
-      <div className="panel">
-        <div className="panel-title">
-          Comparison — system recommendation (engine)
-          <span className="ml-auto normal-case font-normal text-gray-600">
-            match level <span className="mono">{res.match_level}</span> · score <span className="tabular-nums">{fmtScore(res.score)}</span>
-            {res.relationship_id && (
-              <>
-                {" "}
-                · via relationship{" "}
-                <Link className="mono underline" to={`/terminology?id=${enc(res.relationship_id)}`}>
-                  {res.relationship_id}
-                </Link>
-              </>
+            <span>{CHECK_LABEL[res.check] ?? res.check}</span>
+            {nb.data?.index !== null && nb.data && (
+              <span className="num">
+                {nb.data.index} of {nb.data.total} in the queue
+              </span>
             )}
-          </span>
-        </div>
-        <div className="p-3 grid gap-4 lg:grid-cols-[14rem_1fr]">
-          <div>
-            <div className="label">Engine classification</div>
-            <div className="mt-1">
-              <ClassificationBadge value={res.classification} size="lg" title="Engine recommendation — not a reviewer decision" />
-            </div>
-            <div className={`text-2xs mt-1 ${res.requires_validation ? "text-red-800 font-semibold" : "text-green-800"}`}>
-              {res.requires_validation ? "Requires human validation" : "Auto-cleared: no validation required"}
-            </div>
-            {d.effective_classification !== res.classification && (
-              <div className="mt-2">
-                <div className="label">After reviewer override</div>
-                <ClassificationBadge value={d.effective_classification} />
-              </div>
-            )}
-            {(res.normalized_a || res.normalized_b) && (
-              <div className="mt-2 text-2xs text-gray-600">
-                <div className="label">Normalised text compared</div>
-                <div>
-                  A <span className="mono">{res.normalized_a ?? "—"}</span>
-                </div>
-                <div>
-                  B <span className="mono">{res.normalized_b ?? "—"}</span>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="label">Why</div>
-            <p className="text-sm font-medium mt-0.5">{res.explanation}</p>
-            {res.discrepancies.length > 0 ? (
-              <table className="tbl mt-2">
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>Discrepancy</th>
-                    <th>Detail</th>
-                    <th>Recommended action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {res.discrepancies.map((x, i) => (
-                    <tr key={i}>
-                      <td>
-                        <SeverityBadge value={x.severity} />
-                      </td>
-                      <td className="mono whitespace-nowrap">{x.type}</td>
-                      <td>{x.detail}</td>
-                      <td className="text-gray-800">{x.recommended_action || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {nb.data && nb.data.index === null && !nb.loading && <span>Not in the current queue filter</span>}
+            <HotkeyHint />
+          </>
+        }
+        actions={
+          <>
+            {nb.data?.prev ? (
+              <LinkButton to={rowLink(nb.data.prev)} icon={<ArrowLeft size={16} />} title="Previous row (k)">
+                Previous
+              </LinkButton>
             ) : (
-              <div className="text-xs text-gray-500 mt-1">No discrepancy recorded by the engine.</div>
+              <Button disabled icon={<ArrowLeft size={16} />}>
+                Previous
+              </Button>
             )}
+            {nb.data?.next ? (
+              <LinkButton to={rowLink(nb.data.next)} iconRight={<ArrowRight size={16} />} title="Next row (j)">
+                Next
+              </LinkButton>
+            ) : (
+              <Button disabled iconRight={<ArrowRight size={16} />}>
+                Next
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <div className="space-y-5">
+        {/* ---- the engine's recommendation and why */}
+        <Card>
+          <div className="grid gap-5 lg:grid-cols-[16rem_1fr] p-5">
+            <div>
+              <div className="text-xs font-medium text-ink-2">Engine recommendation</div>
+              <div className="mt-1.5">
+                <ClassificationBadge value={res.classification} size="lg" title="Engine recommendation, not a reviewer decision" />
+              </div>
+              <div className={`text-xs mt-2 font-medium ${res.requires_validation ? "text-bad-strong" : "text-ok-strong"}`}>{res.requires_validation ? "Requires human validation" : "Auto-cleared: no validation required"}</div>
+              {d.effective_classification !== res.classification && (
+                <div className="mt-3">
+                  <div className="text-xs font-medium text-ink-2">After reviewer override</div>
+                  <div className="mt-1">
+                    <ClassificationBadge value={d.effective_classification} />
+                  </div>
+                </div>
+              )}
+              <dl className="kv mt-4 text-xs">
+                <dt>Match level</dt>
+                <dd className="mono">{res.match_level}</dd>
+                <dt>Score</dt>
+                <dd className="num">{fmtScore(res.score)}</dd>
+                {res.relationship_id && (
+                  <>
+                    <dt>Relationship</dt>
+                    <dd>
+                      <Link className="mono" to={`/terminology?id=${enc(res.relationship_id)}`}>
+                        {res.relationship_id}
+                      </Link>
+                    </dd>
+                  </>
+                )}
+                {(res.normalized_a || res.normalized_b) && (
+                  <>
+                    <dt>Normalised A</dt>
+                    <dd className="mono">{res.normalized_a ?? "—"}</dd>
+                    <dt>Normalised B</dt>
+                    <dd className="mono">{res.normalized_b ?? "—"}</dd>
+                  </>
+                )}
+              </dl>
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-ink-2">Why</div>
+              <p className="text-md font-medium text-ink mt-1 leading-6">{res.explanation}</p>
+              {res.discrepancies.length > 0 ? (
+                <div className="mt-4 -mx-5 -mb-5 border-t border-line">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Severity</th>
+                        <th>Discrepancy</th>
+                        <th>Detail</th>
+                        <th>Recommended action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {res.discrepancies.map((x, i) => (
+                        <tr key={i}>
+                          <td>
+                            <SeverityBadge value={x.severity} />
+                          </td>
+                          <td className="mono whitespace-nowrap">{x.type}</td>
+                          <td className="text-ink-2">{x.detail}</td>
+                          <td className="text-ink">{x.recommended_action || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-sm text-ink-3 mt-2">No discrepancy recorded by the engine.</div>
+              )}
+            </div>
           </div>
+        </Card>
+
+        {/* ---- the evidence, side by side */}
+        <div className="grid xl:grid-cols-2 gap-5">
+          <EvidenceCard side="A" runId={runId} rowId={rowId} ev={d.evidence.a} itemId={res.source_a?.id} />
+          <EvidenceCard side="B" runId={runId} rowId={rowId} ev={d.evidence.b} itemId={res.source_b?.id} />
         </div>
-      </div>
 
-      {/* ---- evidence */}
-      <div className="grid xl:grid-cols-2 gap-3">
-        <EvidenceCard side="A" runId={runId} rowId={rowId} ev={d.evidence.a} itemId={res.source_a?.id} />
-        <EvidenceCard side="B" runId={runId} rowId={rowId} ev={d.evidence.b} itemId={res.source_b?.id} />
-      </div>
-
-      {/* ---- decide, and what happens after */}
-      <div className="grid xl:grid-cols-[3fr_2fr] gap-3">
-        <DecisionPanel runId={runId} rowId={rowId} detail={d} onChanged={detail.reload} />
-        <div className="space-y-3">
-          <SaveRelationshipPanel runId={runId} detail={d} onCreated={detail.reload} />
-          <ActionItemPanel runId={runId} detail={d} onCreated={detail.reload} />
+        {/* ---- decide, and what follows from it */}
+        <div className="grid xl:grid-cols-[3fr_2fr] gap-5">
+          <DecisionPanel runId={runId} rowId={rowId} detail={d} onChanged={detail.reload} />
+          <div className="space-y-5">
+            <SaveRelationshipPanel runId={runId} detail={d} onCreated={detail.reload} />
+            <ActionItemPanel runId={runId} detail={d} onCreated={detail.reload} />
+          </div>
         </div>
       </div>
     </div>

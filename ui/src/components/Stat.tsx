@@ -1,33 +1,19 @@
 import type { ReactNode } from "react";
 
-export const CLASS_COLORS: Record<string, string> = {
-  EXACT: "#15803d",
-  EQUIVALENT: "#0f766e",
-  POTENTIAL: "#b45309",
-  MISMATCH: "#b91c1c",
-  MISSING: "#c2410c",
-};
-export const SEV_COLORS: Record<string, string> = { BLOCKER: "#7f1d1d", MAJOR: "#b91c1c", MINOR: "#b45309", INFO: "#1d4ed8" };
+// Meaning colours mirror tailwind.config.js (cls.* / sev.*). Used for inline styles on bars.
+export const CLASS_COLORS: Record<string, string> = { EXACT: "#1E7F4F", EQUIVALENT: "#0E7C86", POTENTIAL: "#B7791F", MISMATCH: "#C13A2B", MISSING: "#7E3AA6" };
+export const SEV_COLORS: Record<string, string> = { BLOCKER: "#7A1F1F", MAJOR: "#C13A2B", MINOR: "#B7791F", INFO: "#194890" };
 
-export function Stat({
-  label,
-  value,
-  sub,
-  tone = "neutral",
-  className = "",
-}: {
-  label: string;
-  value: ReactNode;
-  sub?: ReactNode;
-  tone?: "neutral" | "good" | "warn" | "bad";
-  className?: string;
-}) {
-  const tones = { neutral: "text-gray-900", good: "text-green-800", warn: "text-amber-700", bad: "text-red-800" };
+export function Stat({ label, value, sub, tone = "neutral", icon, className = "", size = "md" }: { label: ReactNode; value: ReactNode; sub?: ReactNode; tone?: "neutral" | "good" | "warn" | "bad" | "brand"; icon?: ReactNode; className?: string; size?: "md" | "lg" }) {
+  const tones = { neutral: "text-ink", good: "text-ok-strong", warn: "text-warn-strong", bad: "text-bad-strong", brand: "text-brand-700" };
   return (
-    <div className={`panel px-3 py-2 ${className}`}>
-      <div className="label">{label}</div>
-      <div className={`text-xl font-semibold tabular-nums leading-tight ${tones[tone]}`}>{value}</div>
-      {sub && <div className="text-2xs text-gray-500 mt-0.5">{sub}</div>}
+    <div className={`card px-4 py-3 ${className}`}>
+      <div className="flex items-center gap-1.5 text-xs font-medium text-ink-2">
+        {icon && <span className="text-ink-3">{icon}</span>}
+        {label}
+      </div>
+      <div className={`num font-semibold tracking-tight leading-none mt-1.5 ${size === "lg" ? "text-3xl" : "text-2xl"} ${tones[tone]}`}>{value}</div>
+      {sub && <div className="text-xs text-ink-3 mt-1.5 leading-4">{sub}</div>}
     </div>
   );
 }
@@ -38,24 +24,26 @@ export interface BarSegment {
   color: string;
 }
 
-/** Proportional bar. No charting library: widths are percentages of the total. */
-export function Bar({ segments, height = 10, legend = true }: { segments: BarSegment[]; height?: number; legend?: boolean }) {
+/** Proportional bar: widths are shares of the total. `animate` fills it once from the left (the authored moment). */
+export function Bar({ segments, height = 10, legend = true, animate = false }: { segments: BarSegment[]; height?: number; legend?: boolean; animate?: boolean }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   return (
     <div>
-      <div className="flex w-full overflow-hidden bg-gray-200 rounded-sm" style={{ height }}>
-        {segments
-          .filter((s) => s.value > 0)
-          .map((s) => (
-            <div key={s.label} title={`${s.label}: ${s.value}`} style={{ width: `${(100 * s.value) / total}%`, background: s.color }} />
-          ))}
+      <div className="w-full overflow-hidden rounded-full bg-surface-3" style={{ height }} role="img" aria-label={segments.map((s) => `${s.label} ${s.value}`).join(", ")}>
+        <div className={`flex h-full w-full ${animate ? "bar-enter" : ""}`}>
+          {segments
+            .filter((s) => s.value > 0)
+            .map((s) => (
+              <div key={s.label} title={`${s.label}: ${s.value}`} style={{ width: `${(100 * s.value) / total}%`, background: s.color }} />
+            ))}
+        </div>
       </div>
       {legend && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-2xs text-gray-600">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-ink-2">
           {segments.map((s) => (
-            <span key={s.label} className="inline-flex items-center gap-1">
-              <span className="inline-block w-2 h-2" style={{ background: s.color }} />
-              {s.label} <span className="tabular-nums font-semibold text-gray-800">{s.value}</span>
+            <span key={s.label} className="inline-flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full" style={{ background: s.color }} />
+              {s.label} <span className="num font-semibold text-ink">{s.value}</span>
             </span>
           ))}
         </div>
@@ -64,12 +52,12 @@ export function Bar({ segments, height = 10, legend = true }: { segments: BarSeg
   );
 }
 
-/** Single horizontal bar used in dense tables (value / max). */
-export function MiniBar({ value, max, color = "#374151", width = 80 }: { value: number; max: number; color?: string; width?: number }) {
+/** Single horizontal bar for dense tables (value / max). */
+export function MiniBar({ value, max, color = "#194890", width = 88 }: { value: number; max: number; color?: string; width?: number }) {
   const w = max > 0 ? Math.min(100, (100 * value) / max) : 0;
   return (
-    <span className="inline-block align-middle bg-gray-200 h-2 rounded-sm" style={{ width }}>
-      <span className="block h-2 rounded-sm" style={{ width: `${w}%`, background: color }} />
+    <span className="inline-block align-middle bg-surface-3 h-1.5 rounded-full overflow-hidden" style={{ width }} aria-hidden>
+      <span className="block h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${w}%`, background: color }} />
     </span>
   );
 }

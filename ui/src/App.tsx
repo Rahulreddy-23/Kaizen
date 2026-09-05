@@ -1,6 +1,7 @@
 import { HashRouter, Link, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { ReviewerProvider } from "./lib/reviewer";
+import { ToastProvider } from "./lib/toast";
 import ActionItemsPage from "./pages/ActionItemsPage";
 import BusinessCasePage from "./pages/BusinessCasePage";
 import DashboardPage from "./pages/DashboardPage";
@@ -17,7 +18,8 @@ import TerminologyPage from "./pages/TerminologyPage";
 export default function App() {
   return (
     <ReviewerProvider>
-      <HashRouter>
+      <ToastProvider>
+      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<RunsPage />} />
@@ -45,6 +47,7 @@ export default function App() {
           </Route>
         </Routes>
       </HashRouter>
+      </ToastProvider>
     </ReviewerProvider>
   );
 }

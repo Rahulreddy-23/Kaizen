@@ -1,57 +1,77 @@
-import { useMemo, type ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { ArrowSquareOut, CaretLeft, CaretRight, CursorClick, FileText, FileXls, MagnifyingGlass, Rows } from "@phosphor-icons/react";
+import { useMemo, useState, type ReactNode } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { DocTypeBadge } from "../components/Badges";
-import { ErrorBox, Loading } from "../components/Feedback";
+import { Badge, DocTypeBadge } from "../components/Badges";
+import { ErrorBox, Notice } from "../components/Feedback";
 import { PageImage } from "../components/PageImage";
+import { AnchorButton, Button, Card, CardHead, EmptyState, PageHeader, Skeleton, TableSkeleton } from "../components/ui";
 import { enc, fmtQty, isPdf } from "../lib/format";
 import { useAsync } from "../lib/useAsync";
 import type { DocType, DocumentItem } from "../types";
+
+/** Below this the parser is not sure it read the value correctly; the reviewer checks it against the page. */
+const LOW_CONFIDENCE = 0.7;
 
 interface Col {
   h: string;
   cell: (i: DocumentItem) => ReactNode;
   cls?: string;
+  head?: string;
 }
 
 const str = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const pct = (c: number) => `${(c * 100).toFixed(0)}%`;
+/** Terms that stay upper case when a code is read back as words. */
+const ACRONYMS = new Set(["sku", "pco", "bom", "uom", "jde", "id", "pdf", "en", "es", "ecn", "eco", "ul"]);
+/** Engine codes (PHYSICAL_COMPONENT) read as words on screen; the raw code stays in the title attribute. */
+const words = (s: string) =>
+  s
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .map((w, i) => (ACRONYMS.has(w) ? w.toUpperCase() : i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
 
 function columns(t: DocType): Col[] {
   switch (t) {
     case "BOM":
       return [
-        { h: "Item number", cell: (i) => i.item_number ?? "—", cls: "mono whitespace-nowrap" },
-        { h: "Description", cell: (i) => i.description },
-        { h: "Qty", cell: (i) => `${fmtQty(i.quantity)} ${i.uom ?? ""}`, cls: "tabular-nums whitespace-nowrap text-right" },
-        { h: "Seq", cell: (i) => i.oper_seq ?? "—", cls: "tabular-nums" },
+        { h: "Item number", cell: (i) => i.item_number ?? "—", cls: "mono font-medium whitespace-nowrap" },
+        { h: "Description", cell: (i) => i.description, cls: "min-w-[14rem]" },
+        { h: "Quantity", cell: (i) => `${fmtQty(i.quantity)} ${i.uom ?? ""}`, cls: "num whitespace-nowrap text-right", head: "text-right" },
+        { h: "Sequence", cell: (i) => i.oper_seq ?? "—", cls: "num text-right", head: "text-right" },
         {
           h: "Category",
           cell: (i) => (
             <>
-              <span className={i.category === "PHYSICAL_COMPONENT" ? "font-semibold" : "text-gray-600"}>{i.category}</span>
-              {i.category_reason && <div className="text-2xs text-gray-500">{i.category_reason}</div>}
+              <span className={i.category === "PHYSICAL_COMPONENT" ? "font-medium text-ink" : "text-ink-3"} title={i.category}>
+                {words(i.category)}
+              </span>
+              {i.category_reason && <div className="text-xs text-ink-3">{i.category_reason}</div>}
             </>
           ),
         },
-        { h: "Active", cell: (i) => (i.is_active ? "yes" : <span className="text-gray-400">no</span>) },
-        { h: "Locator", cell: (i) => i.locator ?? "—", cls: "text-gray-500 whitespace-nowrap" },
+        { h: "Active", cell: (i) => (i.is_active ? "Yes" : <span className="text-ink-4">No</span>) },
+        { h: "Locator", cell: (i) => i.locator ?? "—", cls: "mono text-ink-3 whitespace-nowrap" },
       ];
     case "LABEL":
       return [
-        { h: "Qty", cell: (i) => `${fmtQty(i.quantity)} ${i.uom ?? ""}`, cls: "tabular-nums whitespace-nowrap" },
-        { h: "Description", cell: (i) => i.description },
-        { h: "Sub-quantity", cell: (i) => (i.sub_quantity ? `${i.sub_quantity.raw} (${i.sub_quantity.value} ${i.sub_quantity.kind})` : "—"), cls: "text-gray-600" },
-        { h: "Category", cell: (i) => i.category, cls: "text-gray-600" },
-        { h: "Locator", cell: (i) => i.locator ?? "—", cls: "text-gray-500 whitespace-nowrap" },
+        { h: "Quantity", cell: (i) => `${fmtQty(i.quantity)} ${i.uom ?? ""}`, cls: "num whitespace-nowrap text-right", head: "text-right" },
+        { h: "Description", cell: (i) => i.description, cls: "min-w-[14rem]" },
+        { h: "Sub-quantity", cell: (i) => (i.sub_quantity ? `${i.sub_quantity.raw} (${i.sub_quantity.value} ${i.sub_quantity.kind})` : "—"), cls: "text-ink-2" },
+        { h: "Category", cell: (i) => <span title={i.category}>{words(i.category)}</span>, cls: "text-ink-2" },
+        { h: "Locator", cell: (i) => i.locator ?? "—", cls: "mono text-ink-3 whitespace-nowrap" },
       ];
     case "DRAWING":
       return [
-        { h: "Callout", cell: (i) => str(i.attributes.callout_index), cls: "tabular-nums" },
-        { h: "Sheet", cell: (i) => str(i.attributes.sheet), cls: "tabular-nums" },
-        { h: "Text (EN)", cell: (i) => i.description },
-        { h: "Spanish text", cell: (i) => str(i.attributes.es_text), cls: "text-gray-700" },
-        { h: "Conditional", cell: (i) => (i.attributes.conditional ? <span className="text-amber-800 font-semibold">yes</span> : "no") },
-        { h: "Placement", cell: (i) => str(i.attributes.placement), cls: "text-gray-600" },
+        { h: "Callout", cell: (i) => str(i.attributes.callout_index), cls: "num text-right", head: "text-right" },
+        { h: "Sheet", cell: (i) => str(i.attributes.sheet), cls: "num text-right", head: "text-right" },
+        { h: "Text (English)", cell: (i) => i.description, cls: "min-w-[14rem]" },
+        { h: "Text (Spanish)", cell: (i) => str(i.attributes.es_text), cls: "text-ink-2" },
+        { h: "Conditional", cell: (i) => (i.attributes.conditional ? <Badge tone="warn">Conditional</Badge> : <span className="text-ink-4">No</span>) },
+        { h: "Placement", cell: (i) => str(i.attributes.placement), cls: "text-ink-2" },
       ];
     case "PCO":
       return [
@@ -59,21 +79,21 @@ function columns(t: DocType): Col[] {
           h: "Kind",
           cell: (i) => (
             <>
-              <span className="mono">{str(i.attributes.kind)}</span>
-              {i.attributes.change_kind ? <span className="chip ml-1">{String(i.attributes.change_kind)}</span> : null}
+              <span>{words(String(str(i.attributes.kind)))}</span>
+              {i.attributes.change_kind ? <span className="chip ml-1.5">{words(String(i.attributes.change_kind))}</span> : null}
             </>
           ),
           cls: "whitespace-nowrap",
         },
         {
-          h: "Item actual → proposed",
+          h: "Item, actual to proposed",
           cell: (i) => (i.attributes.kind === "change" ? `${str(i.attributes.item_actual)} → ${str(i.attributes.item_proposed)}` : i.item_number ?? "—"),
           cls: "mono whitespace-nowrap",
         },
-        { h: "Description", cell: (i) => i.description },
-        { h: "Qty actual → proposed", cell: (i) => (i.attributes.kind === "change" ? `${str(i.attributes.qty_actual)} → ${str(i.attributes.qty_proposed)}` : "—"), cls: "tabular-nums whitespace-nowrap" },
-        { h: "Seq actual → proposed", cell: (i) => (i.attributes.kind === "change" ? `${str(i.attributes.seq_actual)} → ${str(i.attributes.seq_proposed)}` : "—"), cls: "tabular-nums whitespace-nowrap" },
-        { h: "Locator", cell: (i) => i.locator ?? "—", cls: "text-gray-500 whitespace-nowrap" },
+        { h: "Description", cell: (i) => i.description, cls: "min-w-[14rem]" },
+        { h: "Quantity, actual to proposed", cell: (i) => (i.attributes.kind === "change" ? `${str(i.attributes.qty_actual)} → ${str(i.attributes.qty_proposed)}` : "—"), cls: "num whitespace-nowrap" },
+        { h: "Sequence, actual to proposed", cell: (i) => (i.attributes.kind === "change" ? `${str(i.attributes.seq_actual)} → ${str(i.attributes.seq_proposed)}` : "—"), cls: "num whitespace-nowrap" },
+        { h: "Locator", cell: (i) => i.locator ?? "—", cls: "mono text-ink-3 whitespace-nowrap" },
       ];
   }
 }
@@ -82,6 +102,8 @@ export default function DocumentPage() {
   const { runId = "", docId = "" } = useParams();
   const [sp, setSp] = useSearchParams();
   const doc = useAsync(() => api.getDocumentItems(runId, docId), [runId, docId]);
+  const [filter, setFilter] = useState("");
+  const [pageOnly, setPageOnly] = useState(false);
   const page = Math.max(1, Number(sp.get("page") || 1) || 1);
   const selectedId = sp.get("item");
   const selected = useMemo(() => doc.data?.items.find((i) => i.id === selectedId) ?? null, [doc.data, selectedId]);
@@ -99,143 +121,255 @@ export default function DocumentPage() {
     setSp(n, { replace: true });
   };
 
-  if (doc.error) return <ErrorBox error={doc.error} onRetry={doc.reload} />;
-  if (!doc.data) return <Loading label="Loading document…" />;
+  const back = { to: `/runs/${enc(runId)}/documents`, label: "Documents" };
+  if (doc.error)
+    return (
+      <div>
+        <PageHeader title="Document" back={back} />
+        <ErrorBox error={doc.error} onRetry={doc.reload} />
+      </div>
+    );
+  if (!doc.data) return <DocumentSkeleton />;
+
   const d = doc.data;
   const pdf = isPdf(d.file_name) && d.pages > 0;
   const src = pdf ? api.pageImageUrl(runId, docId, page) : null;
   const cols = columns(d.doc_type);
-  const lowConf = d.items.filter((i) => i.confidence < 0.7).length;
+  const lowConf = d.items.filter((i) => i.confidence < LOW_CONFIDENCE).length;
+  const header = Object.entries(d.header);
+  const needle = filter.trim().toLowerCase();
+  const filtering = needle.length > 0 || pageOnly;
+  const rows = d.items
+    .map((item, n) => ({ item, n: n + 1 }))
+    .filter(({ item }) => (!pageOnly || item.page === page) && (!needle || [item.item_number ?? "", item.description, item.locator ?? "", item.raw_text].some((s) => s.toLowerCase().includes(needle))));
+  const clearFilters = () => {
+    setFilter("");
+    setPageOnly(false);
+  };
+  const selectedElsewhere = selected !== null && selected.page !== null && selected.page !== page;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link className="btn" to={`/runs/${enc(runId)}/documents`}>
-          ← Documents
-        </Link>
-        <DocTypeBadge value={d.doc_type} />
-        <h1 className="mono">{d.file_name}</h1>
-        <span className="text-xs text-gray-500">
-          {d.items.length} extracted items · {pdf ? `${d.pages} page${d.pages === 1 ? "" : "s"}` : "spreadsheet source (no page images)"}
-          {lowConf > 0 && <span className="text-amber-800"> · {lowConf} below the confidence threshold</span>}
-        </span>
-        <span className="text-xs text-gray-500 ml-auto">Click an extracted row to outline where it came from on the page.</span>
-      </div>
+    <div>
+      <PageHeader
+        back={back}
+        title={
+          <>
+            <DocTypeBadge value={d.doc_type} />
+            <span className="mono text-xl">{d.file_name}</span>
+          </>
+        }
+        description="Select a line to outline where it came from on the page. Everything on the right was read from the image on the left."
+        meta={
+          <>
+            <span>{plural(d.items.length, "extracted line")}</span>
+            <span>{pdf ? plural(d.pages, "page") : "Spreadsheet source, no page images"}</span>
+            {lowConf > 0 && <span className="text-warn-strong">{lowConf} below the confidence threshold</span>}
+            {d.warnings.length > 0 && <span className="text-warn-strong">{plural(d.warnings.length, "parser warning")}</span>}
+          </>
+        }
+      />
 
-      {d.warnings.length > 0 && (
-        <div className="border border-amber-600 bg-amber-50 text-amber-900 text-xs px-3 py-2">
-          <b>Parser warnings:</b>
-          <ul className="list-disc pl-4">
-            {d.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className="space-y-5 stagger">
+        {d.warnings.length > 0 && (
+          <Notice kind="warn">
+            <div className="font-medium">Parser warnings for this document</div>
+            <ul className="list-disc pl-4 mt-1 space-y-0.5">
+              {d.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </Notice>
+        )}
 
-      <div className="grid xl:grid-cols-2 gap-3 items-start">
-        <div className="panel">
-          <div className="panel-title">
-            Source page
-            {pdf && (
-              <span className="ml-auto flex items-center gap-1 normal-case font-normal">
-                <button className="btn btn-sm" disabled={page <= 1} onClick={() => setParam("page", String(page - 1))}>
-                  ←
-                </button>
-                <select className="input" value={page} onChange={(e) => setParam("page", e.target.value)}>
-                  {Array.from({ length: d.pages }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      page {n} / {d.pages}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn btn-sm" disabled={page >= d.pages} onClick={() => setParam("page", String(page + 1))}>
-                  →
-                </button>
-                {src && (
-                  <a className="btn btn-sm" href={src} target="_blank" rel="noreferrer">
-                    Open
-                  </a>
-                )}
-              </span>
-            )}
-          </div>
-          <div className="p-2">
-            <PageImage
-              src={src}
-              bbox={selected && selected.page === page ? selected.bbox : null}
-              alt={`${d.file_name} page ${page}`}
-              maxHeight="78vh"
-              fallback={
-                <div>
-                  <div className="text-gray-600">No page image: this source is a spreadsheet. Each extracted row shows its sheet/row locator and the raw cell text instead.</div>
-                  {selected && (
-                    <div className="mt-2">
-                      <div className="label">Selected row</div>
-                      <div className="mono">{selected.locator}</div>
-                      <pre className="mono whitespace-pre-wrap bg-gray-50 border border-gray-200 p-2 mt-1">{selected.raw_text}</pre>
+        <div className="grid xl:grid-cols-2 gap-5 items-start">
+          {/* ---- the evidence: the page as it was filed */}
+          <div className="space-y-5">
+            <Card>
+              <CardHead
+                title="Source page"
+                description={pdf ? "The page as it was filed. The outline marks where the selected line was read." : "A spreadsheet source has no page image."}
+                actions={
+                  pdf ? (
+                    <>
+                      <Button size="sm" iconOnly aria-label="Previous page" title="Previous page" disabled={page <= 1} onClick={() => setParam("page", String(page - 1))} icon={<CaretLeft size={16} />} />
+                      <select className="input input-sm" aria-label="Page" value={page} onChange={(e) => setParam("page", e.target.value)}>
+                        {Array.from({ length: d.pages }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>
+                            Page {n} of {d.pages}
+                          </option>
+                        ))}
+                      </select>
+                      <Button size="sm" iconOnly aria-label="Next page" title="Next page" disabled={page >= d.pages} onClick={() => setParam("page", String(page + 1))} icon={<CaretRight size={16} />} />
+                      {src && (
+                        <AnchorButton size="sm" href={src} target="_blank" rel="noreferrer" icon={<ArrowSquareOut size={16} />}>
+                          Open
+                        </AnchorButton>
+                      )}
+                    </>
+                  ) : undefined
+                }
+              />
+              {pdf ? (
+                <div className="p-3">
+                  <PageImage
+                    src={src}
+                    bbox={selected && selected.page === page ? selected.bbox : null}
+                    alt={`${d.file_name} page ${page}`}
+                    maxHeight="64vh"
+                    fallback={<span className="text-ink-2">The page image could not be rendered. The extracted lines and their locators are still shown on the right.</span>}
+                  />
+                  {selectedElsewhere && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-ink-3">
+                      <span>The selected line was read from page {selected?.page}.</span>
+                      <Button size="sm" variant="ghost" onClick={() => setParam("page", String(selected?.page))}>
+                        Go to page {selected?.page}
+                      </Button>
                     </div>
                   )}
+                  {selected && !selectedElsewhere && selected.bbox === null && <p className="hint mt-2">No bounding box was recorded for this line, for example a document header, so the page is shown without an outline.</p>}
                 </div>
-              }
-            />
-            {selected && (
-              <div className="text-2xs text-gray-600 mt-1">
-                Selected <span className="mono">{selected.id}</span> · {selected.locator} · confidence {(selected.confidence * 100).toFixed(0)}%
-                {selected.bbox === null && " · no bounding box recorded"}
-                {selected.page !== null && selected.page !== page && ` · on page ${selected.page}`}
-              </div>
+              ) : (
+                <EmptyState
+                  icon={<FileXls size={36} />}
+                  title="No page image for this source"
+                  description="This document is a spreadsheet. Each extracted line carries its sheet and row locator and the raw cell text, shown under the selected line."
+                />
+              )}
+            </Card>
+
+            <Card>
+              <CardHead title="Selected line" description="What the parser read, and where it read it." icon={<CursorClick size={18} />} />
+              {selected ? (
+                <dl className="kv p-4">
+                  <dt>Line</dt>
+                  <dd className="mono">{selected.id}</dd>
+                  <dt>Locator</dt>
+                  <dd>
+                    <span className="mono">{selected.locator ?? "—"}</span>
+                    {selected.sheet && <span className="text-ink-3"> · sheet {selected.sheet}</span>}
+                    {selected.page !== null && <span className="text-ink-3"> · page {selected.page}</span>}
+                  </dd>
+                  <dt>Item number</dt>
+                  <dd className="mono">{selected.item_number ?? "—"}</dd>
+                  <dt>Description</dt>
+                  <dd className="font-medium">{selected.description}</dd>
+                  <dt>Quantity</dt>
+                  <dd className="num">
+                    {fmtQty(selected.quantity)} {selected.uom ?? ""}
+                    {selected.sub_quantity && <span className="text-ink-3"> · sub-quantity {selected.sub_quantity.raw}</span>}
+                    {selected.oper_seq && <span className="text-ink-3"> · sequence {selected.oper_seq}</span>}
+                  </dd>
+                  <dt>Category</dt>
+                  <dd>
+                    <span title={selected.category}>{words(selected.category)}</span>
+                    {selected.category_reason && <span className="text-ink-3"> — {selected.category_reason}</span>}
+                  </dd>
+                  <dt>Confidence</dt>
+                  <dd>{selected.confidence < LOW_CONFIDENCE ? <Badge tone="warn">{pct(selected.confidence)} — verify against the page</Badge> : <span className="num">{pct(selected.confidence)}</span>}</dd>
+                  <dt>Raw text</dt>
+                  <dd>
+                    <pre className="mono text-xs whitespace-pre-wrap bg-surface-2 border border-line rounded p-2">{selected.raw_text}</pre>
+                  </dd>
+                </dl>
+              ) : (
+                <EmptyState icon={<CursorClick size={32} />} title="No line selected" description="Select a line on the right to see its locator, raw text and confidence, and to outline it on the page." />
+              )}
+            </Card>
+
+            {header.length > 0 && (
+              <Card>
+                <CardHead title="Document header" description="Fields read from above the line items." count={header.length} />
+                <dl className="kv p-4">
+                  {header.map(([k, v]) => (
+                    <div key={k} className="contents">
+                      <dt title={k}>{words(k)}</dt>
+                      <dd>{Array.isArray(v) ? v.join(", ") : str(v)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Card>
             )}
           </div>
-          {Object.keys(d.header).length > 0 && (
-            <div className="border-t border-gray-200 px-3 py-2">
-              <div className="label mb-1">Document header</div>
-              <dl className="kv">
-                {Object.entries(d.header).map(([k, v]) => (
-                  <div key={k} className="contents">
-                    <dt className="mono">{k}</dt>
-                    <dd>{Array.isArray(v) ? v.join(", ") : str(v)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          )}
-        </div>
 
-        <div className="panel">
-          <div className="panel-title">Extracted structure ({d.items.length})</div>
-          <div className="max-h-[85vh] overflow-auto">
-            <table className="tbl">
-              <thead className="sticky top-0">
-                <tr>
-                  <th>#</th>
-                  {cols.map((c) => (
-                    <th key={c.h}>{c.h}</th>
-                  ))}
-                  <th className="text-right">Conf.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.items.map((i, n) => (
-                  <tr key={i.id} className={`clickable ${i.id === selectedId ? "selected" : ""} ${i.is_active ? "" : "text-gray-400"}`} onClick={() => select(i)}>
-                    <td className="tabular-nums text-gray-500">{n + 1}</td>
-                    {cols.map((c) => (
-                      <td key={c.h} className={c.cls}>
-                        {c.cell(i)}
-                      </td>
+          {/* ---- the extraction: every line the parser produced */}
+          <Card>
+            <CardHead
+              title="Extracted lines"
+              description="Select a line to outline it on the page."
+              icon={<Rows size={18} />}
+              count={filtering ? `${rows.length} of ${d.items.length}` : d.items.length}
+              actions={
+                <>
+                  {pdf && (
+                    <Button size="sm" aria-pressed={pageOnly} className={pageOnly ? "bg-brand-100 border-brand-600 text-brand-700" : ""} onClick={() => setPageOnly(!pageOnly)} icon={<FileText size={16} />} title="Show only the lines read from the page on the left">
+                      This page
+                    </Button>
+                  )}
+                  <div className="relative">
+                    <MagnifyingGlass size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" aria-hidden />
+                    <input className="input input-sm pl-8 w-44" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter lines" aria-label="Filter extracted lines by item number, description, locator or raw text" />
+                  </div>
+                </>
+              }
+            />
+            {d.items.length === 0 ? (
+              <EmptyState icon={<Rows size={36} />} title="Nothing was extracted from this document" description="The parser read the file but produced no lines. Check the parser warnings above, then open the page image to see what the document actually contains." />
+            ) : rows.length === 0 ? (
+              <EmptyState icon={<MagnifyingGlass size={36} />} title="No line matches" description={`Clear the filter to see all ${plural(d.items.length, "extracted line")}.`} action={<Button onClick={clearFilters}>Clear filter</Button>} />
+            ) : (
+              <div className="overflow-auto max-h-[76vh]">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th className="text-right">#</th>
+                      {pdf && <th className="text-right">Page</th>}
+                      {cols.map((c) => (
+                        <th key={c.h} className={c.head}>
+                          {c.h}
+                        </th>
+                      ))}
+                      <th className="text-right">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(({ item, n }) => (
+                      <tr key={item.id} className={`clickable ${item.is_active ? "" : "text-ink-4"}`} data-selected={item.id === selectedId ? "true" : undefined} onClick={() => select(item)}>
+                        <td className="num text-right text-ink-3">{n}</td>
+                        {pdf && <td className={`num text-right ${item.page === page ? "text-ink-2" : "text-ink-4"}`}>{item.page ?? "—"}</td>}
+                        {cols.map((c) => (
+                          <td key={c.h} className={c.cls}>
+                            {c.cell(item)}
+                          </td>
+                        ))}
+                        <td className={`num text-right ${item.confidence < LOW_CONFIDENCE ? "text-warn-strong font-semibold" : "text-ink-3"}`}>{pct(item.confidence)}</td>
+                      </tr>
                     ))}
-                    <td className={`text-right tabular-nums ${i.confidence < 0.7 ? "text-amber-800 font-semibold" : "text-gray-500"}`}>{(i.confidence * 100).toFixed(0)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {selected && (
-            <div className="border-t border-gray-200 px-3 py-2">
-              <div className="label mb-1">Raw text of the selected row</div>
-              <pre className="mono whitespace-pre-wrap bg-gray-50 border border-gray-200 p-2">{selected.raw_text}</pre>
-            </div>
-          )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Loading state shaped like the page: header, source panel, extraction table. */
+function DocumentSkeleton() {
+  return (
+    <div aria-busy aria-label="Loading document">
+      <div className="mb-5">
+        <Skeleton className="h-3 w-24 mb-2" />
+        <Skeleton className="h-7 w-80 mb-2" />
+        <Skeleton className="h-3 w-[28rem]" />
+      </div>
+      <div className="grid xl:grid-cols-2 gap-5 items-start">
+        <div className="card p-3">
+          <Skeleton className="h-[46vh]" />
+        </div>
+        <div className="card">
+          <TableSkeleton rows={10} cols={6} />
         </div>
       </div>
     </div>

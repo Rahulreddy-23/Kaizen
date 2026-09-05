@@ -1,12 +1,25 @@
-import { useEffect, useState } from "react";
+// App shell: a BD-blue navigation rail, a white top bar with the run switcher and the reviewer's
+// identity, and the page. Routes and behaviour are unchanged from the first build.
+import { ChartBar, ClipboardText, Files, Folders, GitDiff, Lightbulb, ListChecks, SignOut, SquaresFour, TextAa } from "@phosphor-icons/react";
+import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { enc } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
 import { SignIn } from "./SignIn";
+import { Button } from "./ui";
 
 const LAST_RUN_KEY = "kaizen.lastRun";
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 export function Layout() {
   const loc = useLocation();
@@ -33,39 +46,75 @@ export function Layout() {
   const runs = useAsync(() => api.listRuns(), [routeRun]);
   const { session, policy, loading, signOut } = useReviewer();
 
+  if (loading) return <div className="p-6 text-sm text-ink-3">Loading…</div>;
+  if (!session && policy === "required") return <SignIn />;
+
   const r = (suffix: string) => (runId ? `/runs/${enc(runId)}${suffix}` : null);
-  const item = (to: string | null, label: string, end = false) =>
+  const item = (to: string | null, label: string, icon: ReactNode, end = false) =>
     to ? (
       <NavLink
         to={to}
         end={end}
+        title={label}
         className={({ isActive }) =>
-          `block px-3 py-1.5 text-xs border-l-2 ${isActive ? "border-gray-900 bg-white font-semibold text-gray-900" : "border-transparent text-gray-700 hover:bg-gray-200"}`
+          `relative flex items-center justify-center lg:justify-start gap-2.5 h-9 px-0 lg:pl-4 lg:pr-3 mx-2 rounded-md text-sm no-underline transition-colors duration-150 ${
+            isActive ? "bg-white/10 text-white font-medium" : "text-brand-200 hover:bg-white/5 hover:text-white"
+          }`
         }
       >
-        {label}
+        {({ isActive }) => (
+          <>
+            {isActive && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-accent-500" aria-hidden />}
+            <span className="shrink-0 opacity-90">{icon}</span>
+            <span className="truncate hidden lg:inline">{label}</span>
+          </>
+        )}
       </NavLink>
     ) : (
-      <span className="block px-3 py-1.5 text-xs text-gray-400 border-l-2 border-transparent">{label}</span>
+      <span className="flex items-center justify-center lg:justify-start gap-2.5 h-9 px-0 lg:pl-4 lg:pr-3 mx-2 rounded-md text-sm text-brand-300/60 cursor-default" title={`${label}: select a run first`}>
+        <span className="shrink-0">{icon}</span>
+        <span className="truncate hidden lg:inline">{label}</span>
+      </span>
     );
 
-  const ctl = "bg-gray-800 border border-gray-600 text-gray-100 px-1 py-0.5 rounded-sm text-xs";
-
-  if (loading) return <div className="p-4 text-xs text-gray-600">Loading…</div>;
-  if (!session && policy === "required") return <SignIn />;
-
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="h-10 bg-gray-900 text-gray-100 flex items-center px-3 gap-4 text-xs shrink-0">
-        <NavLink to="/" className="font-semibold tracking-wider text-white">
-          KAIZEN CROSS-CHECK
+    <div className="min-h-screen flex">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70] btn btn-primary">
+        Skip to content
+      </a>
+      <nav className="w-16 lg:w-[232px] shrink-0 bg-brand-700 text-white flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-out" aria-label="Main">
+        <NavLink to="/" className="flex items-center gap-2.5 h-14 px-4 lg:px-5 no-underline text-white" title="Kaizen Cross-Check">
+          <span className="w-7 h-7 rounded-md bg-accent-500 grid place-items-center font-semibold text-ink text-sm shrink-0" aria-hidden>
+            K
+          </span>
+          <span className="leading-tight hidden lg:block">
+            <span className="block text-sm font-semibold tracking-tight">Kaizen</span>
+            <span className="block text-2xs text-brand-200 tracking-wide">Cross-Check</span>
+          </span>
         </NavLink>
-        <span className="text-gray-400 hidden xl:inline">BOM · label · drawing · PCO cross-check. Engine output is a recommendation; reviewers decide.</span>
-        <div className="ml-auto flex items-center gap-3">
-          <label className="flex items-center gap-1">
-            <span className="text-gray-400">Run</span>
-            <select className={`${ctl} mono max-w-[16rem]`} value={runId ?? ""} onChange={(e) => e.target.value && nav(`/runs/${enc(e.target.value)}`)}>
-              <option value="">— select —</option>
+        <div className="mt-2 text-2xs font-medium tracking-wider text-brand-300/80 px-6 pb-1 hidden lg:block">WORKSPACE</div>
+        {item("/", "Runs", <Folders size={18} />, true)}
+        {item("/terminology", "Terminology", <TextAa size={18} />)}
+        {item("/action-items", "Action items", <ClipboardText size={18} />)}
+        <div className="mt-5 text-2xs font-medium tracking-wider text-brand-300/80 px-6 pb-1 hidden lg:block">THIS RUN</div>
+        <div className="px-6 pb-1.5 mono text-2xs text-brand-200/80 truncate hidden lg:block" title={runId ?? undefined}>
+          {runId ?? "none selected"}
+        </div>
+        {item(r(""), "Dashboard", <SquaresFour size={18} />, true)}
+        {item(r("/review"), "Review queue", <ListChecks size={18} />)}
+        {item(r("/documents"), "Documents", <Files size={18} />)}
+        {item(r("/mining"), "Worklist and mining", <Lightbulb size={18} />)}
+        {item(r("/business"), "Business case", <ChartBar size={18} />)}
+        {item(r("/diff"), "Compare runs", <GitDiff size={18} />)}
+        <div className="mt-auto px-5 py-4 text-2xs text-brand-300/70 leading-4 hidden lg:block">The engine recommends. The reviewer decides. Every value is traceable to a page and a box.</div>
+      </nav>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="h-14 bg-surface border-b border-line flex items-center gap-4 px-5 sticky top-0 z-30">
+          <label className="flex items-center gap-2 text-sm min-w-0">
+            <span className="text-ink-3 shrink-0">Run</span>
+            <select className="input input-sm mono max-w-[22rem]" value={runId ?? ""} onChange={(e) => e.target.value && nav(`/runs/${enc(e.target.value)}`)} aria-label="Current run">
+              <option value="">Select a run</option>
               {(runs.data ?? []).map((x) => (
                 <option key={x.run_id} value={x.run_id}>
                   {x.run_id} · {x.summary.skus} SKUs · {x.summary.rows} rows
@@ -74,37 +123,27 @@ export function Layout() {
               {runId && !(runs.data ?? []).some((x) => x.run_id === runId) && <option value={runId}>{runId}</option>}
             </select>
           </label>
-          {session ? (
-            <div className="flex items-center gap-2" title="Identity, slot and blind mode are held by the server for this session">
-              <span className="text-gray-400">Reviewer</span>
-              <span className="font-semibold text-white">{session.reviewer}</span>
-              <span className="text-gray-400">slot {session.slot}</span>
-              {session.blind && <span className="px-1 border border-blue-400 text-blue-300 rounded-sm">BLIND</span>}
-              <button className={ctl} onClick={() => void signOut()} title="End this review session">
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <span className="text-gray-400">not signed in</span>
-          )}
-        </div>
-      </header>
-      <div className="flex flex-1 min-h-0">
-        <nav className="w-44 shrink-0 bg-gray-100 border-r border-gray-300 py-2">
-          <div className="label px-3 py-1">Workspace</div>
-          {item("/", "Runs", true)}
-          {item("/terminology", "Terminology")}
-          {item("/action-items", "Action items")}
-          <div className="label px-3 pt-3 pb-1">Run</div>
-          <div className="px-3 pb-1 mono text-2xs text-gray-600 break-all">{runId ?? "none selected"}</div>
-          {item(r(""), "Dashboard", true)}
-          {item(r("/review"), "Review queue")}
-          {item(r("/documents"), "Documents")}
-          {item(r("/mining"), "Mining suggestions")}
-          {item(r("/business"), "Business case")}
-          {item(r("/diff"), "Compare runs")}
-        </nav>
-        <main className="flex-1 min-w-0 p-4">
+          <div className="ml-auto flex items-center gap-3">
+            {session ? (
+              <div className="flex items-center gap-2.5" title="Identity, slot and blind mode are held by the server for this session">
+                <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs font-semibold" aria-hidden>
+                  {initials(session.reviewer)}
+                </span>
+                <span className="leading-tight">
+                  <span className="block text-sm font-medium text-ink">{session.reviewer}</span>
+                  <span className="block text-2xs text-ink-3">{session.slot === 1 ? "Reviewer 1 · facilitator" : "Reviewer 2 · independent"}</span>
+                </span>
+                {session.blind && <span className="chip bg-brand-100 text-brand-700 border-brand-200">Blind</span>}
+                <Button variant="ghost" size="sm" onClick={() => void signOut()} icon={<SignOut size={16} />} title="End this review session">
+                  Sign out
+                </Button>
+              </div>
+            ) : (
+              <span className="text-sm text-ink-3">Not signed in</span>
+            )}
+          </div>
+        </header>
+        <main id="main" className="flex-1 min-w-0 w-full max-w-page mx-auto px-6 py-6">
           <Outlet />
         </main>
       </div>

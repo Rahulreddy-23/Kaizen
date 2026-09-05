@@ -112,6 +112,7 @@ OCR uses `rapidocr-onnxruntime` when installed (offline).
 
 ## Documents
 `docs/solution-overview.md` (plain-language overview for presenting), `docs/system-description.md` (what was built, module by module),
+`docs/design/DESIGN.md` and `docs/design/PRODUCT.md` (the reviewer interface's visual system and product truth),
 `docs/problem-understanding.md` (problem and proposal), `docs/implementation-plan.md` (plan and status),
 `docs/final-architecture.md`, `docs/api-contract.md`, `docs/demo-script.md`, `docs/test-strategy.md`,
 `docs/known-limitations.md`, `docs/security-review.md`, `datasets/golden/SCENARIOS.md`.

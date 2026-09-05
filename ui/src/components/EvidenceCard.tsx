@@ -1,10 +1,11 @@
+import { ArrowSquareOut, ArrowsOutSimple, ListMagnifyingGlass } from "@phosphor-icons/react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api";
 import { enc, fmtQty, isPdf, shortSha } from "../lib/format";
 import type { Evidence } from "../types";
-import { DocTypeBadge } from "./Badges";
+import { Badge, DocTypeBadge } from "./Badges";
 import { PageImage } from "./PageImage";
+import { AnchorButton, Button, Card, CardHead, LinkButton } from "./ui";
 
 interface Props {
   side: "A" | "B";
@@ -15,15 +16,15 @@ interface Props {
   itemId?: string | null;
 }
 
-/** One side of a comparison: the source page (with highlight) and everything that was extracted from it. */
+/** One side of a comparison: the source page with the value highlighted, and everything extracted from it. */
 export function EvidenceCard({ side, runId, rowId, ev, itemId }: Props) {
   const [fit, setFit] = useState(true);
   if (!ev) {
     return (
-      <div className="panel">
-        <div className="panel-title">Source {side}</div>
-        <div className="p-3 text-xs text-gray-600">No counterpart on this side: the engine found nothing to pair with.</div>
-      </div>
+      <Card>
+        <CardHead title={`Source ${side}`} />
+        <div className="p-5 text-sm text-ink-3">No counterpart on this side: the engine found nothing to pair with.</div>
+      </Card>
     );
   }
   const hasPage = ev.page !== null && isPdf(ev.file_name);
@@ -31,74 +32,89 @@ export function EvidenceCard({ side, runId, rowId, ev, itemId }: Props) {
   const docLink = `/runs/${enc(runId)}/documents/${enc(ev.doc_id)}?page=${ev.page ?? 1}${itemId ? `&item=${enc(itemId)}` : ""}`;
   const lowConf = ev.confidence < 0.7;
   const fallback = (
-    <div className="space-y-1">
-      <div className="text-gray-600">No page image for this source (spreadsheet). Locator and raw text:</div>
+    <div className="space-y-2 text-sm">
+      <div className="text-ink-3">No page image for this source (spreadsheet). Locator and raw text:</div>
       <div className="mono">{ev.locator ?? "—"}</div>
-      <pre className="mono whitespace-pre-wrap bg-gray-50 border border-gray-200 p-2">{ev.raw_text}</pre>
+      <pre className="mono whitespace-pre-wrap bg-surface-2 rounded-md p-3">{ev.raw_text}</pre>
     </div>
   );
   return (
-    <div className="panel">
-      <div className="panel-title">
-        <span>Source {side}</span>
-        <DocTypeBadge value={ev.doc_type} />
-        <span className="mono normal-case font-normal text-gray-700 truncate">{ev.file_name}</span>
-        {ev.page !== null && <span className="normal-case font-normal">page {ev.page}</span>}
-        <span className="ml-auto flex gap-1 normal-case font-normal">
-          {src && (
-            <>
-              <button className="btn btn-sm" onClick={() => setFit(!fit)}>
-                {fit ? "Actual size" : "Fit width"}
-              </button>
-              <a className="btn btn-sm" href={src} target="_blank" rel="noreferrer">
-                Open page
-              </a>
-            </>
-          )}
-          <Link className="btn btn-sm" to={docLink}>
-            Extraction view
-          </Link>
-        </span>
-      </div>
-      <div className="p-2">
+    <Card>
+      <CardHead
+        title={
+          <span className="flex items-center gap-2">
+            Source {side}
+            <DocTypeBadge value={ev.doc_type} />
+          </span>
+        }
+        description={
+          <span className="mono">
+            {ev.file_name}
+            {ev.page !== null && <span className="text-ink-3"> · page {ev.page}</span>}
+          </span>
+        }
+        actions={
+          <>
+            {src && (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setFit(!fit)} icon={<ArrowsOutSimple size={14} />}>
+                  {fit ? "Actual size" : "Fit width"}
+                </Button>
+                <AnchorButton size="sm" variant="ghost" href={src} target="_blank" rel="noreferrer" icon={<ArrowSquareOut size={14} />}>
+                  Open page
+                </AnchorButton>
+              </>
+            )}
+            <LinkButton size="sm" variant="ghost" to={docLink} icon={<ListMagnifyingGlass size={14} />}>
+              Extraction view
+            </LinkButton>
+          </>
+        }
+      />
+      <div className="p-3">
         <PageImage src={src} bbox={ev.bbox} fit={fit} alt={`${ev.file_name} page ${ev.page ?? ""}`} fallback={fallback} />
-        {src && ev.bbox === null && (
-          <div className="text-2xs text-gray-500 mt-1">No bounding box for this value (for example a document header), so the page is shown without a highlight.</div>
-        )}
+        {src && ev.bbox === null && <div className="text-xs text-ink-3 mt-2">No bounding box for this value (for example a document header), so the page is shown without a highlight.</div>}
       </div>
-      <dl className="kv px-3 pb-3">
-        <dt>Locator</dt>
-        <dd>{ev.locator ?? "—"}{ev.sheet ? <span className="text-gray-500"> · sheet {ev.sheet}</span> : null}</dd>
-        <dt>Item number</dt>
-        <dd className="mono">{ev.item_number ?? "—"}</dd>
+      <dl className="kv px-5 pb-5 pt-1">
         <dt>Description</dt>
         <dd className="font-medium">{ev.description}</dd>
+        <dt>Item number</dt>
+        <dd className="mono">{ev.item_number ?? "—"}</dd>
         <dt>Quantity</dt>
-        <dd className="tabular-nums">
+        <dd className="num">
           {fmtQty(ev.quantity)} {ev.uom ?? ""}
-          {ev.sub_quantity && <span className="text-gray-500"> · sub-quantity {ev.sub_quantity.raw}</span>}
-          {ev.oper_seq && <span className="text-gray-500"> · seq {ev.oper_seq}</span>}
+          {ev.sub_quantity && <span className="text-ink-3"> · sub-quantity {ev.sub_quantity.raw}</span>}
+          {ev.oper_seq && <span className="text-ink-3"> · seq {ev.oper_seq}</span>}
+        </dd>
+        <dt>Locator</dt>
+        <dd>
+          {ev.locator ?? "—"}
+          {ev.sheet ? <span className="text-ink-3"> · sheet {ev.sheet}</span> : null}
         </dd>
         <dt>Category</dt>
         <dd>
-          {ev.category}
-          {ev.category_reason && <span className="text-gray-500"> — {ev.category_reason}</span>}
+          {ev.category.replace(/_/g, " ").toLowerCase()}
+          {ev.category_reason && <span className="text-ink-3"> · {ev.category_reason}</span>}
         </dd>
-        <dt>Extraction confidence</dt>
-        <dd className={lowConf ? "text-amber-700 font-semibold" : ""}>
-          {(ev.confidence * 100).toFixed(0)}%{lowConf && " (below threshold — verify against the page)"}
+        <dt>Confidence</dt>
+        <dd>
+          {lowConf ? (
+            <Badge tone="warn">{(ev.confidence * 100).toFixed(0)}% · verify against the page</Badge>
+          ) : (
+            <span className="num">{(ev.confidence * 100).toFixed(0)}%</span>
+          )}
         </dd>
         <dt>Raw text</dt>
         <dd>
-          <pre className="mono whitespace-pre-wrap bg-gray-50 border border-gray-200 p-1.5">{ev.raw_text}</pre>
+          <pre className="mono whitespace-pre-wrap bg-surface-2 rounded-md px-3 py-2">{ev.raw_text}</pre>
         </dd>
         <dt>File</dt>
-        <dd className="mono text-gray-500 break-all">
+        <dd className="mono text-ink-3 break-all text-xs">
           {ev.file}
           <br />
           sha256 {shortSha(ev.sha256, 16)}…
         </dd>
       </dl>
-    </div>
+    </Card>
   );
 }

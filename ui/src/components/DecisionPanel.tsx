@@ -1,12 +1,15 @@
+import { EyeSlash } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { fmtDate } from "../lib/format";
 import { useHotkeys } from "../lib/hotkeys";
 import { useReviewer } from "../lib/reviewer";
+import { useToast } from "../lib/toast";
 import { errorMessage } from "../lib/useAsync";
 import { CLASSIFICATIONS, DECISION_KINDS, DECISION_LABELS, type Classification, type Decision, type DecisionKind, type HistoryEvent, type RowDetail, type Slot } from "../types";
-import { ClassificationBadge, DecisionBadge, StateBadge } from "./Badges";
+import { Badge, ClassificationBadge, DecisionBadge, StateBadge } from "./Badges";
 import { ErrorBox, Notice } from "./Feedback";
+import { Button, Card, CardHead, Field, Kbd } from "./ui";
 
 interface Props {
   runId: string;
@@ -15,9 +18,12 @@ interface Props {
   onChanged: () => void;
 }
 
+const KEY: Record<DecisionKind, string> = { ACCEPT: "a", OVERRIDE: "o", CONFIRM_DISCREPANCY: "c", NEEDS_MORE_INFORMATION: "n" };
+
 /** Reviewer decisions are stored beside the engine recommendation, never over it. */
 export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
   const { session, viewerParams, name } = useReviewer();
+  const toast = useToast();
   const slot: 1 | 2 = session?.slot ?? 1;
   const slotKey = String(slot) as Slot;
   const mine = detail.decisions[slotKey];
@@ -28,7 +34,6 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
   const [comment, setComment] = useState(mine?.comment ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   const [finalDecision, setFinalDecision] = useState<DecisionKind>("ACCEPT");
   const [finalNote, setFinalNote] = useState("");
@@ -40,7 +45,6 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     setOverride(mine?.override_classification ?? "EQUIVALENT");
     setComment(mine?.comment ?? "");
     setErr(null);
-    setOk(null);
     setFinalErr(null);
     const d2 = detail.decisions["2"];
     const d1 = detail.decisions["1"];
@@ -52,7 +56,6 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     if (!decision || !name) return;
     setBusy(true);
     setErr(null);
-    setOk(null);
     try {
       const res = await api.postDecision(runId, {
         row_id: rowId,
@@ -60,7 +63,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
         comment,
         override_classification: decision === "OVERRIDE" ? override : undefined,
       });
-      setOk(`Recorded as reviewer ${slot}. Row state is now ${res.state.replace(/_/g, " ")}.`);
+      toast({ tone: "ok", title: `Recorded as reviewer ${slot}`, description: `Row state is now ${res.state.replace(/_/g, " ").toLowerCase()}.` });
       onChanged();
     } catch (e) {
       setErr(errorMessage(e));
@@ -89,6 +92,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     setFinalErr(null);
     try {
       await api.finalize(runId, { row_id: rowId, final_decision: finalDecision, note: finalNote });
+      toast({ tone: "ok", title: "Row finalized", description: "The two-reviewer loop on this row is closed." });
       onChanged();
     } catch (e) {
       setFinalErr(errorMessage(e));
@@ -100,128 +104,152 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
   const blindHidden = viewerParams.blind && detail.decisions["2"] === null;
 
   return (
-    <div className="panel">
-      <div className="panel-title">
-        Reviewer decision
-        <span className="ml-auto normal-case font-normal flex items-center gap-2">
-          State <StateBadge value={detail.state} />
-        </span>
-      </div>
+    <Card>
+      <CardHead
+        title="Reviewer decision"
+        description={
+          <span className="flex items-center gap-1.5">
+            Deciding as <b className="text-ink">{name}</b> · reviewer {slot}
+            {viewerParams.blind && (
+              <Badge tone="info" dot={false}>
+                <EyeSlash size={12} /> Blind
+              </Badge>
+            )}
+          </span>
+        }
+        actions={<StateBadge value={detail.state} />}
+      />
       {detail.state === "DISAGREEMENT" && (
-        <div className="mx-3 mt-3 border-2 border-red-700 bg-red-50 text-red-900 px-3 py-2 text-xs">
-          <div className="font-bold text-sm">DISAGREEMENT</div>
-          Reviewer 1 and reviewer 2 decided differently. Discuss, then record the final decision below.
+        <div className="px-5 pt-4">
+          <Notice kind="bad">
+            <b>Reviewer 1 and reviewer 2 decided differently.</b> Discuss, then record the final decision below.
+          </Notice>
         </div>
       )}
-      <div className="p-3 grid gap-4 lg:grid-cols-2">
+      <div className="p-5 grid gap-6 lg:grid-cols-2">
         {/* ---- your decision */}
-        <div className="space-y-2">
-          <div className="text-xs">
-            Deciding as{" "}
-            <b>{name}</b> · slot {slot}{" "}
-            {viewerParams.blind && <span className="chip border-blue-700 text-blue-800">BLIND</span>}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {DECISION_KINDS.map((k) => (
-              <button key={k} type="button" className={`btn ${decision === k ? "btn-primary" : ""}`} onClick={() => setDecision(k)} disabled={isFinal}>
-                {DECISION_LABELS[k]}
-              </button>
-            ))}
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            {DECISION_KINDS.map((k) => {
+              const on = decision === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={isFinal}
+                  onClick={() => setDecision(k)}
+                  className={`flex items-center justify-between gap-2 h-11 px-3 rounded-md border text-sm font-medium text-left transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed ${
+                    on ? "border-accent-500 bg-accent-50 text-ink shadow-[0_0_0_3px_#fdebdd]" : "border-line-2 bg-surface text-ink-2 hover:border-ink-3 hover:bg-surface-2"
+                  }`}
+                  aria-pressed={on}
+                >
+                  {DECISION_LABELS[k]}
+                  <Kbd>{KEY[k]}</Kbd>
+                </button>
+              );
+            })}
           </div>
           {decision === "OVERRIDE" && (
-            <label className="flex items-center gap-2 text-xs">
-              Override classification to
-              <select className="input" value={override} onChange={(e) => setOverride(e.target.value as Classification)}>
+            <Field label="Override the classification to">
+              <select className="input w-full" value={override} onChange={(e) => setOverride(e.target.value as Classification)}>
                 {CLASSIFICATIONS.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {c.charAt(0) + c.slice(1).toLowerCase()}
                   </option>
                 ))}
               </select>
-            </label>
+            </Field>
           )}
-          <textarea className="input w-full" rows={2} placeholder="Comment (why) — recorded verbatim in the audit trail" value={comment} onChange={(e) => setComment(e.target.value)} disabled={isFinal} />
-          <div className="flex items-center gap-2">
-            <button className="btn btn-primary" disabled={!decision || !name || busy || isFinal} onClick={submit}>
-              {busy ? "Saving…" : mine ? "Update my decision" : "Submit decision"}
-            </button>
-            {mine && (
-              <span className="text-2xs text-gray-500">
-                You decided <b>{mine.decision}</b> at {fmtDate(mine.decided_at)}
-              </span>
-            )}
+          <Field label="Comment" hint="Why. Recorded verbatim in the audit trail.">
+            <textarea className="input w-full" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} disabled={isFinal} placeholder="Optional" />
+          </Field>
+          <div className="flex items-center gap-3">
+            <Button variant="primary" disabled={!decision || !name || isFinal} loading={busy} onClick={submit}>
+              {mine ? "Update my decision" : "Record decision"}
+            </Button>
+            <span className="text-xs text-ink-3">
+              {mine ? (
+                <>
+                  You decided <b>{DECISION_LABELS[mine.decision]}</b> at {fmtDate(mine.decided_at)}
+                </>
+              ) : (
+                <>
+                  <Kbd>Enter</Kbd> records the chosen decision
+                </>
+              )}
+            </span>
           </div>
           {err && <ErrorBox error={err} />}
-          {ok && <Notice kind="good">{ok}</Notice>}
         </div>
 
-        {/* ---- both reviewers + finalize */}
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <ReviewerBox label="Reviewer 1 (facilitator)" d={detail.decisions["1"]} hidden={blindHidden} />
-            <ReviewerBox label="Reviewer 2 (independent)" d={detail.decisions["2"]} hidden={false} />
+        {/* ---- both reviewers, the final decision, the history */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <ReviewerBox label="Reviewer 1 · facilitator" d={detail.decisions["1"]} hidden={blindHidden} />
+            <ReviewerBox label="Reviewer 2 · independent" d={detail.decisions["2"]} hidden={false} />
           </div>
-          <div className="text-xs flex items-center gap-2">
-            <span className="text-gray-500">Effective classification after overrides</span>
+          <div className="text-sm flex items-center gap-2 flex-wrap">
+            <span className="text-ink-3">Effective classification</span>
             <ClassificationBadge value={detail.effective_classification} />
-            {detail.effective_classification !== detail.result.classification && <span className="text-2xs text-gray-500">(engine said {detail.result.classification})</span>}
+            {detail.effective_classification !== detail.result.classification && <span className="text-xs text-ink-3">(engine said {detail.result.classification.toLowerCase()})</span>}
           </div>
-          <div className="border-t border-gray-200 pt-2">
-            <div className="label mb-1">Final decision</div>
+          <div className="border-t border-line pt-4">
+            <div className="text-xs font-medium text-ink-2 mb-1.5">Final decision</div>
             {detail.final ? (
-              <div className="text-xs">
+              <div className="text-sm">
                 <DecisionBadge value={detail.final.final_decision} /> by <b>{detail.final.finalized_by}</b> at {fmtDate(detail.final.finalized_at)}
-                {detail.final.note && <div className="text-gray-700 mt-0.5">“{detail.final.note}”</div>}
+                {detail.final.note && <div className="text-ink-2 mt-1">“{detail.final.note}”</div>}
               </div>
             ) : (
-              <div className="flex flex-wrap items-center gap-1">
-                <select className="input" value={finalDecision} onChange={(e) => setFinalDecision(e.target.value as DecisionKind)}>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="input input-sm" value={finalDecision} onChange={(e) => setFinalDecision(e.target.value as DecisionKind)} aria-label="Final decision">
                   {DECISION_KINDS.map((k) => (
                     <option key={k} value={k}>
                       {DECISION_LABELS[k]}
                     </option>
                   ))}
                 </select>
-                <input className="input flex-1 min-w-[8rem]" placeholder="Note" value={finalNote} onChange={(e) => setFinalNote(e.target.value)} />
-                <button className="btn" disabled={!name || finalBusy} onClick={finalize} title="Records the final decision for this row (closes the two-reviewer loop)">
-                  {finalBusy ? "Finalizing…" : "Finalize"}
-                </button>
+                <input className="input input-sm flex-1 min-w-[8rem]" placeholder="Note from the cross-check meeting" value={finalNote} onChange={(e) => setFinalNote(e.target.value)} aria-label="Final note" />
+                <Button size="sm" disabled={!name} loading={finalBusy} onClick={finalize} title="Records the final decision for this row and closes the two-reviewer loop">
+                  Finalize
+                </Button>
               </div>
             )}
-            {finalErr && <div className="mt-1"><ErrorBox error={finalErr} /></div>}
+            {finalErr && (
+              <div className="mt-2">
+                <ErrorBox error={finalErr} />
+              </div>
+            )}
           </div>
           <Timeline history={detail.history} />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
 function ReviewerBox({ label, d, hidden }: { label: string; d: Decision | null; hidden: boolean }) {
   return (
-    <div className="border border-gray-200 px-2 py-1.5 text-xs">
-      <div className="label">{label}</div>
+    <div className="text-sm">
+      <div className="text-xs font-medium text-ink-2 mb-1.5">{label}</div>
       {hidden ? (
-        <div className="text-blue-800 mt-0.5">Hidden until you submit (blind mode)</div>
+        <div className="flex items-center gap-1.5 text-brand-600">
+          <EyeSlash size={16} /> Hidden until you decide
+        </div>
       ) : d ? (
-        <div className="mt-0.5 space-y-0.5">
-          <div>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <DecisionBadge value={d.decision} />
-            {d.override_classification && (
-              <>
-                {" "}
-                → <ClassificationBadge value={d.override_classification} />
-              </>
-            )}
-            {d.blind && <span className="chip ml-1">blind</span>}
+            {d.override_classification && <ClassificationBadge value={d.override_classification} />}
+            {d.blind && <span className="chip">blind</span>}
           </div>
-          <div className="text-gray-600">
+          <div className="text-xs text-ink-3">
             {d.reviewer} · {fmtDate(d.decided_at)}
           </div>
-          {d.comment && <div className="text-gray-800">“{d.comment}”</div>}
+          {d.comment && <div className="text-ink-2">“{d.comment}”</div>}
         </div>
       ) : (
-        <div className="text-gray-400 mt-0.5">No decision yet</div>
+        <div className="text-ink-4">No decision yet</div>
       )}
     </div>
   );
@@ -238,30 +266,34 @@ function Timeline({ history }: { history: HistoryEvent[] }) {
   const byEvent = new Map(history.map((h) => [h.event, h]));
   return (
     <div>
-      <div className="label mb-1">History</div>
-      <ol className="text-xs space-y-1">
-        {STEPS.map((s) => {
+      <div className="text-xs font-medium text-ink-2 mb-2">History</div>
+      <ol className="text-sm space-y-0">
+        {STEPS.map((s, i) => {
           const h = byEvent.get(s.key);
+          const last = i === STEPS.length - 1;
           return (
-            <li key={s.key} className="flex gap-2">
-              <span className={`mt-1 inline-block w-2 h-2 rounded-full shrink-0 ${h ? "bg-gray-900" : "bg-gray-300"}`} />
-              <span className={h ? "" : "text-gray-400"}>
-                <b>{s.label}</b>{" "}
-                {!h && "— pending"}
-                {h && s.key === "engine" && `— ${h.detail ?? "recommendation recorded with the run"}`}
+            <li key={s.key} className="relative pl-6 pb-3">
+              {!last && <span className={`absolute left-[5px] top-3 bottom-0 w-px ${h ? "bg-brand-300" : "bg-line"}`} aria-hidden />}
+              <span className={`absolute left-0 top-1.5 w-[11px] h-[11px] rounded-full border-2 ${h ? "bg-brand-600 border-brand-600" : "bg-surface border-line-2"}`} aria-hidden />
+              <span className={h ? "text-ink" : "text-ink-4"}>
+                <b className="font-medium">{s.label}</b>
+                {!h && <span className="text-ink-4"> · pending</span>}
+                {h && s.key === "engine" && <span className="text-ink-2"> · {h.detail ?? "recommendation recorded with the run"}</span>}
                 {h && (s.key === "reviewer_1" || s.key === "reviewer_2") && (
-                  <>
-                    — {h.decision}
-                    {h.override_classification ? ` → ${h.override_classification}` : ""} by {h.reviewer} at {fmtDate(h.decided_at)}
+                  <span className="text-ink-2">
+                    {" "}
+                    · {DECISION_LABELS[h.decision as DecisionKind] ?? h.decision}
+                    {h.override_classification ? ` → ${h.override_classification.toLowerCase()}` : ""} by {h.reviewer}, {fmtDate(h.decided_at)}
                     {h.blind ? " (blind)" : ""}
                     {h.comment ? ` · “${h.comment}”` : ""}
-                  </>
+                  </span>
                 )}
                 {h && s.key === "final" && (
-                  <>
-                    — {h.final_decision} by {h.finalized_by} at {fmtDate(h.finalized_at)}
+                  <span className="text-ink-2">
+                    {" "}
+                    · {DECISION_LABELS[h.final_decision as DecisionKind] ?? h.final_decision} by {h.finalized_by}, {fmtDate(h.finalized_at)}
                     {h.note ? ` · “${h.note}”` : ""}
-                  </>
+                  </span>
                 )}
               </span>
             </li>

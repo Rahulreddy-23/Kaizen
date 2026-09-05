@@ -494,6 +494,14 @@ React 18, Vite, TypeScript and Tailwind, using `HashRouter` so deep links work f
 is a thin typed client over relative URLs; the same bundle works behind the Vite dev proxy and served by the
 backend.
 
+The visual system is written down in [`design/DESIGN.md`](design/DESIGN.md) (BD blue and orange from the
+corporate identity, one blue-tinted neutral family, semantic colours for classification, severity and
+state that are always paired with a word, Geist and Geist Mono self-hosted so the tool works offline,
+Phosphor icons, entrance transitions from `@starting-style` so the resting state is always visible, no
+animation on keyboard-driven actions). Product truth for the interface is in
+[`design/PRODUCT.md`](design/PRODUCT.md). Shared primitives live in `ui/src/components/ui.tsx`
+(buttons, cards, page header, fields, skeletons, empty states, dialog) and `ui/src/lib/toast.tsx`.
+
 | Page | Purpose |
 |---|---|
 | Runs | Load the demo set, drop a folder, or run a local path; lists previous runs |

@@ -11,3 +11,8 @@ kaizen-workspace/
 
 # The hackathon brief is BD-internal material; keep it local, never in the public repo.
 docs/reference/*.pdf
+
+# Third-party agent skills installed with `npx skills add` (not part of the product)
+.claude/skills/
+.claude/launch.json
+.playwright-mcp/

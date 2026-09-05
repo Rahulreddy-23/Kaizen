@@ -1,11 +1,43 @@
-import { useState } from "react";
+// Worklist and mining: the ranked to-do list of wording pairings, then the engine's raw suggestions.
+// Visual rules: docs/design/DESIGN.md. Routes, API calls and behaviour are unchanged.
+import { ArrowsClockwise, ArrowsLeftRight, Check, CheckCircle, Eye, Lightbulb, ListChecks, Prohibit } from "@phosphor-icons/react";
+import { useId, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { ErrorBox, Loading, Notice } from "../components/Feedback";
+import { Badge } from "../components/Badges";
+import { ErrorBox, Notice } from "../components/Feedback";
+import { Bar, CLASS_COLORS, MiniBar } from "../components/Stat";
+import { Button, Card, CardHead, Divider, EmptyState, Field, LinkButton, PageHeader, SectionTitle, TableSkeleton } from "../components/ui";
 import { enc, familyOf } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
+import { useToast } from "../lib/toast";
 import { errorMessage, useAsync } from "../lib/useAsync";
-import type { MiningSuggestion, Relationship, Worklist } from "../types";
+import type { MiningSuggestion, Relationship, Worklist, WorklistItem } from "../types";
+
+const CHECK_LABEL: Record<string, string> = { BOM_LABEL: "BOM to label", BOM_DRAWING: "BOM to drawing", LABEL_DRAWING: "Label to drawing", PCO_BOM: "PCO to BOM", LABEL_REVISION: "Label revision" };
+/** Which document each side of a pairing came from, when every check in the pair agrees. */
+const SIDES: Record<string, [string, string]> = {
+  BOM_LABEL: ["BOM", "Label"],
+  BOM_DRAWING: ["BOM", "Drawing"],
+  LABEL_DRAWING: ["Label", "Drawing"],
+  PCO_BOM: ["PCO", "BOM"],
+  LABEL_REVISION: ["Label", "Previous label"],
+};
+function sideLabels(checks: string[]): [string, string] {
+  const uniq = [...new Set(checks)];
+  const s = uniq.length === 1 ? SIDES[uniq[0]] : undefined;
+  return s ? [`${s[0]} wording`, `${s[1]} wording`] : ["First wording", "Second wording"];
+}
+
+/** A pressable option. Buttons carry the button vocabulary; the pressed state is announced. */
+function Toggle({ on, onClick, children, title, disabled }: { on: boolean; onClick: () => void; children: ReactNode; title?: string; disabled?: boolean }) {
+  return (
+    <Button size="sm" aria-pressed={on} disabled={disabled} title={title} onClick={onClick} className={on ? "!bg-brand-100 !border-brand-600 !text-brand-700" : ""}>
+      {on && <Check size={14} aria-hidden />}
+      {children}
+    </Button>
+  );
+}
 
 export default function MiningPage() {
   const { runId = "" } = useParams();
@@ -16,31 +48,230 @@ export default function MiningPage() {
     list.reload();
     worklist.reload();
   };
+  const minId = useId();
+
   return (
-    <div className="space-y-3">
-      {worklist.data && <WorklistSection runId={runId} wl={worklist.data} onDone={reloadAll} />}
-      <div className="flex items-center gap-3 flex-wrap">
-        <h1>Relationship mining suggestions</h1>
-        <label className="text-xs flex items-center gap-1 ml-auto">
-          <span className="text-gray-500">Seen in at least</span>
-          <input type="number" min={1} className="input w-14" value={minSkus} onChange={(e) => setMinSkus(Math.max(1, Number(e.target.value) || 1))} />
-          <span className="text-gray-500">SKU(s)</span>
-        </label>
+    <div>
+      <PageHeader
+        title="Worklist and mining"
+        description="Wording pairings the engine matched only by similarity, repeated across SKUs in this run. Approve one and it becomes a versioned relationship, so the next run clears those rows on its own."
+      />
+
+      <div className="space-y-5 stagger">
+        {worklist.error && <ErrorBox error={worklist.error} onRetry={worklist.reload} />}
+        {worklist.loading && !worklist.data && (
+          <Card>
+            <CardHead icon={<ListChecks size={18} />} title="Terminology worklist" />
+            <TableSkeleton rows={5} cols={7} />
+          </Card>
+        )}
+        {worklist.data && <WorklistSection runId={runId} wl={worklist.data} onDone={reloadAll} />}
+
+        <div>
+          <SectionTitle
+            count={list.data ? `${list.data.length} suggestion${list.data.length === 1 ? "" : "s"}` : undefined}
+            actions={
+              <label className="flex items-center gap-2 text-xs text-ink-2" htmlFor={minId}>
+                <span>Seen in at least</span>
+                <input
+                  id={minId}
+                  type="number"
+                  min={1}
+                  className="input input-sm w-16 num"
+                  value={minSkus}
+                  onChange={(e) => setMinSkus(Math.max(1, Number(e.target.value) || 1))}
+                  aria-label="Minimum number of SKUs a pairing must appear in"
+                />
+                <span>SKUs</span>
+              </label>
+            }
+          >
+            Mining suggestions
+          </SectionTitle>
+
+          <div className="space-y-4">
+            <Notice>
+              Human approval is required; nothing is created automatically. Approving creates a versioned relationship with provenance “learned” that the next run applies. Rejecting records the
+              pair so it is not suggested again.
+            </Notice>
+            {list.error && <ErrorBox error={list.error} onRetry={list.reload} />}
+            {list.loading && !list.data && (
+              <Card>
+                <TableSkeleton rows={4} cols={4} />
+              </Card>
+            )}
+            {list.data && list.data.length === 0 && (
+              <Card>
+                <EmptyState
+                  icon={<Lightbulb size={36} />}
+                  title="No suggestions at this threshold"
+                  description="Every repeated pairing is already covered by a relationship, or was rejected. Lower the SKU threshold above to see pairings seen in fewer SKUs."
+                />
+              </Card>
+            )}
+            {list.data && list.data.length > 0 && (
+              <div className="space-y-4 stagger">
+                {list.data.map((s) => (
+                  <SuggestionCard key={s.pair_key} runId={runId} s={s} onDone={reloadAll} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      <Notice>
-        Suggestions are pairs the engine matched only by fuzzy similarity, repeated across SKUs in this run. <b>Human approval required; nothing is created automatically.</b> Approving creates
-        a versioned relationship (provenance “learned”) that the next run applies; rejecting records the pair so it is not suggested again.
-      </Notice>
-      {list.error && <ErrorBox error={list.error} onRetry={list.reload} />}
-      {list.loading && !list.data && <Loading />}
-      {list.data && list.data.length === 0 && <div className="panel p-3 text-xs text-gray-500">No suggestions at this threshold. Every repeated pairing is already covered by a relationship, or was rejected.</div>}
-      {list.data && list.data.map((s) => <SuggestionCard key={s.pair_key} runId={runId} s={s} onDone={reloadAll} />)}
     </div>
+  );
+}
+
+/** The business-case projection as a to-do list: approve these, in this order, and this many rows clear. */
+function WorklistSection({ runId, wl, onDone }: { runId: string; wl: Worklist; onDone: () => void }) {
+  const { name } = useReviewer();
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const items = showAll ? wl.items : wl.items.slice(0, 10);
+  const maxClear = wl.items.reduce((m, x) => Math.max(m, x.would_clear), 0);
+  const remaining = Math.max(0, wl.needs_validation - wl.top5.rows);
+
+  const approve = async (it: WorklistItem) => {
+    setBusy(it.pair_key);
+    setErr(null);
+    try {
+      const rel = await api.approveMining(runId, { a_key: it.a_key, b_key: it.b_key, by: name, scope: "global", anchor: it.item_anchors.length > 0, notes: "Approved from the terminology worklist" });
+      toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: `${it.would_clear} row${it.would_clear === 1 ? "" : "s"} clear on the next run.` });
+      onDone();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHead
+        icon={<ListChecks size={18} />}
+        title="Terminology worklist"
+        count={wl.items.length > 0 ? `${wl.items.length} pairing${wl.items.length === 1 ? "" : "s"}` : undefined}
+        description={
+          <>
+            <span className="num">{wl.needs_validation}</span> rows need validation in this run; <span className="num">{wl.potential_rows}</span> of them sit behind unconfirmed wording pairings.
+          </>
+        }
+      />
+      {wl.items.length === 0 ? (
+        <EmptyState
+          icon={<CheckCircle size={36} />}
+          title="Nothing left to approve"
+          description="Every fuzzy pairing in this run is already covered by a relationship. The rows that still need validation carry a real discrepancy, so work them in the review queue."
+          action={
+            <LinkButton variant="primary" to={`/runs/${enc(runId)}/review`}>
+              Open review queue
+            </LinkButton>
+          }
+        />
+      ) : (
+        <>
+          <div className="px-4 py-4 border-b border-line">
+            <p className="text-lg text-ink max-w-[70ch]">
+              Approving the top <span className="num font-semibold">{wl.top5.n}</span> pairings auto-clears <span className="num font-semibold">{wl.top5.rows}</span> rows (
+              <span className="num font-semibold">{wl.top5.pct}%</span> of what needs validation).
+            </p>
+            <p className="text-sm text-ink-3 mt-1.5 max-w-[80ch]">
+              The top {wl.top10.n} clears <span className="num">{wl.top10.rows}</span> rows (<span className="num">{wl.top10.pct}%</span>). Each approval creates a versioned relationship that the
+              next run applies. Rows counted as “still review” carry a discrepancy or an ambiguity and stay with a reviewer regardless.
+            </p>
+            <div className="mt-3 max-w-[46rem]">
+              <Bar
+                height={12}
+                segments={[
+                  { label: `Clears with the top ${wl.top5.n}`, value: wl.top5.rows, color: CLASS_COLORS.EQUIVALENT },
+                  { label: "Still needs a person", value: remaining, color: CLASS_COLORS.MISMATCH },
+                ]}
+              />
+            </div>
+            {!name && (
+              <div className="mt-3">
+                <Notice kind="warn">Sign in at the top bar to approve pairings: every relationship records who created it.</Notice>
+              </div>
+            )}
+            {err && (
+              <div className="mt-3">
+                <ErrorBox error={err} />
+              </div>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th className="text-right">Rank</th>
+                  <th>BOM wording</th>
+                  <th>Label or drawing wording</th>
+                  <th className="text-right">SKUs</th>
+                  <th className="text-right">Would clear</th>
+                  <th className="text-right">Still review</th>
+                  <th className="text-right">Cumulative</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, i) => (
+                  <tr key={it.pair_key}>
+                    <td className="text-right num text-ink-3">{i + 1}</td>
+                    <td className="min-w-[12rem] font-medium text-ink">{it.a_text}</td>
+                    <td className="min-w-[12rem] font-medium text-ink">{it.b_text}</td>
+                    <td className="text-right num">{it.sku_count}</td>
+                    <td>
+                      <div className="flex items-center justify-end gap-2" title="Rows that clear as an equivalent match once this pairing is approved">
+                        <MiniBar value={it.would_clear} max={maxClear} width={64} color={CLASS_COLORS.EQUIVALENT} />
+                        <span className="num font-semibold text-ink">{it.would_clear}</span>
+                      </div>
+                    </td>
+                    <td className="text-right num text-ink-2">{it.still_review || <span className="text-ink-4">—</span>}</td>
+                    <td className="text-right num whitespace-nowrap">
+                      {it.cumulative_clear} <span className="text-ink-3">({it.cumulative_pct}%)</span>
+                    </td>
+                    <td className="text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <LinkButton size="sm" variant="ghost" icon={<Eye size={16} />} to={`/runs/${enc(runId)}/rows/${enc(it.row_ids[0])}`} title="Open the first row with its evidence">
+                          Evidence
+                        </LinkButton>
+                        <Button
+                          size="sm"
+                         
+                          loading={busy === it.pair_key}
+                          disabled={busy !== null || !name}
+                          onClick={() => approve(it)}
+                          title="Creates a global relationship, versioned and attributed to you"
+                        >
+                          Approve
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {wl.items.length > 10 && (
+            <div className="px-4 py-3 border-t border-line">
+              <Button size="sm" onClick={() => setShowAll((v) => !v)}>
+                {showAll ? "Show top 10" : `Show all ${wl.items.length}`}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 
 function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggestion; onDone: () => void }) {
   const { name } = useReviewer();
+  const toast = useToast();
+  const uid = useId();
   const families = [...new Set(s.skus.map(familyOf))];
   const [scope, setScope] = useState("global");
   const [anchor, setAnchor] = useState(s.item_anchors.length > 0);
@@ -55,7 +286,9 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
     setBusy("approve");
     setErr(null);
     try {
-      setCreated(await api.approveMining(runId, { a_key: s.a_key, b_key: s.b_key, by: name, scope, anchor, notes: notes.trim() || undefined }));
+      const rel = await api.approveMining(runId, { a_key: s.a_key, b_key: s.b_key, by: name, scope, anchor, notes: notes.trim() || undefined });
+      setCreated(rel);
+      toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: `Scope ${rel.scope}. The next run will use it.` });
     } catch (e) {
       setErr(errorMessage(e));
     } finally {
@@ -68,6 +301,7 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
     try {
       await api.rejectMining(runId, { a_key: s.a_key, b_key: s.b_key, by: name, note: rejectNote.trim() || undefined });
       setRejected(true);
+      toast({ tone: "info", title: "Pairing rejected", description: "It will not be suggested again." });
     } catch (e) {
       setErr(errorMessage(e));
     } finally {
@@ -76,181 +310,135 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
   };
 
   const contradicted = s.contradicted > 0;
+  const [labelA, labelB] = sideLabels(s.check_types);
+
   return (
-    <div className={`panel ${rejected ? "opacity-60" : ""}`}>
-      <div className="p-3 grid gap-3 lg:grid-cols-[1fr_22rem]">
-        <div className="text-xs space-y-1 min-w-0">
-          <div className="text-sm">
-            <span className="font-semibold">{s.a_text}</span> <span className="text-gray-500">=</span> <span className="font-semibold">{s.b_text}</span>
+    <Card className={rejected ? "opacity-70" : ""}>
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_21rem] divide-y lg:divide-y-0 lg:divide-x divide-line">
+        <div className="p-4 min-w-0 space-y-3">
+          <div className="grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
+            <div className="min-w-0">
+              <div className="label">{labelA}</div>
+              <div className="text-md font-semibold text-ink break-words">{s.a_text}</div>
+            </div>
+            <ArrowsLeftRight size={16} className="hidden sm:block text-ink-3 shrink-0 justify-self-center mt-6" aria-hidden />
+            <div className="min-w-0">
+              <div className="label">{labelB}</div>
+              <div className="text-md font-semibold text-ink break-words">{s.b_text}</div>
+            </div>
           </div>
-          <div className="text-gray-700">{s.evidence}</div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-gray-600">
-            <span>
-              <b className="text-gray-900">{s.sku_count}</b> SKU{s.sku_count === 1 ? "" : "s"}: <span className="mono">{s.skus.join(", ")}</span>
-            </span>
-            <span>
-              checks: <span className="mono">{s.check_types.join(", ")}</span>
-            </span>
-            <span className={s.confirmed ? "text-green-800" : ""}>confirmed {s.confirmed}</span>
-            <span className={contradicted ? "text-red-800 font-semibold" : ""}>contradicted {s.contradicted}</span>
-            {s.item_anchors.length > 0 && (
-              <span>
-                BOM item numbers: <span className="mono">{s.item_anchors.join(", ")}</span>
+
+          <p className="text-sm text-ink-2">{s.evidence}</p>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone="info">
+              {s.sku_count} SKU{s.sku_count === 1 ? "" : "s"}
+            </Badge>
+            <Badge tone={s.confirmed ? "ok" : "neutral"}>{s.confirmed} confirmed</Badge>
+            <Badge tone={contradicted ? "bad" : "neutral"}>{s.contradicted} contradicted</Badge>
+            {s.check_types.map((c) => (
+              <span key={c} className="chip">
+                {CHECK_LABEL[c] ?? c}
               </span>
+            ))}
+            {s.relationship_id && (
+              <Link className="no-underline" to={`/terminology?id=${enc(s.relationship_id)}`}>
+                <Badge tone="ok">
+                  Already covered by <span className="mono">{s.relationship_id}</span>
+                </Badge>
+              </Link>
             )}
           </div>
-          <div className="text-gray-500">
-            Rows:{" "}
-            {s.row_ids.slice(0, 8).map((id) => (
-              <Link key={id} className="mono underline mr-1" to={`/runs/${enc(runId)}/rows/${enc(id)}?nv=0`}>
-                {id}
-              </Link>
-            ))}
-            {s.row_ids.length > 8 && `+${s.row_ids.length - 8} more`}
-          </div>
-          {s.relationship_id && <div className="text-green-800">Already covered by {s.relationship_id}.</div>}
+
+          <dl className="kv">
+            <dt>SKUs</dt>
+            <dd className="mono">{s.skus.join(", ")}</dd>
+            {s.item_anchors.length > 0 && (
+              <>
+                <dt>BOM item numbers</dt>
+                <dd className="mono">{s.item_anchors.join(", ")}</dd>
+              </>
+            )}
+            <dt>Rows</dt>
+            <dd className="flex flex-wrap gap-x-2 gap-y-1">
+              {s.row_ids.slice(0, 8).map((id) => (
+                <Link key={id} className="mono" to={`/runs/${enc(runId)}/rows/${enc(id)}?nv=0`}>
+                  {id}
+                </Link>
+              ))}
+              {s.row_ids.length > 8 && <span className="text-ink-3">plus {s.row_ids.length - 8} more</span>}
+            </dd>
+          </dl>
         </div>
-        <div className="text-xs space-y-2">
+
+        <div className="p-4 space-y-3">
           {created ? (
             <Notice kind="good">
               Approved as{" "}
-              <Link className="mono underline" to={`/terminology?id=${enc(created.id)}`}>
+              <Link className="mono" to={`/terminology?id=${enc(created.id)}`}>
                 {created.id}
               </Link>{" "}
-              (scope <span className="mono">{created.scope}</span>). The next run will use it.
+              with scope <span className="mono">{created.scope}</span>. The next run will use it.
             </Notice>
           ) : rejected ? (
             <Notice>Rejected. This pair will not be suggested again.</Notice>
           ) : (
             <>
-              <div className="flex flex-wrap gap-2 items-center">
-                <select className="input" value={scope} onChange={(e) => setScope(e.target.value)}>
-                  <option value="global">global</option>
-                  {families.map((f) => (
-                    <option key={f} value={`family:${f}`}>
-                      family:{f}
-                    </option>
-                  ))}
-                  {s.skus.map((k) => (
-                    <option key={k} value={`sku:${k}`}>
-                      sku:{k}
-                    </option>
-                  ))}
-                </select>
-                <label className={`flex items-center gap-1 ${s.item_anchors.length ? "" : "opacity-50"}`}>
-                  <input type="checkbox" checked={anchor} disabled={!s.item_anchors.length} onChange={(e) => setAnchor(e.target.checked)} /> anchor to item number
-                </label>
+              <div className="space-y-3">
+                <Field label="Scope" hint="Where the new rule applies." htmlFor={`${uid}-scope`}>
+                  <select id={`${uid}-scope`} className="input w-full" value={scope} onChange={(e) => setScope(e.target.value)}>
+                    <option value="global">Global — every SKU</option>
+                    {families.map((f) => (
+                      <option key={f} value={`family:${f}`}>
+                        Family {f}
+                      </option>
+                    ))}
+                    {s.skus.map((k) => (
+                      <option key={k} value={`sku:${k}`}>
+                        SKU {k}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div>
+                  <div className="label">Item anchor</div>
+                  <Toggle on={anchor} disabled={!s.item_anchors.length} onClick={() => setAnchor((v) => !v)}>
+                    Anchor to item number
+                  </Toggle>
+                  <p className="hint mt-1">
+                    {s.item_anchors.length ? `The rule applies only to BOM item ${s.item_anchors.join(", ")}.` : "These rows share no BOM item number, so the rule cannot be anchored."}
+                  </p>
+                </div>
+                <Field label="Notes" hint="Why this pairing is right." htmlFor={`${uid}-notes`}>
+                  <input id={`${uid}-notes`} className="input w-full" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                </Field>
+                <Button variant="primary" className="w-full" icon={<CheckCircle size={16} />} loading={busy === "approve"} disabled={busy !== null || !name} onClick={approve}>
+                  Approve pairing
+                </Button>
               </div>
-              <input className="input w-full" placeholder="Notes (why approve)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-              <div className="flex gap-2">
-                <button className="btn btn-primary" disabled={busy !== null || !name} onClick={approve}>
-                  {busy === "approve" ? "Approving…" : "Approve"}
-                </button>
+
+              <Divider />
+
+              <div className="space-y-3">
+                <Field label="Reject note" hint="Why these two are not the same thing." htmlFor={`${uid}-reject`}>
+                  <input id={`${uid}-reject`} className="input w-full" value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />
+                </Field>
+                <Button variant="danger" className="w-full" icon={<Prohibit size={16} />} loading={busy === "reject"} disabled={busy !== null || !name} onClick={reject}>
+                  Reject pairing
+                </Button>
               </div>
-              <div className="flex gap-1 items-center border-t border-gray-200 pt-2">
-                <input className="input flex-1" placeholder="Reject note" value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} />
-                <button className="btn btn-danger" disabled={busy !== null || !name} onClick={reject}>
-                  {busy === "reject" ? "Rejecting…" : "Reject"}
-                </button>
-              </div>
-              {!name && <div className="text-red-800">Enter your name in the top bar to approve or reject.</div>}
+
+              {!name && <Notice kind="warn">Sign in at the top bar to approve or reject.</Notice>}
             </>
           )}
           {err && <ErrorBox error={err} />}
           {(created || rejected) && (
-            <button className="btn btn-sm" onClick={onDone}>
-              Refresh list
-            </button>
+            <Button size="sm" icon={<ArrowsClockwise size={16} />} onClick={onDone}>
+              Refresh suggestions
+            </Button>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-/** The business-case projection as a to-do list: approve these, in this order, and this many rows clear. */
-function WorklistSection({ runId, wl, onDone }: { runId: string; wl: Worklist; onDone: () => void }) {
-  const { name } = useReviewer();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
-  const items = showAll ? wl.items : wl.items.slice(0, 10);
-  const approve = async (it: Worklist["items"][number]) => {
-    setBusy(it.pair_key);
-    setErr(null);
-    try {
-      await api.approveMining(runId, { a_key: it.a_key, b_key: it.b_key, by: name, scope: "global", anchor: it.item_anchors.length > 0, notes: "Approved from the terminology worklist" });
-      onDone();
-    } catch (e) {
-      setErr(errorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-  return (
-    <section className="panel p-3 space-y-2">
-      <div className="flex items-baseline gap-3 flex-wrap">
-        <h1>Terminology worklist</h1>
-        <span className="text-xs text-gray-600">
-          {wl.needs_validation} rows need validation in this run; {wl.potential_rows} of them sit behind {wl.items.length} unconfirmed wording pairings.
-        </span>
-      </div>
-      {wl.items.length > 0 ? (
-        <p className="text-sm">
-          Approving the <b>top {wl.top5.n}</b> pairings auto-clears <b className="tabular-nums">{wl.top5.rows}</b> rows ({wl.top5.pct}% of what needs validation); the top {wl.top10.n} clears{" "}
-          <b className="tabular-nums">{wl.top10.rows}</b> ({wl.top10.pct}%). Each approval creates a versioned relationship that the <i>next</i> run applies. Rows marked "still review" carry a
-          discrepancy or an ambiguity and stay with a reviewer regardless.
-        </p>
-      ) : (
-        <p className="text-sm text-gray-600">Every fuzzy pairing in this run is already covered by a relationship. Nothing to approve.</p>
-      )}
-      {err && <ErrorBox error={err} />}
-      {wl.items.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="table text-xs">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>BOM wording</th>
-                <th>Label / drawing wording</th>
-                <th className="text-right">SKUs</th>
-                <th className="text-right">Would clear</th>
-                <th className="text-right">Still review</th>
-                <th className="text-right">Cumulative</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it, i) => (
-                <tr key={it.pair_key}>
-                  <td className="tabular-nums text-gray-500">{i + 1}</td>
-                  <td className="mono">{it.a_text}</td>
-                  <td className="mono">{it.b_text}</td>
-                  <td className="text-right tabular-nums">{it.sku_count}</td>
-                  <td className="text-right tabular-nums font-semibold">{it.would_clear}</td>
-                  <td className="text-right tabular-nums">{it.still_review || ""}</td>
-                  <td className="text-right tabular-nums">
-                    {it.cumulative_clear} <span className="text-gray-500">({it.cumulative_pct}%)</span>
-                  </td>
-                  <td className="whitespace-nowrap">
-                    <Link className="underline mr-2" to={`/runs/${enc(runId)}/rows/${enc(it.row_ids[0])}`} title="Open the first row with its evidence">
-                      evidence
-                    </Link>
-                    <button className="btn btn-primary" disabled={busy !== null || !name} onClick={() => approve(it)} title="Creates a global relationship (versioned, attributed to you)">
-                      {busy === it.pair_key ? "Approving…" : "Approve"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {wl.items.length > 10 && (
-        <button className="btn" onClick={() => setShowAll((v) => !v)}>
-          {showAll ? "Show top 10" : `Show all ${wl.items.length}`}
-        </button>
-      )}
-    </section>
+    </Card>
   );
 }

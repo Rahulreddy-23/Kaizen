@@ -1,62 +1,69 @@
+import { ArrowsClockwise, CheckCircle, Info, Warning, WarningOctagon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { Button, Dialog, Skeleton } from "./ui";
 
-export function Loading({ label = "Loading…" }: { label?: string }) {
-  return <div className="text-xs text-gray-500 py-3">{label}</div>;
+/** Loading state shaped like content, never a spinner in the middle of the page. */
+export function Loading({ label = "Loading", lines = 3 }: { label?: string; lines?: number }) {
+  return (
+    <div className="space-y-2 py-2" aria-busy aria-label={label}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton key={i} className="h-4" style={{ width: `${88 - i * 14}%` }} />
+      ))}
+    </div>
+  );
 }
 
 export function ErrorBox({ error, onRetry }: { error: string; onRetry?: () => void }) {
   return (
-    <div className="border border-red-700 bg-red-50 text-red-900 text-xs px-3 py-2 rounded-sm flex items-start gap-3">
-      <span className="font-semibold shrink-0">Error</span>
-      <span className="flex-1 break-words">{error}</span>
+    <div role="alert" className="flex items-start gap-3 rounded-lg border border-bad/30 bg-bad-soft text-bad-strong px-4 py-3 text-sm">
+      <WarningOctagon size={18} weight="fill" className="shrink-0 mt-0.5 text-bad" />
+      <div className="flex-1 min-w-0 break-words">
+        <div className="font-medium">Something went wrong</div>
+        <div className="text-ink-2 mt-0.5">{error}</div>
+      </div>
       {onRetry && (
-        <button className="btn btn-sm" onClick={onRetry}>
+        <Button size="sm" onClick={onRetry} icon={<ArrowsClockwise size={14} />}>
           Retry
-        </button>
+        </Button>
       )}
     </div>
   );
 }
 
-export function Notice({ kind = "info", children }: { kind?: "info" | "good" | "warn" | "bad"; children: ReactNode }) {
-  const cls = {
-    info: "border-gray-400 bg-gray-50 text-gray-800",
-    good: "border-green-700 bg-green-50 text-green-900",
-    warn: "border-amber-600 bg-amber-50 text-amber-900",
-    bad: "border-red-700 bg-red-50 text-red-900",
+export function Notice({ kind = "info", children, className = "" }: { kind?: "info" | "good" | "warn" | "bad"; children: ReactNode; className?: string }) {
+  const map = {
+    info: { cls: "border-brand-200 bg-brand-50 text-ink", icon: <Info size={18} weight="fill" className="text-brand-600" /> },
+    good: { cls: "border-ok/30 bg-ok-soft text-ok-strong", icon: <CheckCircle size={18} weight="fill" className="text-ok" /> },
+    warn: { cls: "border-warn/30 bg-warn-soft text-warn-strong", icon: <Warning size={18} weight="fill" className="text-warn" /> },
+    bad: { cls: "border-bad/30 bg-bad-soft text-bad-strong", icon: <WarningOctagon size={18} weight="fill" className="text-bad" /> },
   }[kind];
-  return <div className={`border text-xs px-3 py-2 rounded-sm ${cls}`}>{children}</div>;
+  return (
+    <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${map.cls} ${className}`}>
+      <span className="shrink-0 mt-0.5">{map.icon}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
 }
 
-export function ConfirmDialog({
-  title,
-  children,
-  confirmLabel = "Confirm",
-  onConfirm,
-  onCancel,
-  busy = false,
-}: {
-  title: string;
-  children: ReactNode;
-  confirmLabel?: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  busy?: boolean;
-}) {
+export function ConfirmDialog({ title, description, children, confirmLabel = "Confirm", onConfirm, onCancel, busy = false, tone = "primary" }: { title: string; description?: ReactNode; children?: ReactNode; confirmLabel?: string; onConfirm: () => void; onCancel: () => void; busy?: boolean; tone?: "primary" | "danger" }) {
   return (
-    <div className="fixed inset-0 z-40 bg-black/30 flex items-center justify-center" onClick={onCancel}>
-      <div className="panel w-[30rem] max-w-[92vw] shadow-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="panel-title">{title}</div>
-        <div className="p-3 text-xs space-y-2">{children}</div>
-        <div className="px-3 py-2 border-t border-gray-200 flex justify-end gap-2">
-          <button className="btn" onClick={onCancel} disabled={busy}>
+    <Dialog
+      open
+      onClose={onCancel}
+      title={title}
+      description={description}
+      footer={
+        <>
+          <Button onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button className="btn btn-primary" onClick={onConfirm} disabled={busy}>
-            {busy ? "Working…" : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+          <Button variant={tone} onClick={onConfirm} loading={busy}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      {children}
+    </Dialog>
   );
 }

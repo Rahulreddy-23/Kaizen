@@ -1,13 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+// Terminology relationships: the versioned rules that let the next run clear a wording it has already
+// seen. Visual rules: docs/design/DESIGN.md. Routes, API calls and behaviour are unchanged.
+import { ArrowsClockwise, Check, CheckCircle, ClockCounterClockwise, FileArrowUp, FileXls, MagnifyingGlass, Plus, Prohibit, TextAa, X } from "@phosphor-icons/react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type RelationshipCreateBody } from "../api";
+import { Badge } from "../components/Badges";
 import { ErrorBox, Loading, Notice } from "../components/Feedback";
+import { AnchorButton, Button, Card, CardHead, Dialog, Divider, EmptyState, Field, PageHeader, TableSkeleton } from "../components/ui";
 import { fmtDate } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
+import { useToast } from "../lib/toast";
 import { errorMessage, useAsync } from "../lib/useAsync";
 import { DOC_TYPES, type ImportResult, type Relationship } from "../types";
 
 type ScopeFilter = "" | "global" | "family" | "sku";
+
+const SCOPE_FILTERS: { value: ScopeFilter; label: string }[] = [
+  { value: "", label: "All scopes" },
+  { value: "global", label: "Global" },
+  { value: "family", label: "Family" },
+  { value: "sku", label: "SKU" },
+];
+
+const PROVENANCE_LABEL: Record<string, string> = { manual: "Manual", learned: "Learned", imported: "Imported" };
+const SCOPE_KIND_LABEL: Record<string, string> = { family: "Family", sku: "SKU" };
 
 const lines = (s: string) =>
   s
@@ -15,9 +31,34 @@ const lines = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+const sentence = (s: string) => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+
+/** "family:1295108" reads as "Family 1295108"; the code stays mono because it is an identifier. */
+function Scope({ scope }: { scope: string }) {
+  const i = scope.indexOf(":");
+  if (i < 0) return <span>{scope === "global" ? "Global" : scope}</span>;
+  const kind = scope.slice(0, i);
+  return (
+    <span className="whitespace-nowrap">
+      {SCOPE_KIND_LABEL[kind] ?? kind} <span className="mono text-ink">{scope.slice(i + 1)}</span>
+    </span>
+  );
+}
+
+/** A pressable filter or option. Buttons carry the button vocabulary; the pressed state is announced. */
+function Toggle({ on, onClick, children, title, disabled }: { on: boolean; onClick: () => void; children: ReactNode; title?: string; disabled?: boolean }) {
+  return (
+    <Button size="sm" aria-pressed={on} disabled={disabled} title={title} onClick={onClick} className={on ? "!bg-brand-100 !border-brand-600 !text-brand-700" : ""}>
+      {on && <Check size={14} aria-hidden />}
+      {children}
+    </Button>
+  );
+}
+
 export default function TerminologyPage() {
   const [sp, setSp] = useSearchParams();
   const { name } = useReviewer();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   const [applied, setApplied] = useState("");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("");
@@ -30,13 +71,18 @@ export default function TerminologyPage() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
 
+  const visible = useMemo(() => {
+    const all = list.data ?? [];
+    return showInactive ? all : all.filter((x) => x.active);
+  }, [list.data, showInactive]);
   const rows = useMemo(() => {
-    let r = list.data ?? [];
-    if (!showInactive) r = r.filter((x) => x.active);
-    if (scopeFilter === "global") r = r.filter((x) => x.scope === "global");
-    else if (scopeFilter) r = r.filter((x) => x.scope.startsWith(`${scopeFilter}:`));
-    return r;
-  }, [list.data, showInactive, scopeFilter]);
+    if (scopeFilter === "global") return visible.filter((x) => x.scope === "global");
+    if (scopeFilter) return visible.filter((x) => x.scope.startsWith(`${scopeFilter}:`));
+    return visible;
+  }, [visible, scopeFilter]);
+  const scopeCount = (f: ScopeFilter) =>
+    f === "" ? visible.length : f === "global" ? visible.filter((x) => x.scope === "global").length : visible.filter((x) => x.scope.startsWith(`${f}:`)).length;
+  const inactive = (list.data ?? []).filter((x) => !x.active).length;
 
   const openRel = (id: string | null) => {
     const n = new URLSearchParams(sp);
@@ -51,7 +97,13 @@ export default function TerminologyPage() {
     setImportErr(null);
     setImportMsg(null);
     try {
-      setImportMsg(await api.terminology.importFile(importFile, name || "import"));
+      const res = await api.terminology.importFile(importFile, name || "import");
+      setImportMsg(res);
+      toast({
+        tone: res.errors.length ? "warn" : "ok",
+        title: res.errors.length ? "Import finished with problems" : "Import finished",
+        description: `${res.created} created, ${res.updated} updated, ${res.unchanged} unchanged${res.errors.length ? `, ${res.errors.length} row${res.errors.length === 1 ? "" : "s"} rejected` : ""}`,
+      });
       list.reload();
     } catch (e) {
       setImportErr(errorMessage(e));
@@ -60,146 +112,241 @@ export default function TerminologyPage() {
     }
   };
 
+  const empty = rows.length === 0 && !!list.data;
+  const noneAtAll = (list.data?.length ?? 0) === 0;
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <h1>Terminology relationships</h1>
-        <div className="ml-auto flex gap-1">
-          <button className="btn btn-primary" onClick={() => setCreating(true)}>
-            New relationship
-          </button>
-          <a className="btn" href={api.terminology.exportUrl()} download>
-            Export .xlsx
-          </a>
-        </div>
-      </div>
-      <Notice>
-        Relationships are explicit, versioned rules maintained by reviewers, not model weights. Every run records the exact versions it used (the terminology version on the dashboard), so a
-        classification can always be traced to the rule that produced it. Changing a rule never rewrites past runs.
-      </Notice>
+    <div>
+      <PageHeader
+        title="Terminology relationships"
+        description="The rules that let the next run clear a wording it has already seen. Reviewers maintain them; they are not model weights, and every run records the exact versions it used."
+        actions={
+          <>
+            <AnchorButton href={api.terminology.exportUrl()} download icon={<FileXls size={16} />}>
+              Export .xlsx
+            </AnchorButton>
+            <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+              New relationship
+            </Button>
+          </>
+        }
+      />
 
-      <div className="panel p-2 flex flex-wrap gap-x-3 gap-y-2 items-center text-xs">
-        <form
-          className="flex items-center gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setApplied(search.trim());
-          }}
-        >
-          <input className="input w-56" placeholder="Search canonical, aliases, notes" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <button className="btn" type="submit">
-            Search
-          </button>
-        </form>
-        <label className="flex items-center gap-1">
-          <span className="text-gray-500">Scope</span>
-          <select className="input" value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as ScopeFilter)}>
-            <option value="">all</option>
-            <option value="global">global</option>
-            <option value="family">family:*</option>
-            <option value="sku">sku:*</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-1">
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show inactive
-        </label>
-        <span className="text-gray-500">
-          {rows.length} of {list.data?.length ?? 0}
-        </span>
-        <span className="ml-auto flex items-center gap-1">
-          <span className="text-gray-500">Import (.xlsx or .csv)</span>
-          <input type="file" accept=".xlsx,.csv" className="text-xs" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} />
-          <button className="btn" disabled={!importFile || importing} onClick={doImport}>
-            {importing ? "Importing…" : "Import"}
-          </button>
-        </span>
-      </div>
-      {importErr && <ErrorBox error={importErr} />}
-      {importMsg && (
-        <Notice kind={importMsg.errors.length ? "warn" : "good"}>
-          {importMsg.summary} — created {importMsg.created}, updated {importMsg.updated}, unchanged {importMsg.unchanged}
-          {importMsg.errors.length > 0 && (
-            <ul className="list-disc pl-4 mt-1">
-              {importMsg.errors.map((e, i) => (
-                <li key={i}>{e}</li>
-              ))}
-            </ul>
-          )}
+      <div className="space-y-5 stagger">
+        <Notice>
+          Editing a rule saves a new version rather than replacing it, and deactivating one only stops future runs using it. Past runs, and the classifications they recorded, never change.
         </Notice>
-      )}
 
-      {list.error && <ErrorBox error={list.error} onRetry={list.reload} />}
-      {list.loading && !list.data && <Loading />}
-      {list.data && (
-        <div className="panel overflow-x-auto">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Canonical</th>
-                <th>Aliases</th>
-                <th>Scope</th>
-                <th>Item anchors</th>
-                <th>Doc types</th>
-                <th>Provenance</th>
-                <th>Created</th>
-                <th className="text-right">Ver.</th>
-                <th>Active</th>
-                <th className="text-right">Usage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className={`clickable ${r.id === selectedId ? "selected" : ""} ${r.active ? "" : "text-gray-400"}`} onClick={() => openRel(r.id)}>
-                  <td className="mono whitespace-nowrap">{r.id}</td>
-                  <td className="font-medium">{r.canonical}</td>
-                  <td>
-                    {r.aliases.map((a) => (
-                      <span key={a} className="chip mr-1 mb-0.5">
-                        {a}
-                      </span>
+        <div className="flex flex-col xl:flex-row gap-5 items-start">
+          <Card className="w-full min-w-0 flex-1">
+            <CardHead
+              title="Relationships"
+              count={list.data ? `${rows.length} of ${list.data.length}` : undefined}
+              actions={
+                <Button size="sm" variant="ghost" icon={<ArrowsClockwise size={16} />} onClick={list.reload}>
+                  Refresh
+                </Button>
+              }
+            />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-b border-line bg-surface-2/60">
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setApplied(search.trim());
+                }}
+              >
+                <div className="relative">
+                  <MagnifyingGlass size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" aria-hidden />
+                  <input
+                    className="input w-72 pl-8"
+                    placeholder="Search canonical, aliases, notes"
+                    aria-label="Search relationships"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Button type="submit">Search</Button>
+                {applied && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSearch("");
+                      setApplied("");
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </form>
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Scope filter">
+                {SCOPE_FILTERS.map((f) => (
+                  <Toggle key={f.value} on={scopeFilter === f.value} onClick={() => setScopeFilter(f.value)}>
+                    {f.label}
+                    <span className="num text-ink-3">{scopeCount(f.value)}</span>
+                  </Toggle>
+                ))}
+              </div>
+              <Toggle on={showInactive} onClick={() => setShowInactive((v) => !v)} title="Deactivated rules are kept for the audit trail; future runs do not use them">
+                Show inactive
+                <span className="num text-ink-3">{inactive}</span>
+              </Toggle>
+            </div>
+
+            {list.error && (
+              <div className="p-4">
+                <ErrorBox error={list.error} onRetry={list.reload} />
+              </div>
+            )}
+            {list.loading && !list.data && <TableSkeleton rows={8} cols={6} />}
+            {empty && (
+              <EmptyState
+                icon={<TextAa size={36} />}
+                title={noneAtAll ? "No relationships yet" : "No relationships match"}
+                description={
+                  noneAtAll
+                    ? "Create one from a wording pair you have confirmed, or import a spreadsheet below. The next run applies it and clears those rows on its own."
+                    : "Clear the search or widen the scope filter to see the rest, or create a relationship for the wording you were looking for."
+                }
+                action={
+                  <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+                    New relationship
+                  </Button>
+                }
+              />
+            )}
+            {list.data && rows.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Id</th>
+                      <th>Canonical and aliases</th>
+                      <th>Scope</th>
+                      <th>Applies to</th>
+                      <th>Provenance</th>
+                      <th>Created</th>
+                      <th className="text-right">Version</th>
+                      <th>Status</th>
+                      <th className="text-right">Used by</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.id} className={`clickable ${r.id === selectedId ? "selected" : ""}`} onClick={() => openRel(r.id)}>
+                        <td className="mono whitespace-nowrap">{r.id}</td>
+                        <td className="min-w-[16rem]">
+                          <div className={`font-medium ${r.active ? "text-ink" : "text-ink-3"}`}>{r.canonical}</div>
+                          {r.aliases.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {r.aliases.map((a) => (
+                                <span key={a} className="chip">
+                                  {a}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="text-ink-2">
+                          <Scope scope={r.scope} />
+                        </td>
+                        <td>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {r.doc_types.length === 0 ? (
+                              <span className="text-ink-3">All document types</span>
+                            ) : (
+                              r.doc_types.map((t) => (
+                                <span key={t} className="chip">
+                                  {t}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                          {r.item_anchors.length > 0 && (
+                            <div className="text-xs text-ink-3 mt-1 whitespace-nowrap">
+                              items <span className="mono text-ink-2">{r.item_anchors.join(", ")}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="text-ink-2">{PROVENANCE_LABEL[r.provenance] ?? sentence(r.provenance)}</td>
+                        <td className="whitespace-nowrap text-ink-2">
+                          {r.created_by}
+                          <div className="text-xs text-ink-3">{fmtDate(r.created_at)}</div>
+                        </td>
+                        <td className="text-right num">{r.version}</td>
+                        <td>
+                          <Badge tone={r.active ? "ok" : "neutral"}>{r.active ? "Active" : "Inactive"}</Badge>
+                        </td>
+                        <td className="text-right whitespace-nowrap">
+                          <span className="num font-medium">{r.usage ?? 0}</span>
+                          <div className="text-xs text-ink-3">comparison{r.usage === 1 ? "" : "s"}</div>
+                        </td>
+                      </tr>
                     ))}
-                  </td>
-                  <td className="mono">{r.scope}</td>
-                  <td className="mono">{r.item_anchors.join(", ") || <span className="text-gray-400">—</span>}</td>
-                  <td>{r.doc_types.join(", ") || <span className="text-gray-400">all</span>}</td>
-                  <td>{r.provenance}</td>
-                  <td className="whitespace-nowrap">
-                    {r.created_by} · {fmtDate(r.created_at)}
-                  </td>
-                  <td className="text-right tabular-nums">{r.version}</td>
-                  <td>{r.active ? "active" : <span className="text-red-800">inactive</span>}</td>
-                  <td className="text-right tabular-nums whitespace-nowrap">used by {r.usage ?? 0} comparison{r.usage === 1 ? "" : "s"}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={11} className="text-gray-500">
-                    No relationships match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
 
-      {selectedId && (
-        <Drawer
-          id={selectedId}
-          onClose={() => openRel(null)}
-          onChanged={() => {
-            list.reload();
-          }}
-        />
-      )}
+          {selectedId && (
+            <div className="w-full xl:w-[27rem] shrink-0 xl:sticky xl:top-[4.5rem]">
+              <RelationshipPanel id={selectedId} onClose={() => openRel(null)} onChanged={list.reload} />
+            </div>
+          )}
+        </div>
+
+        <Card>
+          <CardHead
+            title="Import and export"
+            description="A spreadsheet (.xlsx) or CSV with the same columns as the export. Every imported row is versioned and attributed, like any other change."
+          />
+          <div className="p-4 space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="File to import" htmlFor="terminology-import" className="min-w-[20rem]">
+                <input
+                  id="terminology-import"
+                  type="file"
+                  accept=".xlsx,.csv"
+                  className="block w-full text-sm text-ink-2 file:btn file:btn-sm file:mr-3"
+                  onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                />
+              </Field>
+              <Button icon={<FileArrowUp size={16} />} loading={importing} disabled={!importFile || importing} onClick={doImport}>
+                Import
+              </Button>
+              <AnchorButton href={api.terminology.exportUrl()} download icon={<FileXls size={16} />}>
+                Export .xlsx
+              </AnchorButton>
+            </div>
+            {importErr && <ErrorBox error={importErr} />}
+            {importMsg && (
+              <Notice kind={importMsg.errors.length ? "warn" : "good"}>
+                <div className="font-medium">{importMsg.summary}</div>
+                <div className="text-ink-2 mt-0.5">
+                  <span className="num">{importMsg.created}</span> created · <span className="num">{importMsg.updated}</span> updated · <span className="num">{importMsg.unchanged}</span> unchanged
+                </div>
+                {importMsg.errors.length > 0 && (
+                  <ul className="list-disc pl-5 mt-1.5 space-y-0.5 text-ink-2">
+                    {importMsg.errors.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                )}
+              </Notice>
+            )}
+          </div>
+        </Card>
+      </div>
+
       {creating && (
-        <CreateForm
+        <CreateDialog
           onClose={() => setCreating(false)}
           onCreated={(rel) => {
             setCreating(false);
             list.reload();
             openRel(rel.id);
+            toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: "The next run will apply it. Runs already recorded are unchanged." });
           }}
         />
       )}
@@ -207,31 +354,31 @@ export default function TerminologyPage() {
   );
 }
 
-function Drawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+/** The selected relationship: what it is, an edit that saves a new version, and the version history. */
+function RelationshipPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { name } = useReviewer();
+  const toast = useToast();
+  const uid = useId();
   const rel = useAsync(() => api.terminology.get(id), [id]);
   const hist = useAsync(() => api.terminology.history(id), [id]);
   const [form, setForm] = useState({ canonical: "", aliases: "", scope: "global", anchors: "", doc_types: [] as string[], notes: "", note: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
   useEffect(() => {
     if (!rel.data) return;
     setForm({ canonical: rel.data.canonical, aliases: rel.data.aliases.join("\n"), scope: rel.data.scope, anchors: rel.data.item_anchors.join(", "), doc_types: rel.data.doc_types, notes: rel.data.notes, note: "" });
     setErr(null);
-    setOk(null);
   }, [rel.data]);
 
-  const act = async (fn: () => Promise<Relationship>, msg: string) => {
+  const act = async (fn: () => Promise<Relationship>, msg: (r: Relationship) => { title: string; description?: string }) => {
     setBusy(true);
     setErr(null);
-    setOk(null);
     try {
       const r = await fn();
       rel.setData(r);
       hist.reload();
       onChanged();
-      setOk(msg);
+      toast({ tone: "ok", ...msg(r) });
     } catch (e) {
       setErr(errorMessage(e));
     } finally {
@@ -240,154 +387,197 @@ function Drawer({ id, onClose, onChanged }: { id: string; onClose: () => void; o
   };
   const save = () =>
     act(
-      () => api.terminology.update(id, { canonical: form.canonical.trim(), aliases: lines(form.aliases), scope: form.scope.trim(), item_anchors: lines(form.anchors), doc_types: form.doc_types, notes: form.notes, by: name, note: form.note.trim() || "edited in UI" }),
-      "Saved as a new version.",
+      () =>
+        api.terminology.update(id, {
+          canonical: form.canonical.trim(),
+          aliases: lines(form.aliases),
+          scope: form.scope.trim(),
+          item_anchors: lines(form.anchors),
+          doc_types: form.doc_types,
+          notes: form.notes,
+          by: name,
+          note: form.note.trim() || "edited in UI",
+        }),
+      (r) => ({ title: `Relationship ${id} saved`, description: `Now at version ${r.version}. Past runs keep the version they used.` }),
     );
 
   const r = rel.data;
   return (
-    <div className="fixed inset-y-0 right-0 z-30 w-[34rem] max-w-[95vw] bg-white border-l border-gray-400 shadow-xl overflow-y-auto">
-      <div className="panel-title sticky top-0 bg-white z-10">
-        <span className="mono normal-case text-sm text-gray-900">{id}</span>
-        {r && (r.active ? <span className="chip border-green-700 text-green-800">active</span> : <span className="chip border-red-700 text-red-800">inactive</span>)}
-        {r && <span className="normal-case font-normal text-gray-500">version {r.version}</span>}
-        <button className="btn btn-sm ml-auto" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <Card>
+      <CardHead
+        title={<span className="mono">{id}</span>}
+        count={r ? `version ${r.version}` : undefined}
+        actions={
+          <>
+            {r && <Badge tone={r.active ? "ok" : "neutral"}>{r.active ? "Active" : "Inactive"}</Badge>}
+            <Button variant="ghost" size="sm" iconOnly aria-label="Close relationship" onClick={onClose} icon={<X size={16} />} />
+          </>
+        }
+      />
       {rel.error && (
-        <div className="p-3">
+        <div className="p-4">
           <ErrorBox error={rel.error} onRetry={rel.reload} />
         </div>
       )}
-      {!r && !rel.error && <Loading />}
+      {!r && !rel.error && (
+        <div className="p-4">
+          <Loading label="Loading relationship" lines={4} />
+        </div>
+      )}
       {r && (
-        <div className="p-3 space-y-4 text-xs">
-          <div className="border border-gray-300 bg-gray-50 p-2">
-            <div className="label mb-1">Why it exists</div>
-            <p className={r.notes ? "" : "text-gray-400"}>{r.notes || "No notes recorded."}</p>
-            <dl className="kv mt-2">
+        <div className="p-4 space-y-4 text-sm">
+          <div>
+            <div className="label">Why it exists</div>
+            <p className={r.notes ? "text-ink-2" : "text-ink-4"}>{r.notes || "No notes recorded."}</p>
+            <dl className="kv mt-3">
               <dt>Provenance</dt>
-              <dd>{r.provenance}</dd>
+              <dd>{PROVENANCE_LABEL[r.provenance] ?? sentence(r.provenance)}</dd>
               <dt>Created</dt>
               <dd>
                 {r.created_by} · {fmtDate(r.created_at)}
               </dd>
               <dt>Updated</dt>
               <dd>{fmtDate(r.updated_at)}</dd>
-              <dt>Usage</dt>
-              <dd>used by {r.usage ?? 0} comparison{r.usage === 1 ? "" : "s"} across recorded runs</dd>
+              <dt>Used by</dt>
+              <dd>
+                <span className="num">{r.usage ?? 0}</span> comparison{r.usage === 1 ? "" : "s"} across recorded runs
+              </dd>
             </dl>
           </div>
 
-          <div className="space-y-2">
-            <div className="label">Edit (creates a new version)</div>
-            <label className="block">
-              <span className="text-gray-500">Canonical</span>
-              <input className="input w-full" value={form.canonical} onChange={(e) => setForm({ ...form, canonical: e.target.value })} />
-            </label>
-            <label className="block">
-              <span className="text-gray-500">Aliases (one per line)</span>
-              <textarea className="input w-full mono" rows={3} value={form.aliases} onChange={(e) => setForm({ ...form, aliases: e.target.value })} />
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="text-gray-500">Scope (global · family:&lt;prefix&gt; · sku:&lt;code&gt;)</span>
-                <input className="input w-full mono" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} />
-              </label>
-              <label className="block">
-                <span className="text-gray-500">Item anchors (BOM item numbers, comma-separated)</span>
-                <input className="input w-full mono" value={form.anchors} onChange={(e) => setForm({ ...form, anchors: e.target.value })} />
-              </label>
-            </div>
+          <Divider />
+
+          <div className="space-y-3">
             <div>
-              <span className="text-gray-500">Document types (none = all)</span>
-              <div className="flex gap-3 mt-0.5">
+              <h3 className="text-sm font-semibold text-ink">Edit</h3>
+              <p className="hint mt-0.5">Saving records a new version with your name and the change note. Runs already recorded keep the version they used.</p>
+            </div>
+            <Field label="Canonical term" htmlFor={`${uid}-canonical`}>
+              <input id={`${uid}-canonical`} className="input w-full" value={form.canonical} onChange={(e) => setForm({ ...form, canonical: e.target.value })} />
+            </Field>
+            <Field label="Aliases" hint="One per line." htmlFor={`${uid}-aliases`}>
+              <textarea id={`${uid}-aliases`} className="input w-full" rows={3} value={form.aliases} onChange={(e) => setForm({ ...form, aliases: e.target.value })} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Scope" hint={"global, family:<prefix> or sku:<code>"} htmlFor={`${uid}-scope`}>
+                <input id={`${uid}-scope`} className="input w-full mono" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} />
+              </Field>
+              <Field label="Item anchors" hint="BOM item numbers, comma-separated." htmlFor={`${uid}-anchors`}>
+                <input id={`${uid}-anchors`} className="input w-full mono" value={form.anchors} onChange={(e) => setForm({ ...form, anchors: e.target.value })} />
+              </Field>
+            </div>
+            <div role="group" aria-labelledby={`${uid}-doctypes`}>
+              <div className="label" id={`${uid}-doctypes`}>
+                Document types
+              </div>
+              <div className="flex flex-wrap gap-1.5">
                 {DOC_TYPES.map((t) => (
-                  <label key={t} className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={form.doc_types.includes(t)}
-                      onChange={(e) => setForm({ ...form, doc_types: e.target.checked ? [...form.doc_types, t] : form.doc_types.filter((x) => x !== t) })}
-                    />
+                  <Toggle
+                    key={t}
+                    on={form.doc_types.includes(t)}
+                    onClick={() => setForm({ ...form, doc_types: form.doc_types.includes(t) ? form.doc_types.filter((x) => x !== t) : [...form.doc_types, t] })}
+                  >
                     {t}
-                  </label>
+                  </Toggle>
                 ))}
               </div>
+              <p className="hint mt-1">{form.doc_types.length === 0 ? "None selected, so the rule applies to every document type." : "The rule applies only to the types selected."}</p>
             </div>
-            <label className="block">
-              <span className="text-gray-500">Notes</span>
-              <textarea className="input w-full" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-            </label>
-            <label className="block">
-              <span className="text-gray-500">Change note (why this edit)</span>
-              <input className="input w-full" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-            </label>
-            {!name && <div className="text-red-800">Enter your name in the top bar: every change records who made it.</div>}
-            <div className="flex gap-2 flex-wrap">
-              <button className="btn btn-primary" disabled={busy || !name || !form.canonical.trim()} onClick={save}>
-                {busy ? "Saving…" : "Save new version"}
-              </button>
+            <Field label="Notes" hint="Why this rule exists: the source, and who confirmed it." htmlFor={`${uid}-notes`}>
+              <textarea id={`${uid}-notes`} className="input w-full" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            </Field>
+            <Field label="Change note" hint="Why this edit." htmlFor={`${uid}-note`}>
+              <input id={`${uid}-note`} className="input w-full" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+            </Field>
+            {!name && <Notice kind="warn">Sign in at the top bar first: every change records who made it.</Notice>}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" icon={<Check size={16} />} loading={busy} disabled={busy || !name || !form.canonical.trim()} onClick={save}>
+                Save new version
+              </Button>
               {r.active ? (
-                <button className="btn btn-danger" disabled={busy || !name} onClick={() => act(() => api.terminology.deactivate(id, name), "Deactivated. Future runs will not use it; past runs are unchanged.")}>
+                <Button
+                  variant="danger"
+                  icon={<Prohibit size={16} />}
+                  disabled={busy || !name}
+                  onClick={() => act(() => api.terminology.deactivate(id, name), () => ({ title: `Relationship ${id} deactivated`, description: "Future runs will not use it. Past runs are unchanged." }))}
+                >
                   Deactivate
-                </button>
+                </Button>
               ) : (
-                <button className="btn" disabled={busy || !name} onClick={() => act(() => api.terminology.activate(id, name), "Activated.")}>
+                <Button
+                  icon={<CheckCircle size={16} />}
+                  disabled={busy || !name}
+                  onClick={() => act(() => api.terminology.activate(id, name), () => ({ title: `Relationship ${id} activated`, description: "The next run will apply it again." }))}
+                >
                   Activate
-                </button>
+                </Button>
               )}
             </div>
             {err && <ErrorBox error={err} />}
-            {ok && <Notice kind="good">{ok}</Notice>}
           </div>
 
+          <Divider />
+
           <div>
-            <div className="label mb-1">History</div>
-            {hist.error && <ErrorBox error={hist.error} onRetry={hist.reload} />}
+            <h3 className="text-sm font-semibold text-ink flex items-center gap-1.5">
+              <ClockCounterClockwise size={16} className="text-ink-3" aria-hidden />
+              Version history
+            </h3>
+            {hist.error && (
+              <div className="mt-2">
+                <ErrorBox error={hist.error} onRetry={hist.reload} />
+              </div>
+            )}
+            {!hist.data && !hist.error && <Loading label="Loading history" lines={3} />}
             {hist.data && (
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Ver.</th>
-                    <th>Change</th>
-                    <th>By</th>
-                    <th>When</th>
-                    <th>Snapshot</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...hist.data].reverse().map((h) => (
-                    <tr key={h.version}>
-                      <td className="tabular-nums">{h.version}</td>
-                      <td>
-                        {h.change_type}
-                        {h.change_note && <div className="text-gray-600">“{h.change_note}”</div>}
-                      </td>
-                      <td>{h.changed_by}</td>
-                      <td className="whitespace-nowrap">{fmtDate(h.changed_at)}</td>
-                      <td className="text-gray-700">
-                        <b>{h.payload.canonical}</b> = {h.payload.aliases.join(" | ")}
-                        <div className="text-2xs text-gray-500 mono">
-                          {h.payload.scope}
-                          {h.payload.item_anchors.length ? ` · anchors ${h.payload.item_anchors.join(", ")}` : ""}
-                          {h.payload.active ? "" : " · inactive"}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ol className="mt-3">
+                {[...hist.data].reverse().map((h, i, arr) => (
+                  <li key={h.version} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${i === 0 ? "bg-brand-600" : "bg-line-2"}`} aria-hidden />
+                      {i < arr.length - 1 && <span className="w-px flex-1 bg-line my-1" aria-hidden />}
+                    </div>
+                    <div className={`min-w-0 flex-1 ${i < arr.length - 1 ? "pb-4" : ""}`}>
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span className="font-medium text-ink">
+                          Version <span className="num">{h.version}</span>
+                        </span>
+                        <span className="text-xs text-ink-2">{sentence(h.change_type)}</span>
+                        {i === 0 && <span className="chip">Current</span>}
+                      </div>
+                      <div className="text-xs text-ink-3">
+                        {h.changed_by} · {fmtDate(h.changed_at)}
+                      </div>
+                      {h.change_note && <p className="text-ink-2 mt-1">“{h.change_note}”</p>}
+                      <div className="text-xs text-ink-3 mt-1 break-words">
+                        <span className="text-ink-2 font-medium">{h.payload.canonical}</span>
+                        {h.payload.aliases.length > 0 && <> = {h.payload.aliases.join(" | ")}</>}
+                      </div>
+                      <div className="text-xs text-ink-3 mt-0.5">
+                        <Scope scope={h.payload.scope} />
+                        {h.payload.item_anchors.length > 0 && (
+                          <>
+                            {" · anchors "}
+                            <span className="mono">{h.payload.item_anchors.join(", ")}</span>
+                          </>
+                        )}
+                        {h.payload.active ? "" : " · inactive"}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             )}
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
-function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: (r: Relationship) => void }) {
+function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (r: Relationship) => void }) {
   const { name } = useReviewer();
+  const uid = useId();
   const [form, setForm] = useState({ canonical: "", aliases: "", scope: "global", anchors: "", doc_types: [] as string[], notes: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -413,55 +603,65 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: (r
     }
   };
   return (
-    <div className="fixed inset-0 z-40 bg-black/30 flex items-center justify-center" onClick={onClose}>
-      <div className="panel w-[36rem] max-w-[95vw]" onClick={(e) => e.stopPropagation()}>
-        <div className="panel-title">New relationship (manual rule)</div>
-        <div className="p-3 space-y-2 text-xs">
-          <label className="block">
-            <span className="text-gray-500">Canonical term (usually the label wording)</span>
-            <input className="input w-full" value={form.canonical} onChange={(e) => setForm({ ...form, canonical: e.target.value })} autoFocus />
-          </label>
-          <label className="block">
-            <span className="text-gray-500">Aliases (one per line; BOM / drawing wordings)</span>
-            <textarea className="input w-full mono" rows={3} value={form.aliases} onChange={(e) => setForm({ ...form, aliases: e.target.value })} />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="text-gray-500">Scope</span>
-              <input className="input w-full mono" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} placeholder="global | family:1295108 | sku:1295108NS" />
-            </label>
-            <label className="block">
-              <span className="text-gray-500">Item anchors (optional)</span>
-              <input className="input w-full mono" value={form.anchors} onChange={(e) => setForm({ ...form, anchors: e.target.value })} placeholder="4440003, 0703450" />
-            </label>
-          </div>
-          <div>
-            <span className="text-gray-500">Document types (none = all)</span>
-            <div className="flex gap-3 mt-0.5">
-              {DOC_TYPES.map((t) => (
-                <label key={t} className="flex items-center gap-1">
-                  <input type="checkbox" checked={form.doc_types.includes(t)} onChange={(e) => setForm({ ...form, doc_types: e.target.checked ? [...form.doc_types, t] : form.doc_types.filter((x) => x !== t) })} />
-                  {t}
-                </label>
-              ))}
-            </div>
-          </div>
-          <label className="block">
-            <span className="text-gray-500">Notes — why this rule exists (source, who confirmed it)</span>
-            <textarea className="input w-full" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          </label>
-          {!name && <div className="text-red-800">Enter your name in the top bar first.</div>}
-          {err && <ErrorBox error={err} />}
-        </div>
-        <div className="px-3 py-2 border-t border-gray-200 flex justify-end gap-2">
-          <button className="btn" onClick={onClose} disabled={busy}>
+    <Dialog
+      open
+      onClose={onClose}
+      title="New relationship"
+      description="A manual rule: one canonical wording and the alternatives that mean the same thing."
+      width="lg"
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button className="btn btn-primary" onClick={submit} disabled={busy || !name || !form.canonical.trim() || lines(form.aliases).length === 0}>
-            {busy ? "Creating…" : "Create"}
-          </button>
-        </div>
+          </Button>
+          <Button variant="primary" icon={<Plus size={16} />} loading={busy} disabled={busy || !name || !form.canonical.trim() || lines(form.aliases).length === 0} onClick={submit}>
+            Create relationship
+          </Button>
+        </>
+      }
+    >
+      <Field label="Canonical term" hint="Usually the label wording." htmlFor={`${uid}-canonical`}>
+        <input id={`${uid}-canonical`} className="input w-full" value={form.canonical} onChange={(e) => setForm({ ...form, canonical: e.target.value })} autoFocus />
+      </Field>
+      <Field label="Aliases" hint="One per line: the BOM and drawing wordings that mean the same thing." htmlFor={`${uid}-aliases`}>
+        <textarea id={`${uid}-aliases`} className="input w-full" rows={3} value={form.aliases} onChange={(e) => setForm({ ...form, aliases: e.target.value })} />
+      </Field>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="Scope" hint="Where the rule applies." htmlFor={`${uid}-scope`}>
+          <input
+            id={`${uid}-scope`}
+            className="input w-full mono"
+            value={form.scope}
+            onChange={(e) => setForm({ ...form, scope: e.target.value })}
+            placeholder="global | family:1295108 | sku:1295108NS"
+          />
+        </Field>
+        <Field label="Item anchors" hint="Optional: limit the rule to these BOM item numbers." htmlFor={`${uid}-anchors`}>
+          <input id={`${uid}-anchors`} className="input w-full mono" value={form.anchors} onChange={(e) => setForm({ ...form, anchors: e.target.value })} placeholder="4440003, 0703450" />
+        </Field>
       </div>
-    </div>
+      <div role="group" aria-labelledby={`${uid}-doctypes`}>
+        <div className="label" id={`${uid}-doctypes`}>
+          Document types
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {DOC_TYPES.map((t) => (
+            <Toggle
+              key={t}
+              on={form.doc_types.includes(t)}
+              onClick={() => setForm({ ...form, doc_types: form.doc_types.includes(t) ? form.doc_types.filter((x) => x !== t) : [...form.doc_types, t] })}
+            >
+              {t}
+            </Toggle>
+          ))}
+        </div>
+        <p className="hint mt-1">{form.doc_types.length === 0 ? "None selected, so the rule applies to every document type." : "The rule applies only to the types selected."}</p>
+      </div>
+      <Field label="Notes" hint="Why this rule exists: the source, and who confirmed it." htmlFor={`${uid}-notes`}>
+        <textarea id={`${uid}-notes`} className="input w-full" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+      </Field>
+      {!name && <Notice kind="warn">Sign in at the top bar first: every relationship records who created it.</Notice>}
+      {err && <ErrorBox error={err} />}
+    </Dialog>
   );
 }

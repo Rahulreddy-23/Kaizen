@@ -1,78 +1,314 @@
+/* Kaizen Cross-Check reviewer interface. Tokens and rules: docs/design/DESIGN.md.
+   Fonts ship with the bundle so the tool works offline. */
+@import "@fontsource-variable/geist";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --canvas: #f4f6f9;
+    --surface: #ffffff;
+    --surface-2: #edf1f6;
+    --line: #dce3ec;
+    --line-2: #b8c4d4;
+    --ink: #0f1f35;
+    --ink-2: #3d4f66;
+    --ink-3: #5c6e86;
+    --brand: #194890;
+    --brand-deep: #12305f;
+    --accent: #f07822;
+    --accent-soft: #fdebdd;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-inout: cubic-bezier(0.77, 0, 0.175, 1);
+    color-scheme: light;
+  }
   html {
-    font-size: 13px;
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
   }
   body {
-    @apply bg-[#f3f4f6] text-gray-900 antialiased;
+    @apply bg-canvas text-ink font-sans text-base antialiased;
+    font-feature-settings: "cv11", "ss01";
+    caret-color: var(--accent);
+  }
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+  /* The parts of the page we did not draw still carry the design. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-2) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--line-2);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 6px;
   }
   h1 {
-    @apply text-base font-semibold text-gray-900;
+    @apply text-2xl font-semibold text-ink;
+    text-wrap: balance;
+  }
+  h2 {
+    @apply text-md font-semibold text-ink;
+    text-wrap: balance;
   }
   a {
-    @apply text-gray-900;
+    @apply text-brand-600;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+  a:hover {
+    @apply text-brand-500;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  b,
+  strong {
+    @apply font-semibold;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
-  .panel {
-    @apply bg-white border border-gray-300 rounded-sm;
-  }
-  .panel-title {
-    @apply px-3 py-1.5 border-b border-gray-200 text-2xs font-semibold uppercase tracking-wide text-gray-600 flex items-center gap-2;
-  }
+  /* ---- pressables ------------------------------------------------------------------- */
   .btn {
-    @apply inline-flex items-center gap-1 px-2.5 py-1 border border-gray-400 bg-white text-gray-800 text-xs font-medium rounded-sm whitespace-nowrap hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-md text-sm font-medium whitespace-nowrap select-none
+      bg-surface text-ink border border-line-2
+      transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-out;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn:hover:not(:disabled) {
+      @apply bg-surface-2 border-ink-3;
+    }
   }
   .btn-primary {
-    @apply border-gray-900 bg-gray-900 text-white hover:bg-gray-700;
+    @apply bg-accent-500 text-ink border-accent-500;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover:not(:disabled) {
+      @apply bg-accent-400 border-accent-400;
+    }
+  }
+  .btn-primary:active:not(:disabled) {
+    @apply bg-accent-600 border-accent-600;
+  }
+  .btn-ghost {
+    @apply bg-transparent border-transparent text-ink-2;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn-ghost:hover:not(:disabled) {
+      @apply bg-surface-2 border-transparent text-ink;
+    }
   }
   .btn-danger {
-    @apply border-red-700 text-red-800 hover:bg-red-50;
+    @apply text-bad border-bad/40 bg-surface;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .btn-danger:hover:not(:disabled) {
+      @apply bg-bad-soft border-bad;
+    }
   }
   .btn-sm {
-    @apply px-1.5 py-0.5 text-2xs;
+    @apply h-8 px-2.5 text-xs rounded;
   }
+  .btn-lg {
+    @apply h-11 px-5 text-base rounded-lg;
+  }
+  .btn-icon {
+    @apply w-9 px-0;
+  }
+  .btn-icon.btn-sm {
+    @apply w-8;
+  }
+
+  /* ---- fields ----------------------------------------------------------------------- */
   .input {
-    @apply border border-gray-400 bg-white px-2 py-1 text-xs rounded-sm focus:outline-none focus:border-gray-900 disabled:bg-gray-100;
+    @apply h-9 px-3 rounded-md text-sm bg-surface text-ink border border-line-2 placeholder:text-ink-4
+      transition-[border-color,box-shadow] duration-150 ease-out;
   }
-  .tbl {
-    @apply w-full text-xs border-collapse;
+  .input:hover:not(:disabled):not(:focus) {
+    @apply border-ink-3;
   }
-  .tbl th {
-    @apply text-left font-semibold text-gray-600 uppercase tracking-wide text-2xs px-2 py-1.5 border-b border-gray-300 bg-gray-50 whitespace-nowrap;
+  .input:focus {
+    @apply outline-none border-accent-500;
+    box-shadow: 0 0 0 3px #fdebdd;
   }
-  .tbl td {
-    @apply px-2 py-1 border-b border-gray-200 align-top;
+  .input:disabled {
+    @apply bg-surface-2 text-ink-3 cursor-not-allowed;
   }
-  .tbl tr.clickable {
-    @apply cursor-pointer;
+  textarea.input {
+    @apply h-auto py-2 leading-5;
   }
-  .tbl tr.clickable:hover td {
-    @apply bg-amber-50;
+  select.input {
+    @apply pr-8 appearance-none bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 256 256' fill='%233d4f66'%3E%3Cpath d='M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80a8 8 0 0 1 11.32-11.32L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32z'/%3E%3C/svg%3E");
+    background-position: right 8px center;
   }
-  .tbl tr.selected td {
-    @apply bg-amber-100;
-  }
-  .mono {
-    @apply font-mono text-[12px];
-  }
-  .kv {
-    @apply grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs;
-  }
-  .kv dt {
-    @apply text-gray-500 whitespace-nowrap;
-  }
-  .kv dd {
-    @apply text-gray-900 break-words min-w-0;
+  .input-sm {
+    @apply h-8 px-2.5 text-xs;
   }
   .label {
-    @apply text-2xs uppercase tracking-wide text-gray-500 font-semibold;
+    @apply block text-xs font-medium text-ink-2 mb-1;
   }
+  .hint {
+    @apply text-xs text-ink-3;
+  }
+
+  /* ---- surfaces --------------------------------------------------------------------- */
+  .card {
+    @apply bg-surface border border-line rounded-lg;
+  }
+  .card-head {
+    @apply flex items-center gap-3 px-4 py-3 border-b border-line;
+  }
+  .card-title {
+    @apply text-md font-semibold text-ink;
+  }
+  .card-body {
+    @apply p-4;
+  }
+  /* Aliases kept for pages not yet migrated. */
+  .panel {
+    @apply card;
+  }
+  .panel-title {
+    @apply card-head text-sm font-semibold text-ink;
+  }
+
+  /* ---- data ------------------------------------------------------------------------- */
+  .tbl {
+    @apply w-full text-sm border-collapse;
+  }
+  .tbl th {
+    @apply sticky top-0 z-10 text-left text-xs font-medium text-ink-2 px-3 py-2 bg-surface-2 border-b border-line whitespace-nowrap;
+  }
+  .tbl td {
+    @apply px-3 py-2.5 border-b border-line align-top;
+  }
+  .tbl tr:last-child td {
+    @apply border-b-0;
+  }
+  .tbl tr.clickable {
+    @apply cursor-pointer transition-colors duration-150;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .tbl tr.clickable:hover td {
+      @apply bg-brand-50;
+    }
+  }
+  .tbl tr.selected td,
+  .tbl tr[data-selected="true"] td {
+    @apply bg-brand-100;
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .mono {
+    @apply font-mono text-[0.8125em];
+    font-variant-numeric: tabular-nums;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .kv {
+    @apply grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm;
+  }
+  .kv dt {
+    @apply text-ink-3 whitespace-nowrap;
+  }
+  .kv dd {
+    @apply text-ink break-words min-w-0;
+  }
+
+  /* ---- small things ----------------------------------------------------------------- */
   .chip {
-    @apply inline-block border border-gray-300 bg-gray-50 px-1 py-0 text-2xs rounded-sm text-gray-700;
+    @apply inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs font-medium bg-surface-2 text-ink-2 border border-transparent whitespace-nowrap;
+  }
+  .kbd {
+    @apply inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded text-[11px] font-medium font-mono text-ink-2 bg-surface border border-line-2 shadow-[0_1px_0_#b8c4d4];
+  }
+  .skeleton {
+    @apply rounded bg-[linear-gradient(90deg,#edf1f6_25%,#f6f8fb_50%,#edf1f6_75%)] bg-[length:200%_100%] animate-shimmer;
+  }
+  /* Entrances are transitions from @starting-style, so the resting state is always the visible one:
+     if the animation never runs (hidden tab, reduced motion, old browser) nothing is left invisible. */
+  .stagger > * {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+  }
+  .stagger > *:nth-child(2) { transition-delay: 40ms; }
+  .stagger > *:nth-child(3) { transition-delay: 80ms; }
+  .stagger > *:nth-child(4) { transition-delay: 120ms; }
+  .stagger > *:nth-child(5) { transition-delay: 160ms; }
+  .stagger > *:nth-child(6) { transition-delay: 200ms; }
+  .stagger > *:nth-child(7) { transition-delay: 240ms; }
+  .stagger > *:nth-child(n + 8) { transition-delay: 280ms; }
+  .enter-pop {
+    opacity: 1;
+    transform: scale(1);
+    transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  }
+  .enter-fade {
+    opacity: 1;
+    transition: opacity 160ms ease-out;
+  }
+  .bar-enter {
+    transform: scaleX(1);
+    transform-origin: left;
+    transition: transform 600ms var(--ease-out);
+  }
+}
+
+@starting-style {
+  .stagger > * {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  .enter-pop {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  .enter-fade {
+    opacity: 0;
+  }
+  .bar-enter {
+    transform: scaleX(0);
   }
 }

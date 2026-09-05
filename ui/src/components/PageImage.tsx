@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { BBox } from "../types";
+import { Skeleton } from "./ui";
 
 interface Props {
   /** Page PNG URL, or null when the source has no page image (spreadsheet). */
@@ -55,20 +56,28 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, fallback, max
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, scale, bboxKey]);
 
-  if (!src) return <div className="border border-gray-300 bg-gray-50 p-3 text-xs">{fallback}</div>;
+  if (!src) return <div className="rounded-md border border-line bg-surface-2/60 p-4">{fallback}</div>;
 
   return (
-    <div ref={containerRef} className="relative border border-gray-300 bg-gray-200 overflow-auto" style={{ maxHeight }}>
-      {status === "loading" && <div className="p-3 text-xs text-gray-500">Rendering page…</div>}
+    <div ref={containerRef} className="relative rounded-md border border-line bg-surface-2 overflow-auto" style={{ maxHeight }}>
+      {status === "loading" && (
+        <div className="absolute inset-0 p-4 space-y-3" aria-hidden>
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      )}
       {status === "error" ? (
-        <div className="p-3 text-xs">{fallback}</div>
+        <div className="p-4 text-sm">{fallback}</div>
       ) : (
         <div className={`relative ${fit ? "w-full" : "w-max"}`}>
           <img
             ref={imgRef}
             src={src}
             alt={alt}
-            className={`block h-auto ${fit ? "w-full" : "max-w-none"}`}
+            className={`block h-auto transition-opacity duration-200 ease-out ${fit ? "w-full" : "max-w-none"} ${status === "ok" ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
               setStatus("ok");
               measure();
@@ -77,13 +86,13 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, fallback, max
           />
           {bbox && scale !== null && status === "ok" && (
             <div
-              className="absolute border-2 border-red-600 pointer-events-none"
+              className="absolute rounded-sm border-2 border-accent-500 pointer-events-none enter-pop"
               style={{
-                left: bbox.x0 * scale - 3,
-                top: bbox.y0 * scale - 3,
-                width: (bbox.x1 - bbox.x0) * scale + 6,
-                height: (bbox.y1 - bbox.y0) * scale + 6,
-                boxShadow: "0 0 0 2px rgba(255,255,255,0.85)",
+                left: bbox.x0 * scale - 4,
+                top: bbox.y0 * scale - 4,
+                width: (bbox.x1 - bbox.x0) * scale + 8,
+                height: (bbox.y1 - bbox.y0) * scale + 8,
+                boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 0 0 9999px rgba(15,31,53,0.06)",
               }}
             />
           )}
