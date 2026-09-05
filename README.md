@@ -75,7 +75,7 @@ rm -rf kaizen-workspace
 | `review import <run.json> <file.xlsx> --slot --reviewer [--dry-run] [--force]` | Optional Excel round-trip: apply decisions recorded in the exported workbook. |
 | `review policy [--set required\|optional]`, `review sessions [--end <name>]` | Blind-review policy (server-side, never changeable from the UI); open reviewer sessions. |
 | `runs list`, `runs relationships <run>` | Runs in the workspace; reconstruct the exact relationship versions a run used. |
-| `dataset build` | Regenerate the synthetic golden dataset (byte-stable). |
+| `dataset build`, `dataset corrected <sku>` | Regenerate the synthetic golden dataset (byte-stable); write a corrected copy of one SKU set for rehearsing verify-and-close. |
 
 ## Architecture
 ```

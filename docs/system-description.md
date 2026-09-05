@@ -49,7 +49,7 @@ the Excel tracker and a marked-up BOM.
 | `src/kaizen/api/` | FastAPI backend for the reviewer UI | `create_app` |
 | `src/kaizen/cli/` | Typer command line | `kaizen` |
 | `ui/` | React + Vite reviewer interface | `ui/src/App.tsx` |
-| `tests/` | 421 unit, integration and golden test cases | `pytest` |
+| `tests/` | 428 unit, integration and golden test cases | `pytest` |
 
 ---
 
@@ -341,8 +341,8 @@ independent-review process needs on a single reviewer workstation. A shared depl
 ### Measured review effort (`review/store.py`, `review/business.py`)
 
 Opening a row through the API with a session records `row_views(run, row, slot, opened_at)`. The next
-decision by that slot on that row stores `seconds_spent` when the gap is at most `MAX_TIMED_SECONDS`
-(15 minutes); bulk accepts and Excel imports pass `timed=False` and are never counted. `ReviewStore.timing`
+decision by that slot on that row stores `seconds_spent` when the gap is between `MIN_TIMED_SECONDS`
+(5 seconds, below which it is a click, not a review) and `MAX_TIMED_SECONDS` (15 minutes); bulk accepts and Excel imports pass `timed=False` and are never counted. `ReviewStore.timing`
 returns the sample count, median and mean. `business_case(run, assumptions, timing)` uses the measured
 median as minutes per validated row once `MIN_TIMED_SAMPLES` (10) decisions are timed, reports
 `effort_basis` as `measured` or `assumed`, and always states the sample size.
@@ -525,7 +525,7 @@ session.
 | `demo` | Deterministic demo run on the golden dataset |
 | `serve` | Local API and reviewer UI |
 | `perf` | Timing and peak memory across dataset sizes |
-| `dataset build` | Regenerate the byte-stable synthetic dataset |
+| `dataset build`, `dataset corrected` | Regenerate the byte-stable synthetic dataset; write a corrected copy of one SKU set (seeded discrepancies removed) |
 | `terminology …` | Ten subcommands managing relationships |
 | `runs list`, `runs relationships` | Runs in the workspace; the exact relationship versions a run used |
 | `certificate` | One-page certificate per SKU, or one SKU |
@@ -632,11 +632,11 @@ migrations for columns added after the first release.
 
 | Location | Tests | Covers |
 |---|---|---|
-| `tests/unit/` | 323 functions in 48 files | Models, parsers, normalisation, ladder, assignment, each check, terminology, review, sessions, review timing, worklist, run diff, certificate, Excel round-trip, reporting, evaluation, datasets, AI providers, adversarial and audit-regression cases |
+| `tests/unit/` | 328 functions in 49 files | Models, parsers, normalisation, ladder, assignment, each check, terminology, review, sessions, review timing, worklist, run diff, certificate, Excel round-trip, reporting, evaluation, datasets, AI providers, adversarial and audit-regression cases |
 | `tests/integration/` | 29 functions in 3 files | CLI end to end, terminology CLI, HTTP API contract |
 | `tests/golden/` | 8 functions in 1 file | Accuracy floors against the golden ground truth, byte-stable dataset build |
 
-Total 360 test functions, which pytest expands to **421 test cases** because some are parametrised. All pass, in about a minute, fully offline. `tests/conftest.py` forces an isolated
+Total 365 test functions, which pytest expands to **428 test cases** because some are parametrised. All pass, in about a minute, fully offline. `tests/conftest.py` forces an isolated
 workspace per test so no test can write into the repository.
 
 `.github/workflows/ci.yml` runs on every pull request and every push to main: ruff lint, the full suite on

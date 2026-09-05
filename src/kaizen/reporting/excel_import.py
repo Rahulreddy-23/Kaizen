@@ -111,6 +111,7 @@ def import_decisions(workspace, run: Run, path: Path | str, slot: int, reviewer:
     result = RoundTripResult(run_id, slot, reviewer, dry_run, force, exported_at)
     review = ReviewStore(workspace.db)
     known = {r.row_id for r in run.results}
+    finalized = set(review.finals(run_id))
     decision_col, comment_col = SLOT_COLUMNS[slot]
 
     for name in CHECK_SHEETS:
@@ -136,6 +137,9 @@ def import_decisions(workspace, run: Run, path: Path | str, slot: int, reviewer:
                 result.invalid.append({"row_id": rid, "sheet": name, "value": str(raw), "reason": parsed})
                 continue
             decision, override = parsed
+            if rid in finalized:
+                result.invalid.append({"row_id": rid, "sheet": name, "value": str(raw), "reason": "row is finalized; the final decision stands (the UI disables decisions on finalized rows too)"})
+                continue
             comment = str(sheet.cell(row=r, column=cols[comment_col]).value or "").strip() if comment_col in cols else ""
             existing = review.decisions(run_id, rid).get(slot)
             if existing and existing.decision == decision and (existing.override_classification or None) == override and (existing.comment or "") == comment:

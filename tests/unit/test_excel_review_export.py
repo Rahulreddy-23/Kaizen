@@ -60,3 +60,29 @@ def test_undecided_rows_keep_open_status(ws_run, tmp_path):
     r = next(sheet.iter_rows(min_row=2, values_only=True))
     assert r[col["Final Status"]] == "OPEN" and r[col["Review State"]] == "ENGINE_RECOMMENDED"
     assert [c for c in BOM_LABEL_COLUMNS if c in header] == BOM_LABEL_COLUMNS
+
+
+def test_accuracy_sheet_survives_a_later_export_from_the_workspace(tmp_path):
+    """`kaizen demo` writes accuracy.json beside the run; a UI export without metrics must pick it up, so the
+    Accuracy sheet does not vanish the moment someone exports the workbook again."""
+    import json
+
+    from kaizen.datasets.build import build_golden
+    from kaizen.evaluation.ground_truth import load_ground_truth
+    from kaizen.evaluation.harness import evaluate
+    from kaizen.models import Thresholds
+    from kaizen.pipeline import run_folder, save_run
+    from kaizen.reporting.excel import export_with_review
+    from kaizen.workspace import Workspace
+
+    golden = build_golden(tmp_path / "golden")
+    ws = Workspace(tmp_path / "ws")
+    run = run_folder(golden, ws.repository.store(), Thresholds())
+    out = ws.runs_dir / run.metadata.run_id
+    ws.register_run(run, save_run(run, out / "run.json"))
+    metrics = evaluate(run, load_ground_truth(golden / "ground-truth.json")).to_dict()
+    (out / "accuracy.json").write_text(json.dumps(metrics))
+    wb = openpyxl.load_workbook(export_with_review(ws, run, out / "report.xlsx"))
+    assert "Accuracy" in wb.sheetnames
+    wb2 = openpyxl.load_workbook(export_with_review(ws, run, tmp_path / "elsewhere.xlsx"))
+    assert "Accuracy" not in wb2.sheetnames, "only a sidecar next to the target workbook is used"

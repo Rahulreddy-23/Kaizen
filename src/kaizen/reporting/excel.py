@@ -56,6 +56,12 @@ def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str,
 
     review = ReviewStore(workspace.db)
     rid = run.metadata.run_id
+    if metrics is None:
+        sidecar = Path(path).parent / "accuracy.json"  # written by `kaizen demo` / `kaizen eval` beside the run
+        if sidecar.exists():
+            import json
+
+            metrics = json.loads(sidecar.read_text(encoding="utf-8"))
     decisions = review.all_decisions(rid)
     finals = review.finals(rid)
     states = {r.row_id: ReviewStore.state_of(decisions.get(r.row_id, {}), finals.get(r.row_id)) for r in run.results}

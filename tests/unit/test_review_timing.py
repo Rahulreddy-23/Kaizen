@@ -114,3 +114,17 @@ def test_too_few_timed_decisions_keep_the_assumption_but_are_reported(tmp_path):
     assert bc.effort_basis == "assumed" and bc.timed_decisions == MIN_TIMED_SAMPLES - 1
     assert bc.measured_minutes_per_validation_row == 0.75
     assert bc.minutes_per_validation_row_used == BusinessAssumptions().minutes_per_validation_row
+
+
+def test_implausibly_short_gaps_are_not_counted_either(store):
+    """Two seconds is a click, not a review: it would drag the measured median towards zero and turn the
+    business case into a boast. Below MIN_TIMED_SECONDS the decision is stored untimed."""
+    from kaizen.review.store import MIN_TIMED_SECONDS
+
+    assert 0 < MIN_TIMED_SECONDS <= 10
+    store.mark_opened("run1", "R-1", slot=1, at="2026-09-05T10:00:00+00:00")
+    d = store.decide("run1", "R-1", slot=1, reviewer="Dharma", decision="ACCEPT", now="2026-09-05T10:00:02+00:00")
+    assert d.seconds_spent is None
+    store.mark_opened("run1", "R-2", slot=1, at="2026-09-05T10:00:00+00:00")
+    assert store.decide("run1", "R-2", slot=1, reviewer="Dharma", decision="ACCEPT", now="2026-09-05T10:00:06+00:00").seconds_spent == 6
+    assert store.timing("run1").samples == 1

@@ -176,3 +176,19 @@ def test_summary_reads_as_a_sentence(env, tmp_path):
     res = import_decisions(ws, run, path, slot=1, reviewer="Dharma")
     text = res.summary()
     assert "1 applied" in text and "slot 1" in text and "Dharma" in text
+
+
+def test_a_finalized_row_is_not_reopened_by_an_import(env, tmp_path):
+    """The UI disables decisions once a row is finalized; the importer must not be a back door."""
+    ws, run = env
+    review = ReviewStore(ws.db)
+    r1 = _mismatch_rows(run, 1)[0]
+    review.decide(run.metadata.run_id, r1, 1, "Dharma", "CONFIRM_DISCREPANCY")
+    review.decide(run.metadata.run_id, r1, 2, "Hemant", "CONFIRM_DISCREPANCY")
+    review.finalize(run.metadata.run_id, r1, "CONFIRM_DISCREPANCY", by="Dharma", note="meeting")
+    path = _export(ws, run, tmp_path / "r.xlsx")
+    _edit(path, {r1: {"Reviewer Decision": "ACCEPT"}})
+    res = import_decisions(ws, run, path, slot=1, reviewer="Dharma")
+    assert res.applied == [] and [i["row_id"] for i in res.invalid] == [r1]
+    assert "finalized" in res.invalid[0]["reason"].lower()
+    assert review.decisions(run.metadata.run_id, r1)[1].decision == "CONFIRM_DISCREPANCY"

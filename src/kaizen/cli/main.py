@@ -487,6 +487,10 @@ def demo(
     ws.register_run(r, path)
     gt = src / "ground-truth.json"
     metrics = evaluate(r, load_ground_truth(gt)).to_dict() if gt.exists() else None
+    if metrics:
+        import json as _json
+
+        (out_dir / "accuracy.json").write_text(_json.dumps(metrics, indent=2), encoding="utf-8")  # keeps the Accuracy sheet on later exports
     from kaizen.reporting.excel import export_with_review
 
     export_with_review(ws, r, out_dir / "report.xlsx", metrics=metrics)
@@ -510,6 +514,21 @@ def perf(
         d = m.to_dict()
         typer.echo(f"{m.skus:>5} {m.documents:>5} {m.rows:>7} {m.ingest_seconds:>9.2f} {m.matching_seconds:>8.2f} {m.report_seconds:>9.2f} {m.total_seconds:>8.2f} {d['seconds_per_sku']:>6.2f} {str(m.peak_memory_mb):>8}")
     typer.echo(f"Wrote {out / 'perf-results.json'}")
+
+
+@dataset_app.command("corrected")
+def dataset_corrected(
+    sku: Annotated[str, typer.Argument(help="Parent item of the SKU set to correct, e.g. 1295108FNS.")],
+    out: Annotated[Path, typer.Option("--out", "-o", help="Destination folder (the SKU folder is written inside it).")] = Path("out/corrected"),
+) -> None:
+    """Write a corrected copy of one golden SKU set (seeded discrepancies removed) for rehearsing verify-and-close."""
+    from kaizen.datasets.build import build_corrected
+
+    try:
+        root = build_corrected(out, sku)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    typer.echo(f"Corrected copy of {sku} written under {root}. Run it with `kaizen run {root}` or the UI's 'Run a local folder path', then Verify & close.")
 
 
 @dataset_app.command("build")

@@ -66,7 +66,7 @@ Evidence: `{doc_id, doc_type, file, file_name, sha256, page, bbox:{x0,y0,x1,y1}|
 Unconfirmed fuzzy pairings ranked by the rows they would auto-clear once approved as relationships (rows carrying a discrepancy or an ambiguity are `still_review`). Approval goes through `mining/approve`; nothing is created automatically.
 
 ## Review effort (measured)
-Opening a row (`GET .../results/{row_id}`) with a session records the time for that reviewer's slot; the next decision on that row by the same slot stores `seconds_spent` (only when the gap is at most 15 minutes; bulk accept and Excel imports are never timed). `GET .../business-case` uses the median of timed decisions once there are at least 10 (`effort_basis: "measured"`, `timed_decisions`, `measured_minutes_per_validation_row`, `minutes_per_validation_row_used`); below that it keeps the brief's assumption and says so.
+Opening a row (`GET .../results/{row_id}`) with a session records the time for that reviewer's slot; the next decision on that row by the same slot stores `seconds_spent` (only when the gap is between 5 seconds and 15 minutes; bulk accept and Excel imports are never timed). `GET .../business-case` uses the median of timed decisions once there are at least 10 (`effort_basis: "measured"`, `timed_decisions`, `measured_minutes_per_validation_row`, `minutes_per_validation_row_used`); below that it keeps the brief's assumption and says so.
 
 ## Certificate, run diff, optional Excel round-trip
 | Method | Path | Body / params | Returns |

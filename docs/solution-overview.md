@@ -205,10 +205,10 @@ discrepancies whose locations we know. Then we measured.
 | False alarms | 0 |
 | Rows scored across the six checks | 1,049 |
 | Rows cleared automatically in the demo set | 82 percent (1,014 of 1,237 reviewable rows) |
-| Automated tests in the code base | 421, all passing, run on every code change |
+| Automated tests in the code base | 428, all passing, run on every code change |
 | Speed | 100 SKUs in under 20 seconds on a laptop |
 
-Every code change goes through a continuous integration pipeline on GitHub that reruns all 421 tests on two
+Every code change goes through a continuous integration pipeline on GitHub that reruns all 428 tests on two
 Python versions, checks the code style, rebuilds the reviewer screens, and refuses to pass unless the
 precision and recall on the test set are both 100 percent.
 

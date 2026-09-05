@@ -40,8 +40,8 @@ JDE / MasterControl output, which has not been available.
   with the same code and terminology reproduces the same run id and row ids, so decisions re-attach; a code
   change produces a new run id and decisions are not carried over automatically.
 
-- Measured review effort is the time between opening a row and deciding it in the UI, capped at 15 minutes
-  per row; it cannot see time spent outside the tool and starts counting only once ten decisions are timed.
+- Measured review effort is the time between opening a row and deciding it in the UI, counted only between
+  5 seconds and 15 minutes per row; it cannot see time spent outside the tool and starts counting only once ten decisions are timed.
 - The optional Excel round-trip reads only the importing reviewer's columns and never overwrites a decision
   changed after the export unless forced, but it cannot detect edits to engine columns (they are ignored) and
   a workbook edited by two people is imported as one reviewer's work.

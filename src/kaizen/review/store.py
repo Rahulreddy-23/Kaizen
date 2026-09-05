@@ -54,6 +54,7 @@ def _now() -> str:
 
 
 MAX_TIMED_SECONDS = 900  # a row left open longer than 15 minutes is not a measurement of review effort
+MIN_TIMED_SECONDS = 5  # ... and a decision within five seconds of opening the row is a click, not a review
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,7 @@ def _seconds_between(opened_at: str | None, decided_at: str) -> float | None:
         gap = (datetime.fromisoformat(decided_at) - datetime.fromisoformat(opened_at)).total_seconds()
     except ValueError:
         return None
-    return gap if 0 <= gap <= MAX_TIMED_SECONDS else None
+    return gap if MIN_TIMED_SECONDS <= gap <= MAX_TIMED_SECONDS else None
 
 
 class ReviewStore:
@@ -204,7 +205,7 @@ class ReviewStore:
 
     def timing(self, run_id: str, row_ids: set[str] | None = None) -> ReviewTiming:
         """Effort actually observed: only decisions that were timed (row opened first, plausible gap)."""
-        rows = self.conn.execute("SELECT row_id, seconds_spent FROM decisions WHERE run_id = ? AND seconds_spent IS NOT NULL", (run_id,)).fetchall()
+        rows = self.conn.execute("SELECT row_id, seconds_spent FROM decisions WHERE run_id = ? AND seconds_spent IS NOT NULL AND seconds_spent >= ?", (run_id, MIN_TIMED_SECONDS)).fetchall()
         secs = sorted(float(r["seconds_spent"]) for r in rows if row_ids is None or r["row_id"] in row_ids)
         if not secs:
             return ReviewTiming(0, 0.0, 0.0)

@@ -163,29 +163,51 @@ def _scenarios_md(scenarios: list[Scenario]) -> str:
     return "\n".join(out)
 
 
+def _render_scenario(s: Scenario, folder: Path) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    for stale in folder.glob("bom.*"):
+        stale.unlink()
+    spec = BomSpec(parent_item=s.parent_item, parent_description=s.parent_description, rows=_bom_rows(s), annotations=list(s.annotations))
+    if s.bom_format == "pdf":
+        render_bom_pdf(spec, folder / "bom.pdf")
+    elif s.bom_format == "xlsx":
+        _write_xlsx(s, folder / "bom.xlsx")
+    else:
+        _write_csv(s, folder / "bom.csv")
+    contents = [_label_line(l) for l in s.lines if l.label_text]
+    render_label_pdf(LabelSpec(ref=s.ref, product_name=s.product_name, contents=contents), folder / "label.pdf")
+    for stale in folder.glob("label_old.pdf"):
+        stale.unlink()
+    if s.old_label:
+        render_label_pdf(LabelSpec(ref=s.ref, product_name=s.product_name, contents=_old_label_contents(s)), folder / "label_old.pdf")
+    render_drawing_pdf(_drawing_spec(s), folder / "drawing.pdf")
+
+
+def build_corrected(root: Path | str, parent_item: str) -> Path:
+    """The same SKU set re-rendered with every seeded discrepancy removed: clean component lines, the right
+    REF, the released drawing revision, no extra callouts. It is what "the corrected documents came back"
+    looks like, for rehearsing verify-and-close and the run diff. Only the SKU folder is written (no PCOs)."""
+    from dataclasses import replace
+
+    from kaizen.datasets.scenarios import DRAWING_REV, base_lines
+
+    s = next((x for x in SCENARIOS if x.parent_item == parent_item), None)
+    if s is None:
+        raise ValueError(f"no scenario for SKU {parent_item}; known: {', '.join(x.parent_item for x in SCENARIOS)}")
+    # No old label revision: the corrected set is "the fixed BOM, the current label and the drawing"; a
+    # revision comparison without the PCOs that justified the changes would only invent new findings.
+    clean = replace(s, lines=base_lines(), ref=s.parent_item[:7], ref_check="EXACT", drawing_rev=DRAWING_REV, drawing_ref="EXACT", extra_callouts=[], annotations=[], old_label=False, old_label_remove=[], old_label_add=[], old_label_replace={}, old_label_qty={}, label_revision=[], pco_bom=[], tags=["corrected"], notes=f"Corrected copy of {s.folder}: seeded discrepancies removed.")
+    root = Path(root)
+    _render_scenario(clean, root / s.folder)
+    return root
+
+
 def build_golden(root: Path | str) -> Path:
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     gt = {"version": 1, "description": "Synthetic PowerPICC-style product family with seeded cross-check cases. Expectations are declared by hand in kaizen.datasets.scenarios.", "skus": {}}
     for s in SCENARIOS:
-        folder = root / s.folder
-        folder.mkdir(parents=True, exist_ok=True)
-        for stale in folder.glob("bom.*"):
-            stale.unlink()
-        spec = BomSpec(parent_item=s.parent_item, parent_description=s.parent_description, rows=_bom_rows(s), annotations=list(s.annotations))
-        if s.bom_format == "pdf":
-            render_bom_pdf(spec, folder / "bom.pdf")
-        elif s.bom_format == "xlsx":
-            _write_xlsx(s, folder / "bom.xlsx")
-        else:
-            _write_csv(s, folder / "bom.csv")
-        contents = [_label_line(l) for l in s.lines if l.label_text]
-        render_label_pdf(LabelSpec(ref=s.ref, product_name=s.product_name, contents=contents), folder / "label.pdf")
-        for stale in folder.glob("label_old.pdf"):
-            stale.unlink()
-        if s.old_label:
-            render_label_pdf(LabelSpec(ref=s.ref, product_name=s.product_name, contents=_old_label_contents(s)), folder / "label_old.pdf")
-        render_drawing_pdf(_drawing_spec(s), folder / "drawing.pdf")
+        _render_scenario(s, root / s.folder)
         gt["skus"][s.parent_item] = _ground_truth_entry(s)
     pco_dir = root / "pco"
     pco_dir.mkdir(parents=True, exist_ok=True)
