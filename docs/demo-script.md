@@ -24,14 +24,19 @@ Start: `.venv/bin/kaizen serve` → open http://127.0.0.1:8765. Everything is lo
 | 15 | PCO change not applied | Queue → PCO_BOM, 1395108QNS | Scissors still on the BOM although the PCO deletes them; evidence is the BOM row. |
 | 16 | A missing item | Queue → MISSING | Absorbent drape missing from the label (1395108QNS); label item without BOM line (1175108NS). |
 | 17 | Blind independent review | Sign out, sign in as reviewer 2 | The BLIND chip appears. Reviewer 2 sees the evidence and the engine recommendation, never reviewer 1's decision, and the export and audit log are refused with a 403. Adding `&blind=false` to the URL changes nothing: the server decides. |
+| 17a | Keyboard review | Press ? in the queue | j/k move, Enter opens, a/c/o/n choose, Enter submits: a 200-row queue without the mouse. |
 | 18 | Second review | Decide CONFIRM_DISCREPANCY | State becomes DISAGREEMENT when the two differ. |
+| 18a | Certificate | Dashboard → Certificate .pdf | One page per SKU: run id, every file hash, counts, both reviewers by name, open action items. The stamp they use today, made verifiable. |
 | 19 | Disagreement | Evidence view | Both decisions side by side; finalize with a note from the cross-check meeting. |
 | 20 | Export Excel | Dashboard → Export | Sheets per check, Action Items, Coverage, Manual Checklist, Relationships Used with versions. |
 | 21 | Hashes and snapshot | Run_Metadata / Relationships_Used sheets | SHA-256 of inputs, thresholds, terminology snapshot hash; historical runs reconstruct relationship versions. |
 | 22 | Annotated BOM | Dashboard → Documents → BOM → annotated PDF | Coloured marks in the margin like their pens; spreadsheet BOMs get a review page. |
 | 23 | Action item | Evidence view → Create action item | Linked to the row; owner, status. |
 | 24 | Corrected rerun | Fix the BOM file (or use the corrected copy) → run → Verify & close | The item resolves against the new run by comparison key, not by file name. |
-| 25 | Measured effort | #/runs/:id/business | Two numbers, both from this run: the **measured** reduction with default per-row assumptions (on the golden set ~27%, below the 50% target because the engine refuses to auto-clear ~190 strong fuzzy pairings), and the **projection** after those pairings are confirmed as relationships (~73%, ~29 rows left to validate). Say plainly which is which; the assumptions are listed beside them. |
+| 24a | Compare runs | Compare runs → choose the earlier run | Resolved, new and still-open discrepancies side by side; a comparison that vanished is "gone", not "fixed". |
+| 24b | Excel round-trip (optional) | Review queue → Import decisions from Excel | Fill the decision column offline, preview (dry run), apply. Only your own columns are read; a decision changed in the tool after the export is a conflict, never overwritten silently. |
+| 25 | Measured effort | #/runs/:id/business | Two numbers, both from this run: the **measured** reduction with default per-row assumptions (on the golden set ~27%, below the 50% target because the engine refuses to auto-clear ~190 strong fuzzy pairings), and the **projection** after those pairings are confirmed as relationships (~73%, ~29 rows left to validate). Say plainly which is which; the assumptions are listed beside them. After ten timed decisions the per-row effort switches from the brief's assumption to the measured median and the page says so. |
+| 25a | Terminology worklist | Mining suggestions → Terminology worklist | The projection as a to-do list: "approving the top 5 pairings clears N rows (X%)". Approve one, re-run the next SKU, watch it clear. |
 
 Fallback if the UI is unavailable: `kaizen demo` (run + eval + workbook), `kaizen terminology ...`,
 `kaizen runs relationships <run>`, `kaizen report`, and the workbook in Excel.

@@ -4,6 +4,7 @@ import { ReviewerProvider } from "./lib/reviewer";
 import ActionItemsPage from "./pages/ActionItemsPage";
 import BusinessCasePage from "./pages/BusinessCasePage";
 import DashboardPage from "./pages/DashboardPage";
+import DiffPage from "./pages/DiffPage";
 import DocumentPage from "./pages/DocumentPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import EvidencePage from "./pages/EvidencePage";
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="/runs/:runId/documents/:docId" element={<DocumentPage />} />
             <Route path="/runs/:runId/mining" element={<MiningPage />} />
             <Route path="/runs/:runId/business" element={<BusinessCasePage />} />
+            <Route path="/runs/:runId/diff" element={<DiffPage />} />
             <Route path="/terminology" element={<TerminologyPage />} />
             <Route path="/action-items" element={<ActionItemsPage />} />
             <Route

@@ -16,10 +16,13 @@ from kaizen import __version__
 from kaizen.models import Classification, Run, Thresholds
 from kaizen.pipeline import load_run, run_folder, save_run
 from kaizen.reporting.annotated_bom import write_annotated_bom
-from kaizen.reporting.excel import export_with_review
+from kaizen.reporting.certificate import write_certificate, write_run_certificate
+from kaizen.reporting.excel import ReviewBundle, export_with_review
+from kaizen.reporting.excel_import import import_decisions
 from kaizen.review.action_items import ActionItemStore
 from kaizen.review.business import BusinessAssumptions, business_case
-from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_suggestion
+from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_suggestion, terminology_worklist
+from kaizen.review.rundiff import diff_runs
 from kaizen.review.sessions import POLICY_REQUIRED, ReviewSession, SessionStore
 from kaizen.review.store import ReviewStore
 from kaizen.terminology.exchange import export_xlsx, import_csv, import_xlsx
@@ -252,6 +255,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         r = _find(run, row_id)
         merged = review.rows_for_viewer(run_id, [r], viewer_slot=slot, blind=blind)[0]
         hidden = ReviewStore.is_blind_hidden(review.decisions(run_id, row_id), slot, blind)
+        if session is not None:
+            review.mark_opened(run_id, row_id, session.slot)  # starts the effort clock for this reviewer
         return {"result": r.model_dump(mode="json"), "evidence": {"a": _evidence(r.source_a), "b": _evidence(r.source_b)}, "decisions": {str(k): v for k, v in merged["decisions"].items()}, "state": merged["state"], "final": merged["final"], "effective_classification": merged["effective_classification"], "history": [{"event": "engine", "detail": "engine recommendation recorded with the run"}] if hidden else review.history(run_id, row_id), "viewer": {"slot": slot, "blind": blind, "reviewer": session.reviewer if session else None}, "action_items": [asdict(a) for a in items.for_row(run_id, row_id)]}
 
     @app.get("/api/runs/{run_id}/documents")
@@ -340,6 +345,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
         ws.db.conn.commit()
         return rel.model_dump(mode="json")
 
+    @app.get("/api/runs/{run_id}/terminology-worklist")
+    def get_worklist(run_id: str, session: ReviewSession | None = Depends(_identified)):
+        """Unconfirmed pairings ranked by the rows they would auto-clear once approved (human approval still required)."""
+        run = cache.get(run_id)
+        return terminology_worklist(run, review, ws.repository).to_dict()
+
     @app.get("/api/runs/{run_id}/mining")
     def get_mining(run_id: str, min_skus: int = 2):
         run = cache.get(run_id)
@@ -393,7 +404,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
 
     @app.get("/api/runs/{run_id}/business-case")
     def get_business_case(run_id: str, baseline_minutes_per_sku: float = 60.0, hourly_rate: float = 37.5, skus_per_project: int = 100, projects_per_year: int = 20, reviewers: int = 2, minutes_per_validation_row: float = 1.5, minutes_per_cleared_row: float = 0.1, target_reduction_pct: float = 50.0):
-        return business_case(cache.get(run_id), BusinessAssumptions(baseline_minutes_per_sku, hourly_rate, skus_per_project, projects_per_year, reviewers, minutes_per_validation_row, minutes_per_cleared_row, target_reduction_pct)).to_dict()
+        return business_case(cache.get(run_id), BusinessAssumptions(baseline_minutes_per_sku, hourly_rate, skus_per_project, projects_per_year, reviewers, minutes_per_validation_row, minutes_per_cleared_row, target_reduction_pct), timing=review.timing(run_id)).to_dict()
 
     # ---- exports -----------------------------------------------------------------------------
     @app.get("/api/runs/{run_id}/export.xlsx")
@@ -419,6 +430,46 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None) -
                 states[row_id] = "discrepancy"
         out = write_annotated_bom(run, d, ws.runs_dir / run_id / f"annotated-{re.sub(r'[^A-Za-z0-9]+', '_', d.sku or doc_id)}.pdf", checked_by=names or None, review_states=states)
         return FileResponse(out.path, media_type="application/pdf", filename=out.path.name, headers={"X-Kaizen-Fallback": "true" if out.fallback else "false", "X-Kaizen-Marks": str(out.marks)})
+
+    # ---- certificate, run diff, optional Excel round-trip ---------------------------------------
+    def _bundle(run: Run) -> ReviewBundle:
+        rid = run.metadata.run_id
+        decisions, finals = review.all_decisions(rid), review.finals(rid)
+        states = {r.row_id: ReviewStore.state_of(decisions.get(r.row_id, {}), finals.get(r.row_id)) for r in run.results}
+        return ReviewBundle(decisions=decisions, finals=finals, states=states, action_items=items.for_run(rid))
+
+    @app.get("/api/runs/{run_id}/certificate.pdf")
+    def certificate(run_id: str, sku: str | None = None, session: ReviewSession | None = Depends(_identified)):
+        """One page per SKU (or one SKU): run id, file hashes, counts, named reviewers, open action items."""
+        _refuse_if_blind(session)  # it lists both reviewers' decisions
+        run = cache.get(run_id)
+        target = ws.runs_dir / run_id / (f"certificate-{re.sub(r'[^A-Za-z0-9]+', '_', sku)}.pdf" if sku else "certificate.pdf")
+        try:
+            out = write_certificate(run, sku, target, _bundle(run)) if sku else write_run_certificate(run, target, _bundle(run))
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        return FileResponse(out, media_type="application/pdf", filename=out.name)
+
+    @app.get("/api/runs/{run_id}/diff")
+    def run_diff(run_id: str, against: str, session: ReviewSession | None = Depends(_identified)):
+        """What changed from run `against` (before) to `run_id` (after): resolved, new, still open."""
+        after, before = cache.get(run_id), cache.get(against)
+        return diff_runs(before, after).to_dict()
+
+    @app.post("/api/runs/{run_id}/decisions/import")
+    def import_from_excel(run_id: str, file: UploadFile = File(...), dry_run: bool = Form(False), force: bool = Form(False), session: ReviewSession | None = Depends(_identified)):
+        """Optional: apply the signed-in reviewer's decisions from an exported workbook. Slot and name come from the session."""
+        if session is None:
+            raise HTTPException(401, SIGN_IN_HINT)
+        run = cache.get(run_id)
+        folder = ws.runs_dir / run_id / "imports"
+        folder.mkdir(parents=True, exist_ok=True)
+        dest = folder / f"{uuid.uuid4().hex[:8]}-{re.sub(r'[^A-Za-z0-9._-]+', '_', Path(file.filename or 'decisions.xlsx').name)}"
+        dest.write_bytes(file.file.read())
+        try:
+            return import_decisions(ws, run, dest, session.slot, session.reviewer, dry_run=dry_run, force=force).to_dict()
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     # ---- terminology --------------------------------------------------------------------------
     def _rel(r, usage):

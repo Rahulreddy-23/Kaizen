@@ -5,6 +5,9 @@ import { ClassificationBadge, RoleTag, SeverityBadge, StateBadge } from "../comp
 import { ConfirmDialog, ErrorBox, Loading, Notice } from "../components/Feedback";
 import { enc, fmtQty } from "../lib/format";
 import { PAGE_SIZE, queueParams, queueQueryFromParams } from "../lib/queue";
+import { HotkeyHelp, HotkeyHint } from "../components/HotkeyHelp";
+import { ImportDecisions } from "../components/ImportDecisions";
+import { useHotkeys } from "../lib/hotkeys";
 import { useReviewer } from "../lib/reviewer";
 import { errorMessage, useAsync } from "../lib/useAsync";
 import { CHECK_TYPES, CLASSIFICATIONS, DISCREPANCY_TYPES, REVIEW_STATES, ROLES, SEVERITIES, type ResultRow, type SideSummary } from "../types";
@@ -31,6 +34,29 @@ export default function ReviewQueuePage() {
   };
   const clear = () => setSp(new URLSearchParams());
   const open = (rowId: string) => nav(`/runs/${enc(runId)}/rows/${enc(rowId)}?${queueParams(sp).toString()}`);
+
+  // ---- keyboard: j/k highlight a row, Enter opens it, ? help
+  const rows = page.data?.rows ?? [];
+  const [hi, setHi] = useState<number | null>(null);
+  const [help, setHelp] = useState(false);
+  useEffect(() => setHi(null), [page.data]);
+  useEffect(() => {
+    document.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [hi]);
+  useHotkeys(
+    {
+      j: () => rows.length && setHi((cur) => (cur === null ? 0 : Math.min(cur + 1, rows.length - 1))),
+      k: () => rows.length && setHi((cur) => (cur === null ? 0 : Math.max(cur - 1, 0))),
+      Enter: () => {
+        if (hi === null) return;
+        const r = rows[hi];
+        if (r) open(r.row_id);
+      },
+      "?": () => setHelp((v) => !v),
+      Escape: () => setHelp(false),
+    },
+    [rows, hi, runId, sp.toString()],
+  );
 
   // ---- bulk accept
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -93,12 +119,21 @@ export default function ReviewQueuePage() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
+        <HotkeyHelp open={help} onClose={() => setHelp(false)} />
         <h1>Review queue</h1>
+        <HotkeyHint />
         <span className="text-xs text-gray-500">Ordered by the engine: blockers → major → ambiguous → potential → low-confidence → SKU → row. Click a row to see the evidence and decide.</span>
         <div className="ml-auto flex gap-1">
           <button className="btn" onClick={openBulk} disabled={!name} title={name ? "" : "Enter your name in the top bar first"}>
             Accept all clean rows…
           </button>
+          <ImportDecisions
+            runId={runId}
+            onApplied={() => {
+              page.reload();
+              run.reload();
+            }}
+          />
         </div>
       </div>
 
@@ -171,8 +206,8 @@ export default function ReviewQueuePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {page.data.rows.map((row) => (
-                    <tr key={row.row_id} className="clickable" onClick={() => open(row.row_id)}>
+                  {page.data.rows.map((row, i) => (
+                    <tr key={row.row_id} className={`clickable ${hi === i ? "bg-yellow-50 outline outline-1 outline-yellow-500" : ""}`} data-selected={hi === i ? "true" : undefined} onClick={() => open(row.row_id)}>
                       <td>
                         <SeverityBadge value={row.engine.severity} />
                       </td>

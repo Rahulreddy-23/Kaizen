@@ -1,6 +1,7 @@
 """Audit-grade Excel workbook. If a judge asks 'where did this come from?', the workbook answers."""
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,14 @@ class ReviewBundle:
     states: dict[str, str] = field(default_factory=dict)  # row_id → state
     action_items: list[Any] = field(default_factory=list)
     business: Any | None = None
+    worklist: dict[str, Any] | None = None  # terminology worklist (ranked unconfirmed pairings)
+
+
+def _decision_cell(d) -> str | None:
+    """`OVERRIDE→EQUIVALENT` keeps the override classification in the sheet, so the workbook can be imported back."""
+    if d is None:
+        return None
+    return f"OVERRIDE→{d.override_classification}" if d.decision == "OVERRIDE" and d.override_classification else d.decision
 
 
 def _review_cells(review: ReviewBundle | None, r) -> list[Any]:
@@ -33,8 +42,8 @@ def _review_cells(review: ReviewBundle | None, r) -> list[Any]:
     final = review.finals.get(r.row_id)
     items = "; ".join(a.id for a in review.action_items if a.row_id == r.row_id)
     return [
-        d1.decision if d1 else None, d1.comment if d1 else None, d1.reviewer if d1 else None, d1.decided_at if d1 else None,
-        d2.decision if d2 else None, d2.comment if d2 else None, d2.reviewer if d2 else None, d2.decided_at if d2 else None,
+        _decision_cell(d1), d1.comment if d1 else None, d1.reviewer if d1 else None, d1.decided_at if d1 else None,
+        _decision_cell(d2), d2.comment if d2 else None, d2.reviewer if d2 else None, d2.decided_at if d2 else None,
         review.states.get(r.row_id, "ENGINE_RECOMMENDED"), items, f"FINALIZED: {final.final_decision}" if final else "OPEN",
     ]
 
@@ -50,7 +59,9 @@ def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str,
     decisions = review.all_decisions(rid)
     finals = review.finals(rid)
     states = {r.row_id: ReviewStore.state_of(decisions.get(r.row_id, {}), finals.get(r.row_id)) for r in run.results}
-    bundle = ReviewBundle(decisions=decisions, finals=finals, states=states, action_items=ActionItemStore(workspace.db).for_run(rid), business=business_case(run))
+    from kaizen.review.mining import terminology_worklist
+
+    bundle = ReviewBundle(decisions=decisions, finals=finals, states=states, action_items=ActionItemStore(workspace.db).for_run(rid), business=business_case(run, timing=review.timing(rid)), worklist=terminology_worklist(run, review, workspace.repository).to_dict())
     return write_report(run, path, metrics=metrics, review=bundle)
 
 BOM_LABEL_COLUMNS = [
@@ -78,7 +89,8 @@ MANUAL_CHECKS = [
     ("Confirm the printed IFU revision matches the released IFU", "IFU documents are BOM lines only"),
 ]
 COVERAGE_COLUMNS = ["Kind", "SKU / Affected Code", "Status", "Detail", "Source"]
-DECISIONS = "ACCEPT,OVERRIDE,CONFIRM_DISCREPANCY,NEEDS_MORE_INFORMATION"
+# Decision cells round-trip through the optional Excel import; an override names its classification.
+DECISIONS = "ACCEPT,OVERRIDE→EXACT,OVERRIDE→EQUIVALENT,OVERRIDE→POTENTIAL,OVERRIDE→MISMATCH,OVERRIDE→MISSING,CONFIRM_DISCREPANCY,NEEDS_MORE_INFORMATION"
 _WIDTHS = {"Explanation": 70, "Discrepancy Detail": 60, "Recommended Action": 45, "Source A Description": 32, "Source B Description": 40, "Normalized A": 28, "Normalized B": 32, "Reviewer Comment": 30, "Reviewer 2 Comment": 30}
 
 
@@ -119,6 +131,8 @@ def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = No
     _pco_bom_sheet(wb.create_sheet("PCO_BOM"), run, review)
     _pairing_sheet(wb.create_sheet("Label_Revision"), run, "LABEL_REVISION", review)
     _action_items_sheet(wb.create_sheet("Action_Items"), run, review)
+    if review is not None and review.worklist is not None:
+        _worklist_sheet(wb.create_sheet("Terminology_Worklist"), review.worklist)
     _coverage_sheet(wb.create_sheet("Coverage"), run)
     _manual_checklist_sheet(wb.create_sheet("Manual_Checklist"), run)
     _documents_sheet(wb.create_sheet("Documents"), run)
@@ -402,6 +416,7 @@ def _metadata_sheet(ws, run: Run) -> None:
     rows += [(f"Parser version: {k}", v) for k, v in m.parser_versions.items()]
     rows += [(f"Threshold: {k}", v) for k, v in m.thresholds.model_dump().items()]
     rows += [("Terminology version (SHA-256)", m.terminology_version), ("Terminology relationship count", m.terminology_count), ("Input root", m.input_root), ("Relationships used in this run", ", ".join(run.relationships_used) or "none")]
+    rows += [("Exported at", datetime.now(timezone.utc).isoformat(timespec="seconds"))]  # the Excel import uses this to detect conflicts
     ws.cell(row=1, column=1, value="Run metadata").font = TITLE_FONT
     for i, (k, v) in enumerate(rows, start=2):
         ws.cell(row=i, column=1, value=k).font = SECTION_FONT
@@ -475,3 +490,20 @@ def _accuracy_sheet(ws, metrics: dict[str, Any]) -> None:
             ws.cell(row=row, column=1, value=m)
     ws.column_dimensions["A"].width = 40
     ws.column_dimensions["B"].width = 16
+
+
+WORKLIST_COLUMNS = ["Rank", "BOM wording", "Label / drawing wording", "SKUs", "Rows", "Would auto-clear", "Still need review", "Cumulative cleared", "Cumulative % of needs-validation", "Confirmed by reviewers", "Contradicted", "Item anchors", "Row IDs"]
+
+
+def _worklist_sheet(ws, wl: dict[str, Any]) -> None:
+    """The business-case projection as a to-do list: approve these pairings, in this order."""
+    ws.cell(row=1, column=1, value="Terminology worklist — unconfirmed pairings ranked by the rows they would auto-clear once approved as relationships").font = TITLE_FONT
+    ws.cell(row=2, column=1, value=f"Rows needing validation in this run: {wl['needs_validation']}. Behind unconfirmed pairings: {wl['potential_rows']}. Approving the top 5 clears {wl['top5']['rows']} rows ({wl['top5']['pct']}%); the top 10 clears {wl['top10']['rows']} ({wl['top10']['pct']}%). Approval is a reviewer action in the UI or `kaizen terminology add`; nothing here is applied automatically.").alignment = WRAP
+    _write_header(ws, 4, WORKLIST_COLUMNS)
+    for i, it in enumerate(wl["items"], start=1):
+        vals = [i, it["a_text"], it["b_text"], it["sku_count"], len(it["row_ids"]), it["would_clear"], it["still_review"], it["cumulative_clear"], it["cumulative_pct"], it["confirmed"], it["contradicted"], ", ".join(it["item_anchors"]), ", ".join(it["row_ids"])]
+        for c, v in enumerate(vals, start=1):
+            ws.cell(row=4 + i, column=c, value=v).border = BORDER
+    for col, w in {"B": 36, "C": 40, "L": 24, "M": 60}.items():
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A5"

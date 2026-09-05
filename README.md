@@ -26,6 +26,7 @@ PCOs and label revisions, with the reviewer as the final decision-maker. Built f
 - Supports two reviewers with blind independent review, disagreement detection, finalisation, action items
   and verify-and-close on corrective reruns; suggests new relationships from repeated pairings (human approval
   required).
+- Turns the business-case projection into a **terminology worklist** (approve these pairings, in this order, and this many rows clear), **measures** review effort per row instead of assuming it, and keeps the reviewer on the keyboard (j/k/Enter, a/c/o/n, ? for help).
 - Produces an audit-grade Excel workbook, an annotated BOM PDF with coloured marks, measured accuracy against
   ground truth, and a business case computed from the actual run (measured figure plus a labelled projection
   for after reviewers confirm strong pairings as relationships).
@@ -69,6 +70,9 @@ rm -rf kaizen-workspace
 | `eval` | Run a dataset with `ground-truth.json` and report accuracy; `--fail-under` for CI. |
 | `demo`, `serve`, `perf` | Demo run; local API + UI; performance series. |
 | `terminology list/show/add/update/deactivate/activate/delete/history/import/export/sync-defaults` | Manage relationships (every change is a new version). |
+| `certificate <run.json> [--sku]` | One-page cross-check certificate per SKU (run id, file hashes, counts, reviewers, open action items). |
+| `diff <before.json> <after.json> [--json]` | Resolved, new and still-open discrepancies between two runs. |
+| `review import <run.json> <file.xlsx> --slot --reviewer [--dry-run] [--force]` | Optional Excel round-trip: apply decisions recorded in the exported workbook. |
 | `review policy [--set required\|optional]`, `review sessions [--end <name>]` | Blind-review policy (server-side, never changeable from the UI); open reviewer sessions. |
 | `runs list`, `runs relationships <run>` | Runs in the workspace; reconstruct the exact relationship versions a run used. |
 | `dataset build` | Regenerate the synthetic golden dataset (byte-stable). |

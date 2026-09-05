@@ -90,6 +90,13 @@ CREATE TABLE IF NOT EXISTS mining_rejections (
     rejected_at TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS row_views (
+    run_id TEXT NOT NULL,
+    row_id TEXT NOT NULL,
+    reviewer_slot INTEGER NOT NULL,
+    opened_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, row_id, reviewer_slot)
+);
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     reviewer TEXT NOT NULL,
@@ -115,16 +122,98 @@ CREATE TABLE IF NOT EXISTS audit (
 """
 
 
+class _Rows:
+    """A fully materialised result set. Rows are fetched while the lock is held, so callers can iterate or
+    fetch after the lock is released without ever stepping a cursor concurrently with another thread."""
+
+    def __init__(self, rows: list, lastrowid: int | None, rowcount: int):
+        self._rows = rows
+        self._pos = 0
+        self.lastrowid = lastrowid
+        self.rowcount = rowcount
+
+    def fetchone(self):
+        if self._pos >= len(self._rows):
+            return None
+        row = self._rows[self._pos]
+        self._pos += 1
+        return row
+
+    def fetchmany(self, size: int = 1) -> list:
+        out = self._rows[self._pos : self._pos + size]
+        self._pos += len(out)
+        return out
+
+    def fetchall(self) -> list:
+        out = self._rows[self._pos :]
+        self._pos = len(self._rows)
+        return out
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class LockedConnection:
+    """The one sqlite3 connection, shared by every API thread. Every statement runs under the re-entrant
+    lock and returns materialised rows: SQLite connections are not safe to use from two threads at once
+    (`sqlite3.InterfaceError: bad parameter or other API misuse`), and the API thread pool does exactly that."""
+
+    def __init__(self, conn: sqlite3.Connection, lock: threading.RLock):
+        self._conn = conn
+        self._lock = lock
+
+    def execute(self, sql: str, params=()) -> _Rows:
+        with self._lock:
+            cur = self._conn.execute(sql, params)
+            rows = cur.fetchall() if cur.description else []
+            return _Rows(rows, cur.lastrowid, cur.rowcount)
+
+    def executemany(self, sql: str, seq) -> _Rows:
+        with self._lock:
+            cur = self._conn.executemany(sql, seq)
+            return _Rows([], cur.lastrowid, cur.rowcount)
+
+    def executescript(self, script: str) -> None:
+        with self._lock:
+            self._conn.executescript(script)
+
+    def commit(self) -> None:
+        with self._lock:
+            self._conn.commit()
+
+    def rollback(self) -> None:
+        with self._lock:
+            self._conn.rollback()
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    @property
+    def row_factory(self):
+        return self._conn.row_factory
+
+    @row_factory.setter
+    def row_factory(self, value) -> None:
+        self._conn.row_factory = value
+
+    @property
+    def in_transaction(self) -> bool:
+        return self._conn.in_transaction
+
+
 class Database:
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.lock = threading.RLock()  # the API serves requests from a thread pool; writes are serialised
+        raw = sqlite3.connect(self.path, check_same_thread=False)
+        raw.row_factory = sqlite3.Row
+        self.lock = threading.RLock()  # the API serves requests from a thread pool; every statement is serialised
+        self.conn = LockedConnection(raw, self.lock)
         self.conn.executescript(SCHEMA)
         self._ensure_column("decisions", "override_classification", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("action_items", "resolved_at", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("decisions", "seconds_spent", "REAL")  # NULL = not timed
         self.conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:

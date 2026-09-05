@@ -4,6 +4,9 @@ per-row effort assumptions are explicit. If the tool does not reach the target, 
 from dataclasses import dataclass, field
 
 from kaizen.models import Run
+from kaizen.review.store import ReviewTiming
+
+MIN_TIMED_SAMPLES = 10  # below this the measured median is reported but the brief's assumption is used
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,11 @@ class BusinessCase:
     hours_saved_per_project_after_confirmation: float = 0.0
     annual_savings_after_confirmation: float = 0.0
     meets_target_after_confirmation: bool = False
+    # effort per row needing validation: the brief's assumption, or the median actually observed
+    effort_basis: str = "assumed"  # assumed | measured
+    timed_decisions: int = 0
+    measured_minutes_per_validation_row: float | None = None
+    minutes_per_validation_row_used: float = 1.5
 
     def to_dict(self) -> dict:
         return self.__dict__
@@ -60,7 +68,11 @@ def reviewable(run: Run):
     return [r for r in run.results if r.role in REVIEWABLE_ROLES]
 
 
-def business_case(run: Run, a: BusinessAssumptions = BusinessAssumptions()) -> BusinessCase:
+def business_case(run: Run, a: BusinessAssumptions = BusinessAssumptions(), timing: ReviewTiming | None = None) -> BusinessCase:
+    measured = round(timing.median_seconds / 60, 2) if timing and timing.samples else None
+    basis = "measured" if timing and timing.samples >= MIN_TIMED_SAMPLES and measured else "assumed"
+    per_row = measured if basis == "measured" else a.minutes_per_validation_row
+    a = BusinessAssumptions(a.baseline_minutes_per_sku, a.hourly_rate, a.skus_per_project, a.projects_per_year, a.reviewers, per_row, a.minutes_per_cleared_row, a.target_reduction_pct)
     skus = len(run.groups)
     rev = reviewable(run)
     rows = len(rev)
@@ -84,9 +96,12 @@ def business_case(run: Run, a: BusinessAssumptions = BusinessAssumptions()) -> B
     est2, _, reduction2, hours2, annual2 = estimate(needs - confirmable, cleared + confirmable)
     assumptions = [
         f"Baseline {a.baseline_minutes_per_sku:g} minutes per SKU per reviewer, {a.reviewers} reviewers (brief).",
-        f"{a.minutes_per_validation_row:g} minutes per row needing validation; {a.minutes_per_cleared_row:g} minutes per auto-cleared row (skim).",
+        (f"{a.minutes_per_validation_row:g} minutes per row needing validation: MEASURED median of {timing.samples} timed decisions in this workspace (mean {timing.mean_seconds / 60:.2f} min)."
+         if basis == "measured" and timing else
+         f"{a.minutes_per_validation_row:g} minutes per row needing validation: ASSUMED" + (f" ({timing.samples} timed decisions so far, median {measured:g} min; {MIN_TIMED_SAMPLES} needed before the measurement is used)." if timing and timing.samples else f" (no timed decisions yet; {MIN_TIMED_SAMPLES} needed).")),
+        f"{a.minutes_per_cleared_row:g} minutes per auto-cleared row (skim).",
         f"Project = {a.skus_per_project} SKUs; {a.projects_per_year} projects per year; ${a.hourly_rate:g}/hour (brief).",
         "Rows and validation counts come from this run; nothing is assumed about accuracy.",
         f"Projection (not a measurement): {confirmable} POTENTIAL rows are strong pairings (score ≥ 0.95, no discrepancy); once a reviewer confirms them as relationships the next run auto-clears them.",
     ]
-    return BusinessCase(skus, rows, cleared, needs, est, saved, reduction, hours_project, annual, reduction >= a.target_reduction_pct, a.baseline_minutes_per_sku, a.hourly_rate, a.skus_per_project, a.projects_per_year, a.reviewers, assumptions, per_sku, confirmable, needs - confirmable, est2, reduction2, hours2, annual2, reduction2 >= a.target_reduction_pct)
+    return BusinessCase(skus, rows, cleared, needs, est, saved, reduction, hours_project, annual, reduction >= a.target_reduction_pct, a.baseline_minutes_per_sku, a.hourly_rate, a.skus_per_project, a.projects_per_year, a.reviewers, assumptions, per_sku, confirmable, needs - confirmable, est2, reduction2, hours2, annual2, reduction2 >= a.target_reduction_pct, basis, timing.samples if timing else 0, measured, per_row)

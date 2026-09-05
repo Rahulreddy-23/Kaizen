@@ -49,7 +49,7 @@ the Excel tracker and a marked-up BOM.
 | `src/kaizen/api/` | FastAPI backend for the reviewer UI | `create_app` |
 | `src/kaizen/cli/` | Typer command line | `kaizen` |
 | `ui/` | React + Vite reviewer interface | `ui/src/App.tsx` |
-| `tests/` | 384 unit, integration and golden test cases | `pytest` |
+| `tests/` | 421 unit, integration and golden test cases | `pytest` |
 
 ---
 
@@ -338,6 +338,15 @@ This is identification, not authentication. Anyone with access to the machine ca
 It makes the reviewer's identity and the blind flag server-side, explicit and audited, which is what an
 independent-review process needs on a single reviewer workstation. A shared deployment needs SSO.
 
+### Measured review effort (`review/store.py`, `review/business.py`)
+
+Opening a row through the API with a session records `row_views(run, row, slot, opened_at)`. The next
+decision by that slot on that row stores `seconds_spent` when the gap is at most `MAX_TIMED_SECONDS`
+(15 minutes); bulk accepts and Excel imports pass `timed=False` and are never counted. `ReviewStore.timing`
+returns the sample count, median and mean. `business_case(run, assumptions, timing)` uses the measured
+median as minutes per validated row once `MIN_TIMED_SAMPLES` (10) decisions are timed, reports
+`effort_basis` as `measured` or `assumed`, and always states the sample size.
+
 ### Decisions (`review/store.py`)
 
 A decision is `{slot, reviewer, decision, comment, override_classification, decided_at, blind}` where the
@@ -355,6 +364,33 @@ An action item is created from a discrepancy row and carries a **comparison key*
 `check|sku|A:item` or `check|sku|B:text`. When corrected documents are run again, `verify_and_close`
 matches items by that key: an item whose row is now clean is closed, one that still fails stays open. This
 is how the tool proves a fix rather than assuming it.
+
+### Terminology worklist (`review/mining.py`)
+
+`terminology_worklist` runs mining with a minimum of one SKU, adds to each suggestion the rows that would
+auto-clear once it is approved (`would_clear`: rows with no discrepancy) and the rows that stay with a
+reviewer regardless (`still_review`: quantity mismatches, ambiguities), sorts by impact and accumulates a
+running total and percentage of all rows needing validation. `Worklist.top(n)` gives the sentence the
+reviewer needs: approve the top five, this many rows clear. Approval still goes through
+`approve_suggestion`; nothing is applied automatically.
+
+### Run-to-run diff (`review/rundiff.py`)
+
+`diff_runs(before, after)` aligns rows of the two runs by the same comparison key action items use and
+classifies each: `resolved` (discrepancy gone), `new`, `still_open`, `changed` (classification changed,
+no discrepancy either side), `unchanged` (counted, not listed), `gone` (the comparison itself disappeared,
+explicitly not treated as fixed) and `not_covered` (SKUs present in only one run). It also lists input
+files whose hash changed, and SKUs added or removed.
+
+### Optional Excel round-trip (`reporting/excel_import.py`)
+
+`import_decisions(workspace, run, path, slot, reviewer, dry_run, force)` reads the exported workbook back.
+The Run ID on `Run_Metadata` must match; only the given slot's "Reviewer Decision" and comment columns are
+read; `OVERRIDE→<classification>` carries the override; invalid values and unknown row ids are reported, not
+applied; a decision the database changed after the workbook's `Exported at` time is a conflict and is
+skipped unless `force`; a dry run writes nothing. Applied decisions go through `ReviewStore.decide`
+(untimed, audited) and the import itself is an audit event. This path is optional: the UI and the CLI
+work identically without it.
 
 ### Mining (`review/mining.py`)
 
@@ -394,12 +430,26 @@ Thirteen sheets, fourteen when accuracy metrics are available:
 | `Relationships_Used` | Each relationship with its exact version and use count |
 | `Run_Metadata` | Thresholds, terminology version, parser versions, AI provider |
 | `Audit_Log` | Every recorded action with actor and timestamp |
+| `Terminology_Worklist` | Unconfirmed pairings ranked by rows they would auto-clear, with cumulative totals |
 | `Accuracy` | Precision and recall per check when a ground truth was supplied |
 
 Check-sheet columns cover both compared values, the classification, match level, score, the relationship
 applied, discrepancy type, severity, explanation, evidence pointers, review state, both reviewers'
 decisions and the linked action item. `export_with_review` merges live reviewer state from the workspace at
 export time, so the workbook is current without the engine ever being re-run.
+
+Decision cells are written as `OVERRIDE→EQUIVALENT` when a reviewer overrode the classification, so the
+workbook round-trips; the data-validation list offers the same forms. `Run_Metadata` carries `Exported at`,
+which the importer uses to detect conflicts.
+
+### Cross-check certificate (`reporting/certificate.py`)
+
+One A4 page per SKU, drawn with PyMuPDF: SKU and family, run id and timestamp, terminology version and
+thresholds, every input document with its SHA-256, counts by classification, needs-validation and blockers,
+header and coverage findings, both reviewers by name with decision counts, finalized and disagreement
+counts, open action items, a statement that the engine output is a recommendation and the decisions are
+the reviewers', and signature lines pre-filled from the recorded names and dates. `write_run_certificate`
+produces one page per SKU set in group order.
 
 ### Annotated BOM (`reporting/annotated_bom.py`)
 
@@ -430,7 +480,9 @@ The complete `Run` model: every document, item, evidence record, result and audi
 | Terminology | list, get, create, update, activate, deactivate, delete, history, import, export |
 | Mining | suggestions, approve, reject |
 | Action items | create, list, update, verify-and-close |
-| Reports | business case, `export.xlsx`, annotated BOM PDF, audit log |
+| Reports | business case (measured or assumed effort), `export.xlsx`, annotated BOM PDF, certificate PDF, audit log |
+| Worklist and diff | `terminology-worklist`, `diff?against=` |
+| Optional import | `POST .../decisions/import` (multipart, dry run, force) |
 
 The built UI is mounted at `/` when present.
 
@@ -446,15 +498,16 @@ backend.
 |---|---|
 | Runs | Load the demo set, drop a folder, or run a local path; lists previous runs |
 | Dashboard | Groups, coverage blockers, counts, auto-cleared against needs-review, parser warnings |
-| Review queue | Filterable, sortable rows, blockers first, bulk accept, blind banner |
+| Review queue | Filterable, sortable rows, blockers first, bulk accept, blind banner, keyboard navigation (j/k/Enter, ? help), optional Excel import panel |
 | Evidence | The two compared values with both page images and the evidence boxes highlighted, the decision panel, save-as-relationship, create action item, history |
 | Documents / Document | Extraction verification: every parsed line with its evidence, so a reviewer can check the parser |
 | Terminology | Create, edit, deactivate, import and export relationships; version history |
-| Mining | Approve or reject suggested relationships |
+| Mining | Terminology worklist (ranked by rows cleared, cumulative %) and mining suggestions to approve or reject |
+| Compare runs | Resolved, new, still-open and gone comparisons against an earlier run, changed documents |
 | Action items | Track and close |
-| Business case | Measured and projected figures with the assumptions exposed |
+| Business case | Measured and projected figures, effort basis (measured after ten timed decisions, else assumed), assumptions exposed |
 
-`components/SignIn.tsx` gates the app until a session exists. `lib/reviewer.tsx` holds the session and
+`lib/hotkeys.ts` binds single-key shortcuts that never fire while typing; `components/HotkeyHelp.tsx` is the `?` reference. `components/SignIn.tsx` gates the app until a session exists. `lib/reviewer.tsx` holds the session and
 exposes sign-in and sign-out; it cannot change the slot or the blind flag, only ask the server for a new
 session.
 
@@ -475,6 +528,9 @@ session.
 | `dataset build` | Regenerate the byte-stable synthetic dataset |
 | `terminology …` | Ten subcommands managing relationships |
 | `runs list`, `runs relationships` | Runs in the workspace; the exact relationship versions a run used |
+| `certificate` | One-page certificate per SKU, or one SKU |
+| `diff` | Resolved, new and still-open discrepancies between two runs |
+| `review import` | Optional Excel round-trip with dry run and conflict handling |
 | `review policy`, `review sessions` | Blind-review policy and open sessions |
 
 A global `--workspace` and the `KAIZEN_WORKSPACE` environment variable select the workspace.
@@ -552,8 +608,10 @@ without one the rung is inactive. It too can only yield POTENTIAL.
 
 ## 16. Storage
 
-`storage/db.py` creates a single SQLite file in the workspace and holds a process-wide re-entrant lock, so
-writes are serialised while the API serves requests from a thread pool. `_ensure_column` performs additive
+`storage/db.py` creates a single SQLite file in the workspace and wraps the connection in `LockedConnection`:
+every statement, reads included, runs under a process-wide re-entrant lock and returns materialised rows, so
+no cursor is ever stepped from two API threads at once (the failure mode is `sqlite3.InterfaceError: bad
+parameter or other API misuse`, seen once when the mining page issued two reads together). `_ensure_column` performs additive
 migrations for columns added after the first release.
 
 | Table | Holds |
@@ -565,6 +623,7 @@ migrations for columns added after the first release.
 | `mining_rejections` | Suggestions a reviewer has declined |
 | `sessions` | Open review sessions: reviewer, slot, blind flag, timestamps |
 | `settings` | Workspace policy, currently the blind-review setting |
+| `row_views` | When each reviewer slot last opened a row (the start of the effort clock) |
 | `audit` | Every action with actor, timestamp and detail |
 
 ---
@@ -573,11 +632,11 @@ migrations for columns added after the first release.
 
 | Location | Tests | Covers |
 |---|---|---|
-| `tests/unit/` | 290 functions in 44 files | Models, parsers, normalisation, ladder, assignment, each check, terminology, review, sessions, reporting, evaluation, datasets, AI providers, adversarial and audit-regression cases |
-| `tests/integration/` | 25 functions in 4 files | CLI end to end, terminology CLI, HTTP API contract |
-| `tests/golden/` | 8 functions in 2 files | Accuracy floors against the golden ground truth, byte-stable dataset build |
+| `tests/unit/` | 323 functions in 48 files | Models, parsers, normalisation, ladder, assignment, each check, terminology, review, sessions, review timing, worklist, run diff, certificate, Excel round-trip, reporting, evaluation, datasets, AI providers, adversarial and audit-regression cases |
+| `tests/integration/` | 29 functions in 3 files | CLI end to end, terminology CLI, HTTP API contract |
+| `tests/golden/` | 8 functions in 1 file | Accuracy floors against the golden ground truth, byte-stable dataset build |
 
-Total 323 test functions, which pytest expands to **384 test cases** because some are parametrised. All pass, in about a minute, fully offline. `tests/conftest.py` forces an isolated
+Total 360 test functions, which pytest expands to **421 test cases** because some are parametrised. All pass, in about a minute, fully offline. `tests/conftest.py` forces an isolated
 workspace per test so no test can write into the repository.
 
 `.github/workflows/ci.yml` runs on every pull request and every push to main: ruff lint, the full suite on

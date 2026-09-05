@@ -10,6 +10,8 @@ from kaizen.api.app import create_app
 from kaizen.datasets.build import build_golden
 from kaizen.workspace import Workspace
 
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 
 @pytest.fixture(scope="module")
 def env(tmp_path_factory):
@@ -276,3 +278,50 @@ def test_policy_can_be_relaxed_and_then_reviewer_two_may_be_unblinded(env):
         assert anon.get(f"/api/runs/{run_id}/results").status_code == 200, "optional policy keeps the anonymous path open"
     finally:
         sessions.set_policy(POLICY_REQUIRED, by="Rahul")
+
+
+# ---- certificate, diff, optional Excel round-trip -----------------------------------------------
+
+
+def test_certificate_pdf_for_one_sku_and_for_the_run(env):
+    client, _, ws, run_id = env
+    one = client.get(f"/api/runs/{run_id}/certificate.pdf", params={"sku": "1295108NS"})
+    assert one.status_code == 200 and one.content.startswith(b"%PDF") and "1295108NS" in one.headers["content-disposition"]
+    whole = client.get(f"/api/runs/{run_id}/certificate.pdf")
+    assert whole.status_code == 200 and len(whole.content) > len(one.content)
+    assert client.get(f"/api/runs/{run_id}/certificate.pdf", params={"sku": "nope"}).status_code == 404
+    blind = _fresh(ws)
+    sign_in(blind, "Hemant", 2)
+    assert blind.get(f"/api/runs/{run_id}/certificate.pdf").status_code == 403
+
+
+def test_diff_against_another_run(env):
+    client, _, _, run_id = env
+    d = client.get(f"/api/runs/{run_id}/diff", params={"against": run_id}).json()
+    assert d["before_run_id"] == run_id and d["counts"]["unchanged"] > 0 and d["counts"]["resolved"] == 0 and d["counts"]["new"] == 0
+    assert d["counts"]["still_open"] > 0 and all(r["status"] == "still_open" for r in d["rows"]), "a run compared with itself: open discrepancies stay open"
+    assert client.get(f"/api/runs/{run_id}/diff", params={"against": "run-nope"}).status_code == 404
+
+
+def test_excel_round_trip_through_the_api(env):
+    client, _, ws, run_id = env
+    row = client.get(f"/api/runs/{run_id}/results", params={"check": "BOM_DRAWING", "classification": "MISSING", "limit": 1}).json()["rows"][0]
+    xlsx = client.get(f"/api/runs/{run_id}/export.xlsx").content
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx))
+    sh = wb["BOM_Drawing"]
+    cols = {c.value: i + 1 for i, c in enumerate(sh[1])}
+    for r in range(2, sh.max_row + 1):
+        if sh.cell(row=r, column=cols["Row ID"]).value == row["row_id"]:
+            sh.cell(row=r, column=cols["Reviewer Decision"], value="CONFIRM_DISCREPANCY")
+            sh.cell(row=r, column=cols["Reviewer Comment"], value="decided in Excel")
+    buf = io.BytesIO()
+    wb.save(buf)
+    preview = client.post(f"/api/runs/{run_id}/decisions/import", files={"file": ("report.xlsx", buf.getvalue(), XLSX_MIME)}, data={"dry_run": "true"}).json()
+    assert preview["dry_run"] is True and preview["applied"] == [row["row_id"]] and "Dry run" in preview["summary"]
+    assert client.get(f"/api/runs/{run_id}/results/{row['row_id']}").json()["decisions"]["1"] is None
+    applied = client.post(f"/api/runs/{run_id}/decisions/import", files={"file": ("report.xlsx", buf.getvalue(), XLSX_MIME)}).json()
+    assert applied["applied"] == [row["row_id"]]
+    d = client.get(f"/api/runs/{run_id}/results/{row['row_id']}").json()["decisions"]["1"]
+    assert d["decision"] == "CONFIRM_DISCREPANCY" and d["reviewer"] == "Dharma" and d["comment"] == "decided in Excel"
+    wrong = client.post(f"/api/runs/{run_id}/decisions/import", files={"file": ("x.xlsx", b"not a workbook", XLSX_MIME)})
+    assert wrong.status_code == 400

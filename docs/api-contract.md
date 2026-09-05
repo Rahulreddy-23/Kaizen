@@ -61,6 +61,20 @@ Evidence: `{doc_id, doc_type, file, file_name, sha256, page, bbox:{x0,y0,x1,y1}|
 | POST | `/api/runs/{run_id}/bulk-accept` | `{}` → `{accepted}` (only rows with no discrepancy and not needing validation) |
 | POST | `/api/runs/{run_id}/relationships/from-row` | `{row_id, scope? (global|family:<prefix>|sku:<code>), anchor? (bind to the BOM item number), canonical?, aliases?, doc_types?, notes?}` → Relationship |
 
+## Terminology worklist
+`GET /api/runs/{run_id}/terminology-worklist` → `{needs_validation, potential_rows, items:[Suggestion + {would_clear, still_review, cumulative_clear, cumulative_pct}], top5:{n, rows, pct}, top10:{...}}`.
+Unconfirmed fuzzy pairings ranked by the rows they would auto-clear once approved as relationships (rows carrying a discrepancy or an ambiguity are `still_review`). Approval goes through `mining/approve`; nothing is created automatically.
+
+## Review effort (measured)
+Opening a row (`GET .../results/{row_id}`) with a session records the time for that reviewer's slot; the next decision on that row by the same slot stores `seconds_spent` (only when the gap is at most 15 minutes; bulk accept and Excel imports are never timed). `GET .../business-case` uses the median of timed decisions once there are at least 10 (`effort_basis: "measured"`, `timed_decisions`, `measured_minutes_per_validation_row`, `minutes_per_validation_row_used`); below that it keeps the brief's assumption and says so.
+
+## Certificate, run diff, optional Excel round-trip
+| Method | Path | Body / params | Returns |
+|---|---|---|---|
+| GET | `/api/runs/{run_id}/certificate.pdf?sku=` | optional `sku` | One A4 page per SKU (or one SKU): run id, timestamp, terminology version, thresholds, every input file with its SHA-256, counts by classification, blockers, named reviewers with decision counts, finalized and disagreement counts, open action items, statement and signature lines. 403 for a blind session; 404 for an unknown SKU. |
+| GET | `/api/runs/{run_id}/diff?against={earlier_run_id}` | | `{before_run_id, after_run_id, skus:{added,removed,common}, documents:{changed:[{path, before_sha256, after_sha256}], added, removed}, counts:{resolved,new,still_open,changed,unchanged,gone,not_covered}, rows:[{key, sku, check, status, before, after, note}]}`. Rows are matched by comparison key; `unchanged` rows are counted, not listed; `gone` means the comparison disappeared, which is not the same as fixed. |
+| POST | `/api/runs/{run_id}/decisions/import` | multipart `file` (.xlsx exported by this tool), `dry_run` (default false), `force` (default false) | `RoundTripResult`: `{run_id, slot, reviewer, dry_run, force, exported_at, applied[], unchanged[], conflicts:[{row_id, sheet, workbook, database, database_decided_at, database_reviewer}], invalid:[{row_id, sheet, value, reason}], unknown_rows[], summary}`. Slot and reviewer come from the session. The workbook must carry this run's id (400 otherwise); only the session's own columns are read; a decision changed in the database after `Exported at` is a conflict and is skipped unless `force`. Optional feature. |
+
 ## Relationship mining
 | GET | `/api/runs/{run_id}/mining?min_skus=2` | `[{a_text, b_text, a_key, b_key, pair_key, sku_count, skus[], check_types[], row_ids[], confirmed, contradicted, item_anchors[], relationship_id, evidence}]` |
 | POST | `/api/runs/{run_id}/mining/approve` | `{a_key, b_key, by, scope?, anchor?, notes?}` → Relationship |

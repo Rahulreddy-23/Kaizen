@@ -5,14 +5,20 @@ import { ErrorBox, Loading, Notice } from "../components/Feedback";
 import { enc, familyOf } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
 import { errorMessage, useAsync } from "../lib/useAsync";
-import type { MiningSuggestion, Relationship } from "../types";
+import type { MiningSuggestion, Relationship, Worklist } from "../types";
 
 export default function MiningPage() {
   const { runId = "" } = useParams();
   const [minSkus, setMinSkus] = useState(2);
   const list = useAsync(() => api.getMining(runId, minSkus), [runId, minSkus]);
+  const worklist = useAsync(() => api.getWorklist(runId), [runId]);
+  const reloadAll = () => {
+    list.reload();
+    worklist.reload();
+  };
   return (
     <div className="space-y-3">
+      {worklist.data && <WorklistSection runId={runId} wl={worklist.data} onDone={reloadAll} />}
       <div className="flex items-center gap-3 flex-wrap">
         <h1>Relationship mining suggestions</h1>
         <label className="text-xs flex items-center gap-1 ml-auto">
@@ -28,7 +34,7 @@ export default function MiningPage() {
       {list.error && <ErrorBox error={list.error} onRetry={list.reload} />}
       {list.loading && !list.data && <Loading />}
       {list.data && list.data.length === 0 && <div className="panel p-3 text-xs text-gray-500">No suggestions at this threshold. Every repeated pairing is already covered by a relationship, or was rejected.</div>}
-      {list.data && list.data.map((s) => <SuggestionCard key={s.pair_key} runId={runId} s={s} onDone={list.reload} />)}
+      {list.data && list.data.map((s) => <SuggestionCard key={s.pair_key} runId={runId} s={s} onDone={reloadAll} />)}
     </div>
   );
 }
@@ -159,5 +165,92 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
         </div>
       </div>
     </div>
+  );
+}
+
+/** The business-case projection as a to-do list: approve these, in this order, and this many rows clear. */
+function WorklistSection({ runId, wl, onDone }: { runId: string; wl: Worklist; onDone: () => void }) {
+  const { name } = useReviewer();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const items = showAll ? wl.items : wl.items.slice(0, 10);
+  const approve = async (it: Worklist["items"][number]) => {
+    setBusy(it.pair_key);
+    setErr(null);
+    try {
+      await api.approveMining(runId, { a_key: it.a_key, b_key: it.b_key, by: name, scope: "global", anchor: it.item_anchors.length > 0, notes: "Approved from the terminology worklist" });
+      onDone();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section className="panel p-3 space-y-2">
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <h1>Terminology worklist</h1>
+        <span className="text-xs text-gray-600">
+          {wl.needs_validation} rows need validation in this run; {wl.potential_rows} of them sit behind {wl.items.length} unconfirmed wording pairings.
+        </span>
+      </div>
+      {wl.items.length > 0 ? (
+        <p className="text-sm">
+          Approving the <b>top {wl.top5.n}</b> pairings auto-clears <b className="tabular-nums">{wl.top5.rows}</b> rows ({wl.top5.pct}% of what needs validation); the top {wl.top10.n} clears{" "}
+          <b className="tabular-nums">{wl.top10.rows}</b> ({wl.top10.pct}%). Each approval creates a versioned relationship that the <i>next</i> run applies. Rows marked "still review" carry a
+          discrepancy or an ambiguity and stay with a reviewer regardless.
+        </p>
+      ) : (
+        <p className="text-sm text-gray-600">Every fuzzy pairing in this run is already covered by a relationship. Nothing to approve.</p>
+      )}
+      {err && <ErrorBox error={err} />}
+      {wl.items.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="table text-xs">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>BOM wording</th>
+                <th>Label / drawing wording</th>
+                <th className="text-right">SKUs</th>
+                <th className="text-right">Would clear</th>
+                <th className="text-right">Still review</th>
+                <th className="text-right">Cumulative</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, i) => (
+                <tr key={it.pair_key}>
+                  <td className="tabular-nums text-gray-500">{i + 1}</td>
+                  <td className="mono">{it.a_text}</td>
+                  <td className="mono">{it.b_text}</td>
+                  <td className="text-right tabular-nums">{it.sku_count}</td>
+                  <td className="text-right tabular-nums font-semibold">{it.would_clear}</td>
+                  <td className="text-right tabular-nums">{it.still_review || ""}</td>
+                  <td className="text-right tabular-nums">
+                    {it.cumulative_clear} <span className="text-gray-500">({it.cumulative_pct}%)</span>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <Link className="underline mr-2" to={`/runs/${enc(runId)}/rows/${enc(it.row_ids[0])}`} title="Open the first row with its evidence">
+                      evidence
+                    </Link>
+                    <button className="btn btn-primary" disabled={busy !== null || !name} onClick={() => approve(it)} title="Creates a global relationship (versioned, attributed to you)">
+                      {busy === it.pair_key ? "Approving…" : "Approve"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {wl.items.length > 10 && (
+        <button className="btn" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? "Show top 10" : `Show all ${wl.items.length}`}
+        </button>
+      )}
+    </section>
   );
 }

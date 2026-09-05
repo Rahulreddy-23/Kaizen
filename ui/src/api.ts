@@ -17,6 +17,9 @@ import type {
   RelationshipHistory,
   ResultsPage,
   ResultsQuery,
+  Worklist,
+  RunDiff,
+  RoundTripResult,
   CurrentSession,
   ReviewSession,
   ReviewState,
@@ -154,6 +157,16 @@ export const api = {
   annotatedBomUrl: (runId: string, docId: string) => `/api/runs/${enc(runId)}/annotated-bom/${enc(docId)}`,
 
   // ---- mining
+  certificateUrl: (runId: string, sku?: string) => `/api/runs/${enc(runId)}/certificate.pdf${qs({ sku })}`,
+  getDiff: (runId: string, against: string) => request<RunDiff>(`/api/runs/${enc(runId)}/diff${qs({ against })}`),
+  importDecisions: (runId: string, file: File, opts: { dryRun?: boolean; force?: boolean } = {}) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    fd.append("dry_run", opts.dryRun ? "true" : "false");
+    fd.append("force", opts.force ? "true" : "false");
+    return request<RoundTripResult>(`/api/runs/${enc(runId)}/decisions/import`, { method: "POST", body: fd });
+  },
+  getWorklist: (runId: string) => request<Worklist>(`/api/runs/${enc(runId)}/terminology-worklist`),
   getMining: (runId: string, minSkus = 2) => request<MiningSuggestion[]>(`/api/runs/${enc(runId)}/mining${qs({ min_skus: minSkus })}`),
   approveMining: (runId: string, body: { a_key: string; b_key: string; by: string; scope?: string; anchor?: boolean; notes?: string }) =>
     request<Relationship>(`/api/runs/${enc(runId)}/mining/approve`, json("POST", body)),

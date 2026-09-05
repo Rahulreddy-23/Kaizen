@@ -144,6 +144,7 @@ export interface Decision {
   override_classification: Classification | null;
   decided_at: string;
   blind: boolean;
+  seconds_spent?: number | null;
 }
 export interface Final {
   final_decision: DecisionKind;
@@ -422,6 +423,21 @@ export interface MiningSuggestion {
   evidence: string;
 }
 
+/** A mining suggestion with its impact: rows that auto-clear once the pairing is approved. */
+export interface WorklistItem extends MiningSuggestion {
+  would_clear: number;
+  still_review: number;
+  cumulative_clear: number;
+  cumulative_pct: number;
+}
+export interface Worklist {
+  needs_validation: number;
+  potential_rows: number;
+  items: WorklistItem[];
+  top5: { n: number; rows: number; pct: number };
+  top10: { n: number; rows: number; pct: number };
+}
+
 export interface VerifyOutcome {
   run_id: string;
   resolved: string[];
@@ -462,6 +478,11 @@ export interface BusinessCase {
   hours_saved_per_project_after_confirmation?: number;
   annual_savings_after_confirmation?: number;
   meets_target_after_confirmation?: boolean;
+  /** "measured" when enough timed decisions exist, otherwise "assumed" (the brief's figure). */
+  effort_basis?: "measured" | "assumed";
+  timed_decisions?: number;
+  measured_minutes_per_validation_row?: number | null;
+  minutes_per_validation_row_used?: number;
 }
 export interface BusinessParams {
   baseline_minutes_per_sku?: number;
@@ -472,4 +493,51 @@ export interface BusinessParams {
   minutes_per_validation_row?: number;
   minutes_per_cleared_row?: number;
   target_reduction_pct?: number;
+}
+
+// ---- run-to-run diff
+export interface RowBrief {
+  row_id: string;
+  classification: Classification;
+  match_level: string;
+  discrepancies: string[];
+  severity: string | null;
+  requires_validation: boolean;
+  explanation: string;
+  a: [string | null, string, string | null] | null;
+  b: [string, string | null] | null;
+}
+export type DiffStatus = "resolved" | "new" | "still_open" | "changed" | "unchanged" | "gone" | "not_covered";
+export interface RunDiffRow {
+  key: string;
+  sku: string;
+  check: string;
+  status: DiffStatus;
+  before: RowBrief | null;
+  after: RowBrief | null;
+  note: string;
+}
+export interface RunDiff {
+  before_run_id: string;
+  after_run_id: string;
+  skus: { added: string[]; removed: string[]; common: string[] };
+  documents: { changed: { path: string; before_sha256: string; after_sha256: string }[]; added: string[]; removed: string[] };
+  counts: Record<DiffStatus, number>;
+  rows: RunDiffRow[];
+}
+
+// ---- optional Excel round-trip
+export interface RoundTripResult {
+  run_id: string;
+  slot: number;
+  reviewer: string;
+  dry_run: boolean;
+  force: boolean;
+  exported_at: string | null;
+  applied: string[];
+  unchanged: string[];
+  conflicts: { row_id: string; sheet: string; workbook: string; database: string; database_decided_at: string; database_reviewer: string }[];
+  invalid: { row_id: string; sheet: string; value: string; reason: string }[];
+  unknown_rows: string[];
+  summary: string;
 }

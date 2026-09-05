@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { fmtDate } from "../lib/format";
+import { useHotkeys } from "../lib/hotkeys";
 import { useReviewer } from "../lib/reviewer";
 import { errorMessage } from "../lib/useAsync";
 import { CLASSIFICATIONS, DECISION_KINDS, DECISION_LABELS, type Classification, type Decision, type DecisionKind, type HistoryEvent, type RowDetail, type Slot } from "../types";
@@ -20,6 +21,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
   const slot: 1 | 2 = session?.slot ?? 1;
   const slotKey = String(slot) as Slot;
   const mine = detail.decisions[slotKey];
+  const isFinal = detail.state === "FINALIZED";
 
   const [decision, setDecision] = useState<DecisionKind | null>(mine?.decision ?? null);
   const [override, setOverride] = useState<Classification>(mine?.override_classification ?? "EQUIVALENT");
@@ -67,6 +69,20 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
     }
   };
 
+  // a / c / o / n choose; Enter submits the chosen decision (never fires while typing in the comment box).
+  useHotkeys(
+    {
+      a: () => !isFinal && setDecision("ACCEPT"),
+      c: () => !isFinal && setDecision("CONFIRM_DISCREPANCY"),
+      o: () => !isFinal && setDecision("OVERRIDE"),
+      n: () => !isFinal && setDecision("NEEDS_MORE_INFORMATION"),
+      Enter: () => {
+        if (decision && name && !busy && !isFinal) void submit();
+      },
+    },
+    [decision, name, busy, isFinal, comment, override, rowId],
+  );
+
   const finalize = async () => {
     if (!name) return;
     setFinalBusy(true);
@@ -82,7 +98,6 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
   };
 
   const blindHidden = viewerParams.blind && detail.decisions["2"] === null;
-  const isFinal = detail.state === "FINALIZED";
 
   return (
     <div className="panel">

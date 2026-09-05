@@ -1,7 +1,7 @@
 """Relationship mining: repeated fuzzy pairings across SKUs become SUGGESTIONS with evidence. A human approves
 or rejects; nothing is created automatically."""
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 from kaizen.matching.normalize import normalize
@@ -25,6 +25,10 @@ class Suggestion:
     contradicted: int = 0
     item_anchors: list[str] = field(default_factory=list)
     relationship_id: str | None = None
+    would_clear: int = 0  # rows with no discrepancy: confirmed as a relationship they auto-clear on the next run
+    still_review: int = 0  # rows that carry a discrepancy (e.g. a quantity mismatch) and need a reviewer regardless
+    cumulative_clear: int = 0  # running total down the ranked worklist
+    cumulative_pct: float = 0.0  # ... as a share of all rows needing validation
 
     @property
     def pair_key(self) -> str:
@@ -59,6 +63,10 @@ def mine_suggestions(run: Run, review: ReviewStore, repo: TerminologyRepository,
         if r.check.value not in s.check_types:
             s.check_types.append(r.check.value)
         s.row_ids.append(r.row_id)
+        if r.discrepancies:
+            s.still_review += 1
+        else:
+            s.would_clear += 1
         if r.source_a.item_number and r.source_a.item_number not in s.item_anchors:
             s.item_anchors.append(r.source_a.item_number)
         for d in decisions.get(r.row_id, {}).values():
@@ -85,3 +93,34 @@ def reject_suggestion(db: Database, s: Suggestion, by: str, note: str = "") -> N
     db.conn.execute("INSERT OR REPLACE INTO mining_rejections VALUES (?,?,?,?)", (s.pair_key, by, datetime.now(timezone.utc).isoformat(timespec="seconds"), note))
     db.audit(by, "mining.rejected", f"{s.a_text} = {s.b_text}: {note}".strip())
     db.conn.commit()
+
+
+@dataclass
+class Worklist:
+    """Unconfirmed fuzzy pairings ranked by the rows they would auto-clear once approved as relationships."""
+
+    needs_validation: int  # reviewable rows needing validation in this run (the denominator)
+    potential_rows: int  # rows behind an unconfirmed pairing
+    items: list[Suggestion]
+
+    def top(self, n: int) -> dict:
+        rows = sum(i.would_clear for i in self.items[:n])
+        return {"n": min(n, len(self.items)) if n > 0 else 0, "rows": rows, "pct": round(100 * rows / self.needs_validation, 1) if self.needs_validation and n > 0 else 0.0}
+
+    def to_dict(self) -> dict:
+        return {"needs_validation": self.needs_validation, "potential_rows": self.potential_rows, "items": [asdict(i) | {"pair_key": i.pair_key, "evidence": i.evidence} for i in self.items], "top5": self.top(5), "top10": self.top(10)}
+
+
+def terminology_worklist(run: Run, review: ReviewStore, repo: TerminologyRepository) -> Worklist:
+    """The business-case projection as a to-do list: approve these, in this order, and this many rows clear."""
+    from kaizen.review.business import reviewable
+
+    items = mine_suggestions(run, review, repo, min_skus=1)
+    items.sort(key=lambda s: (-s.would_clear, -s.sku_count, s.a_text))
+    needs = sum(1 for r in reviewable(run) if r.requires_validation)
+    total = 0
+    for s in items:
+        total += s.would_clear
+        s.cumulative_clear = total
+        s.cumulative_pct = round(100 * total / needs, 1) if needs else 0.0
+    return Worklist(needs, sum(len(s.row_ids) for s in items), items)

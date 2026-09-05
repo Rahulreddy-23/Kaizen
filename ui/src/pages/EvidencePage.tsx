@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { ClassificationBadge, RoleTag, SeverityBadge } from "../components/Badges";
 import { DecisionPanel } from "../components/DecisionPanel";
 import { EvidenceCard } from "../components/EvidenceCard";
 import { ErrorBox, Loading } from "../components/Feedback";
+import { HotkeyHelp, HotkeyHint } from "../components/HotkeyHelp";
+import { useHotkeys } from "../lib/hotkeys";
 import { ActionItemPanel, SaveRelationshipPanel } from "../components/RowActions";
 import { enc, fmtScore } from "../lib/format";
 import { PAGE_SIZE, queueParams, queueQueryFromParams } from "../lib/queue";
@@ -62,18 +64,14 @@ export default function EvidencePage() {
   };
   const queueLink = `/runs/${enc(runId)}/review?${qp.toString()}`;
 
-  // Keyboard: [ previous row, ] next row (ignored while typing).
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      if (e.key === "[" && nb.data?.prev) nav(rowLink(nb.data.prev));
-      if (e.key === "]" && nb.data?.next) nav(rowLink(nb.data.next));
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nb.data, runId]);
+  // Keyboard: j/] next, k/[ previous, ? help, Esc back to the queue. Decision keys live in DecisionPanel.
+  const [help, setHelp] = useState(false);
+  const prev = () => nb.data?.prev && nav(rowLink(nb.data.prev));
+  const next = () => nb.data?.next && nav(rowLink(nb.data.next));
+  useHotkeys(
+    { j: next, "]": next, k: prev, "[": prev, "?": () => setHelp((v) => !v), Escape: () => (help ? setHelp(false) : nav(queueLink)) },
+    [nb.data, runId, help, queueLink],
+  );
 
   if (detail.error) return <ErrorBox error={detail.error} onRetry={detail.reload} />;
   if (!detail.data) return <Loading label="Loading row…" />;
@@ -83,10 +81,12 @@ export default function EvidencePage() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
-        <Link className="btn" to={queueLink}>
+        <HotkeyHelp open={help} onClose={() => setHelp(false)} />
+        <Link className="btn" to={queueLink} title="Back to the queue (Esc)">
           ← Queue
         </Link>
         <h1 className="mono">{res.row_id}</h1>
+        <HotkeyHint />
         <span className="text-xs">
           SKU <b className="mono">{res.sku}</b>
         </span>
@@ -101,7 +101,7 @@ export default function EvidencePage() {
           )}
           {nb.data && nb.data.index === null && !nb.loading && <span className="text-gray-400 mr-1">not in the current queue filter</span>}
           {nb.data?.prev ? (
-            <Link className="btn" to={rowLink(nb.data.prev)} title="Previous row ( [ )">
+            <Link className="btn" to={rowLink(nb.data.prev)} title="Previous row (k or [)">
               ← Prev
             </Link>
           ) : (

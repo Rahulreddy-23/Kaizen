@@ -21,6 +21,7 @@ class Decision:
     override_classification: str | None
     decided_at: str
     blind: bool
+    seconds_spent: float | None = None  # opened → decided, when the row was opened by this slot and the gap is plausible
 
 
 @dataclass(frozen=True)
@@ -52,12 +53,47 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+MAX_TIMED_SECONDS = 900  # a row left open longer than 15 minutes is not a measurement of review effort
+
+
+@dataclass(frozen=True)
+class ReviewTiming:
+    """Seconds between opening a row and deciding it, over the timed decisions of a run."""
+
+    samples: int
+    median_seconds: float
+    mean_seconds: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _seconds_between(opened_at: str | None, decided_at: str) -> float | None:
+    if not opened_at:
+        return None
+    try:
+        gap = (datetime.fromisoformat(decided_at) - datetime.fromisoformat(opened_at)).total_seconds()
+    except ValueError:
+        return None
+    return gap if 0 <= gap <= MAX_TIMED_SECONDS else None
+
+
 class ReviewStore:
     def __init__(self, db: Database):
         self.db = db
         self.conn = db.conn
 
-    def decide(self, run_id: str, row_id: str, slot: int, reviewer: str, decision: str, comment: str = "", override_classification: str | None = None, blind: bool = False) -> Decision:
+    def mark_opened(self, run_id: str, row_id: str, slot: int, at: str | None = None) -> None:
+        """Record that a reviewer opened a row; the next decision by that slot is timed from here."""
+        with self.db.lock:
+            self.conn.execute("INSERT OR REPLACE INTO row_views (run_id, row_id, reviewer_slot, opened_at) VALUES (?,?,?,?)", (run_id, row_id, slot, at or _now()))
+            self.conn.commit()
+
+    def opened_at(self, run_id: str, row_id: str, slot: int) -> str | None:
+        row = self.conn.execute("SELECT opened_at FROM row_views WHERE run_id = ? AND row_id = ? AND reviewer_slot = ?", (run_id, row_id, slot)).fetchone()
+        return row["opened_at"] if row else None
+
+    def decide(self, run_id: str, row_id: str, slot: int, reviewer: str, decision: str, comment: str = "", override_classification: str | None = None, blind: bool = False, now: str | None = None, timed: bool = True) -> Decision:
         if slot not in (1, 2):
             raise ValueError("reviewer slot must be 1 or 2")
         if decision not in DECISIONS:
@@ -67,9 +103,11 @@ class ReviewStore:
                 raise ValueError("OVERRIDE requires an override_classification (EXACT, EQUIVALENT, POTENTIAL, MISMATCH, MISSING)")
         else:
             override_classification = None
-        d = Decision(slot, reviewer, decision, comment or "", override_classification, _now(), bool(blind))
-        with self.db.lock:
-            self.conn.execute("INSERT OR REPLACE INTO decisions (run_id, row_id, reviewer_slot, reviewer_name, decision, comment, decided_at, blind, override_classification) VALUES (?,?,?,?,?,?,?,?,?)", (run_id, row_id, slot, reviewer, decision, d.comment, d.decided_at, int(d.blind), override_classification or ""))
+        decided_at = now or _now()
+        with self.db.lock:  # the open-time lookup shares the connection with concurrent writers: keep it under the lock
+            seconds = _seconds_between(self.opened_at(run_id, row_id, slot), decided_at) if timed else None
+            d = Decision(slot, reviewer, decision, comment or "", override_classification, decided_at, bool(blind), seconds)
+            self.conn.execute("INSERT OR REPLACE INTO decisions (run_id, row_id, reviewer_slot, reviewer_name, decision, comment, decided_at, blind, override_classification, seconds_spent) VALUES (?,?,?,?,?,?,?,?,?,?)", (run_id, row_id, slot, reviewer, decision, d.comment, d.decided_at, int(d.blind), override_classification or "", seconds))
             self.db.audit(reviewer, f"review.decision.slot{slot}", f"{run_id} {row_id}: {decision}{' → ' + override_classification if override_classification else ''}{' [blind]' if blind else ''} {comment}".strip())
             self.conn.commit()
         return d
@@ -86,12 +124,12 @@ class ReviewStore:
 
     def decisions(self, run_id: str, row_id: str) -> dict[int, Decision]:
         rows = self.conn.execute("SELECT * FROM decisions WHERE run_id = ? AND row_id = ?", (run_id, row_id)).fetchall()
-        return {r["reviewer_slot"]: Decision(r["reviewer_slot"], r["reviewer_name"], r["decision"], r["comment"], r["override_classification"] or None, r["decided_at"], bool(r["blind"])) for r in rows}
+        return {r["reviewer_slot"]: Decision(r["reviewer_slot"], r["reviewer_name"], r["decision"], r["comment"], r["override_classification"] or None, r["decided_at"], bool(r["blind"]), r["seconds_spent"]) for r in rows}
 
     def all_decisions(self, run_id: str) -> dict[str, dict[int, Decision]]:
         out: dict[str, dict[int, Decision]] = {}
         for r in self.conn.execute("SELECT * FROM decisions WHERE run_id = ?", (run_id,)):
-            out.setdefault(r["row_id"], {})[r["reviewer_slot"]] = Decision(r["reviewer_slot"], r["reviewer_name"], r["decision"], r["comment"], r["override_classification"] or None, r["decided_at"], bool(r["blind"]))
+            out.setdefault(r["row_id"], {})[r["reviewer_slot"]] = Decision(r["reviewer_slot"], r["reviewer_name"], r["decision"], r["comment"], r["override_classification"] or None, r["decided_at"], bool(r["blind"]), r["seconds_spent"])
         return out
 
     def finals(self, run_id: str) -> dict[str, Final]:
@@ -160,9 +198,19 @@ class ReviewStore:
         for r in results:
             if r.requires_validation or slot in existing.get(r.row_id, {}):
                 continue
-            self.decide(run_id, r.row_id, slot, reviewer, "ACCEPT", comment="bulk accept: exact/equivalent with no discrepancy")
+            self.decide(run_id, r.row_id, slot, reviewer, "ACCEPT", comment="bulk accept: exact/equivalent with no discrepancy", timed=False)
             n += 1
         return n
+
+    def timing(self, run_id: str, row_ids: set[str] | None = None) -> ReviewTiming:
+        """Effort actually observed: only decisions that were timed (row opened first, plausible gap)."""
+        rows = self.conn.execute("SELECT row_id, seconds_spent FROM decisions WHERE run_id = ? AND seconds_spent IS NOT NULL", (run_id,)).fetchall()
+        secs = sorted(float(r["seconds_spent"]) for r in rows if row_ids is None or r["row_id"] in row_ids)
+        if not secs:
+            return ReviewTiming(0, 0.0, 0.0)
+        n = len(secs)
+        median = secs[n // 2] if n % 2 else (secs[n // 2 - 1] + secs[n // 2]) / 2
+        return ReviewTiming(n, round(median, 1), round(sum(secs) / n, 1))
 
     def state_counts(self, run_id: str, results: list[CheckResult], viewer_slot: int = 1, blind: bool = False) -> dict[str, int]:
         """Counts as this viewer may see them: rows hidden from a blind reviewer 2 count as undecided."""

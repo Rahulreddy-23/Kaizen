@@ -102,6 +102,7 @@ export function Layout() {
           {item(r("/documents"), "Documents")}
           {item(r("/mining"), "Mining suggestions")}
           {item(r("/business"), "Business case")}
+          {item(r("/diff"), "Compare runs")}
         </nav>
         <main className="flex-1 min-w-0 p-4">
           <Outlet />

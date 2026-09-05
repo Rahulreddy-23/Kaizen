@@ -86,6 +86,16 @@ export default function BusinessCasePage() {
               </div>
               <div className="p-3 grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
                 <Stat label="Confirmable rows" value={d.confirmable_rows} sub="fuzzy, no discrepancy, score ≥ 0.95" />
+                <Stat
+                  label="Effort per validated row"
+                  value={`${d.minutes_per_validation_row_used ?? "—"} min`}
+                  tone={d.effort_basis === "measured" ? "good" : undefined}
+                  sub={
+                    d.effort_basis === "measured"
+                      ? `MEASURED: median of ${d.timed_decisions} timed decisions`
+                      : `ASSUMED (brief); ${d.timed_decisions ?? 0} timed decision${d.timed_decisions === 1 ? "" : "s"} so far${d.measured_minutes_per_validation_row ? `, median ${d.measured_minutes_per_validation_row} min` : ""}`
+                  }
+                />
                 <Stat label="Needs validation after" value={d.needs_validation_after_confirmation ?? "—"} tone="warn" />
                 <Stat label="Est. minutes / SKU after" value={d.estimated_minutes_per_sku_after_confirmation ?? "—"} />
                 <Stat label="Reduction after" value={`${d.reduction_pct_after_confirmation ?? "—"}%`} tone={d.meets_target_after_confirmation ? "good" : "bad"} sub={d.meets_target_after_confirmation ? `meets ${target}% target` : `still below ${target}% target`} />

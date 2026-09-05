@@ -171,7 +171,27 @@ amber for needs validation, red for a discrepancy, one column per check. It repl
 **Action items** are generated from the discrepancies, with a reference key. When corrected documents are
 run again, the tool matches them up and closes the ones that are fixed.
 
-**A business case sheet** computes hours and dollars from the actual run rather than from a slide.
+**A business case sheet** computes hours and dollars from the actual run rather than from a slide. Once ten
+decisions have been timed in the tool, the minutes-per-row figure switches from the brief's assumption to the
+measured median, and the sheet says which one it used.
+
+**A cross-check certificate** is a one-page PDF per SKU: run id, every file's fingerprint, the counts, both
+reviewers by name with what they decided, and the open action items. It is the "checked by and date" stamp
+reviewers use today, made verifiable.
+
+**A terminology worklist** turns the projection into a to-do list: "approving the top five wording pairings
+clears 60 rows, 27 percent of what needs validation". Each approval is one click and creates a versioned
+relationship.
+
+**Compare runs** shows only what changed after corrected documents come back: resolved, new and still open.
+
+**Keyboard review**: j and k move, Enter opens or submits, a, c, o and n choose a decision, and ? shows the
+help. A reviewer working two hundred rows never needs the mouse.
+
+**Excel round-trip (optional).** Reviewers who prefer to work offline can fill the decision columns in the
+exported workbook and import them back. Only their own columns are read, every value is checked, and a
+decision changed in the tool after the export is flagged as a conflict rather than overwritten. Nobody has
+to use this; the tool works the same without it.
 
 ## 9. How we proved it works
 
@@ -185,10 +205,10 @@ discrepancies whose locations we know. Then we measured.
 | False alarms | 0 |
 | Rows scored across the six checks | 1,049 |
 | Rows cleared automatically in the demo set | 82 percent (1,014 of 1,237 reviewable rows) |
-| Automated tests in the code base | 361, all passing, run on every code change |
+| Automated tests in the code base | 421, all passing, run on every code change |
 | Speed | 100 SKUs in under 20 seconds on a laptop |
 
-Every code change goes through a continuous integration pipeline on GitHub that reruns all 361 tests on two
+Every code change goes through a continuous integration pipeline on GitHub that reruns all 421 tests on two
 Python versions, checks the code style, rebuilds the reviewer screens, and refuses to pass unless the
 precision and recall on the test set are both 100 percent.
 

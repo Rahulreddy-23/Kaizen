@@ -151,6 +151,61 @@ def report(
     typer.echo(f"Wrote {path}")
 
 
+@app.command()
+def certificate(
+    ctx: typer.Context,
+    run_json: Annotated[Path, typer.Argument(help="run.json written by `check` or `run`.")],
+    out: Annotated[Optional[Path], typer.Option("--out", "-o", help="PDF path (default certificate.pdf next to run.json).")] = None,
+    sku: Annotated[Optional[str], typer.Option("--sku", help="One SKU only (default: one page per SKU in the run).")] = None,
+) -> None:
+    """Cross-check certificate: one page per SKU with run id, file hashes, counts, reviewers and open action items."""
+    from kaizen.reporting.certificate import write_certificate, write_run_certificate
+    from kaizen.reporting.excel import ReviewBundle
+    from kaizen.review.action_items import ActionItemStore
+    from kaizen.review.store import ReviewStore
+
+    r = load_run(run_json)
+    ws = _ws(ctx)
+    review = ReviewStore(ws.db)
+    rid = r.metadata.run_id
+    decisions, finals = review.all_decisions(rid), review.finals(rid)
+    bundle = ReviewBundle(decisions=decisions, finals=finals, states={x.row_id: ReviewStore.state_of(decisions.get(x.row_id, {}), finals.get(x.row_id)) for x in r.results}, action_items=ActionItemStore(ws.db).for_run(rid))
+    target = out or run_json.with_name(f"certificate-{sku}.pdf" if sku else "certificate.pdf")
+    try:
+        path = write_certificate(r, sku, target, bundle) if sku else write_run_certificate(r, target, bundle)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    typer.echo(f"Wrote {path}")
+
+
+@app.command()
+def diff(
+    before_json: Annotated[Path, typer.Argument(help="run.json of the earlier run.")],
+    after_json: Annotated[Path, typer.Argument(help="run.json of the later run (e.g. after corrected documents).")],
+    as_json: bool = typer.Option(False, "--json", help="Print the full diff as JSON."),
+    limit: int = typer.Option(50, "--limit", help="Rows to print per status."),
+) -> None:
+    """What changed between two runs: resolved, new and still-open discrepancies, changed documents."""
+    import json as _json
+
+    from kaizen.review.rundiff import STATUSES, diff_runs
+
+    d = diff_runs(load_run(before_json), load_run(after_json))
+    if as_json:
+        typer.echo(_json.dumps(d.to_dict(), indent=2))
+        return
+    typer.echo(f"{d.before_run_id} → {d.after_run_id}")
+    typer.echo("  " + "  ".join(f"{k} {d.counts[k]}" for k in STATUSES))
+    typer.echo(f"  SKUs: {len(d.skus['common'])} common, {len(d.skus['added'])} added, {len(d.skus['removed'])} removed; documents changed {len(d.documents['changed'])}, added {len(d.documents['added'])}, removed {len(d.documents['removed'])}")
+    for doc in d.documents["changed"]:
+        typer.echo(f"  changed: {doc['path']}")
+    for status in ("resolved", "new", "still_open", "gone", "changed"):
+        rows = [c for c in d.rows if c.status == status][:limit]
+        for c in rows:
+            side = c.after or c.before or {}
+            typer.echo(f"  [{status}] {c.sku} {c.check} {c.key.split('|')[-1]}: {', '.join(side.get('discrepancies', [])) or side.get('classification', '')} — {c.note}")
+
+
 @app.command("eval")
 def eval_cmd(
     ctx: typer.Context,
@@ -327,6 +382,35 @@ def review_policy(
     console.print(f"Blind review policy: [bold]{current}[/bold]")
     console.print("  required — reviewer 2 never sees reviewer 1's decision on a row until they have recorded their own." if current == "required"
                   else "  optional — reviewer 2 may choose to review unblinded. Independence is no longer enforced.")
+
+
+@review_app.command("import")
+def review_import(
+    ctx: typer.Context,
+    run_json: Annotated[Path, typer.Argument(help="run.json of the run the workbook was exported from.")],
+    workbook: Annotated[Path, typer.Argument(help="The exported .xlsx with decisions filled in.")],
+    slot: int = typer.Option(..., "--slot", help="Reviewer slot whose columns to read: 1 or 2."),
+    reviewer: str = typer.Option(..., "--reviewer", help="Name recorded on every applied decision."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would change; write nothing."),
+    force: bool = typer.Option(False, "--force", help="Overwrite decisions the database changed after the export."),
+) -> None:
+    """Optional Excel round-trip: apply decisions recorded in an exported workbook (validated; conflicts are never silently overwritten)."""
+    from kaizen.reporting.excel_import import import_decisions
+
+    r = load_run(run_json)
+    try:
+        res = import_decisions(_ws(ctx), r, workbook, slot, reviewer, dry_run=dry_run, force=force)
+    except ValueError as e:
+        raise typer.BadParameter(str(e))
+    typer.echo(res.summary())
+    for c in res.conflicts:
+        typer.echo(f"  conflict {c['row_id']}: workbook {c['workbook']!r} vs database {c['database']!r} by {c['database_reviewer']} at {c['database_decided_at']}")
+    for i in res.invalid:
+        typer.echo(f"  invalid {i['row_id']} ({i['sheet']}): {i['reason']}")
+    for u in res.unknown_rows:
+        typer.echo(f"  unknown row {u}")
+    if res.conflicts and not force:
+        raise typer.Exit(code=2)
 
 
 @review_app.command("sessions")

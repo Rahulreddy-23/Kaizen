@@ -92,6 +92,12 @@ export default function DashboardPage() {
           <a className="btn" href={api.exportUrl(runId)} download>
             Export .xlsx
           </a>
+          <a className="btn" href={api.certificateUrl(runId)} download title="One page per SKU: run id, file hashes, counts, named reviewers, open action items">
+            Certificate .pdf
+          </a>
+          <Link className="btn" to={`/runs/${enc(runId)}/diff`} title="Resolved, new and still-open discrepancies against an earlier run">
+            Compare with a run
+          </Link>
           <button className="btn" onClick={doVerify} disabled={verifying} title="Match open action items from earlier runs against this run's results">
             {verifying ? "Verifying…" : "Verify & close against this run"}
           </button>

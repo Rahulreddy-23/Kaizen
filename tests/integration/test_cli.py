@@ -93,3 +93,33 @@ def test_demo_command_runs_golden_and_reports_measured_accuracy(golden, tmp_path
 def test_serve_help_mentions_local_binding():
     result = runner.invoke(app, ["serve", "--help"])
     assert result.exit_code == 0 and "127.0.0.1" in result.output
+
+
+def test_certificate_diff_and_excel_import_commands(golden, tmp_path):
+    out = tmp_path / "out"
+    assert runner.invoke(app, ["run", str(golden), "--out", str(out)]).exit_code == 0
+    run_json = out / "run.json"
+
+    cert = runner.invoke(app, ["certificate", str(run_json), "--out", str(tmp_path / "cert.pdf")])
+    assert cert.exit_code == 0, cert.output
+    assert (tmp_path / "cert.pdf").read_bytes().startswith(b"%PDF")
+    one = runner.invoke(app, ["certificate", str(run_json), "--sku", "1295108NS", "--out", str(tmp_path / "one.pdf")])
+    assert one.exit_code == 0 and (tmp_path / "one.pdf").exists()
+    assert runner.invoke(app, ["certificate", str(run_json), "--sku", "nope"]).exit_code != 0
+
+    d = runner.invoke(app, ["diff", str(run_json), str(run_json)])
+    assert d.exit_code == 0 and "resolved 0" in d.output and "unchanged" in d.output
+    dj = runner.invoke(app, ["diff", str(run_json), str(run_json), "--json"])
+    assert json.loads(dj.output)["counts"]["new"] == 0
+
+    wb = openpyxl.load_workbook(out / "report.xlsx")
+    sh = wb["BOM_Label"]
+    cols = {c.value: i + 1 for i, c in enumerate(sh[1])}
+    sh.cell(row=2, column=cols["Reviewer Decision"], value="ACCEPT")
+    wb.save(out / "report.xlsx")
+    dry = runner.invoke(app, ["review", "import", str(run_json), str(out / "report.xlsx"), "--slot", "1", "--reviewer", "Dharma", "--dry-run"])
+    assert dry.exit_code == 0 and "1 applied" in dry.output and "Dry run" in dry.output, dry.output
+    real = runner.invoke(app, ["review", "import", str(run_json), str(out / "report.xlsx"), "--slot", "1", "--reviewer", "Dharma"])
+    assert real.exit_code == 0 and "1 applied" in real.output
+    again = runner.invoke(app, ["review", "import", str(run_json), str(out / "report.xlsx"), "--slot", "1", "--reviewer", "Dharma"])
+    assert "1 unchanged" in again.output
