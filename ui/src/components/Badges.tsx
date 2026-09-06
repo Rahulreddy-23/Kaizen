@@ -6,16 +6,16 @@ type Tone = "exact" | "equivalent" | "potential" | "mismatch" | "missing" | "ok"
 
 const TONE: Record<Tone, string> = {
   exact: "bg-ok-soft text-ok-strong",
-  equivalent: "bg-[#E0F3F4] text-[#0B5F66]",
+  equivalent: "bg-cls-equivalent-soft text-cls-equivalent-strong",
   potential: "bg-warn-soft text-warn-strong",
   mismatch: "bg-bad-soft text-bad-strong",
-  missing: "bg-[#F1E6F8] text-[#5E2A80]",
+  missing: "bg-cls-missing-soft text-cls-missing-strong",
   ok: "bg-ok-soft text-ok-strong",
   warn: "bg-warn-soft text-warn-strong",
   bad: "bg-bad-soft text-bad-strong",
   info: "bg-brand-100 text-brand-700",
   neutral: "bg-surface-2 text-ink-2",
-  ink: "bg-ink text-white",
+  ink: "bg-ink text-ink-contrast",
 };
 const DOT: Record<Tone, string> = {
   exact: "bg-cls-exact",
@@ -28,7 +28,7 @@ const DOT: Record<Tone, string> = {
   bad: "bg-bad",
   info: "bg-brand-600",
   neutral: "bg-ink-3",
-  ink: "bg-white",
+  ink: "bg-ink-contrast",
 };
 
 export function Badge({ tone = "neutral", dot = true, size = "sm", title, children, className = "" }: { tone?: Tone; dot?: boolean; size?: "sm" | "md"; title?: string; children: ReactNode; className?: string }) {
@@ -64,7 +64,7 @@ const SEV_LABEL: Record<Severity, string> = { BLOCKER: "Blocker", MAJOR: "Major"
 
 export function SeverityBadge({ value, size = "sm" }: { value: string | null | undefined; size?: "sm" | "md" }) {
   if (!value) return <span className="text-ink-4">—</span>;
-  const cls = SEV[value as Severity] ?? "bg-ink-3 text-white";
+  const cls = SEV[value as Severity] ?? "bg-surface-3 text-ink";
   const sz = size === "md" ? "h-7 px-2.5 text-sm" : "h-[22px] px-2 text-xs";
   return <span className={`inline-flex items-center rounded-full font-semibold tracking-wide whitespace-nowrap ${sz} ${cls}`}>{SEV_LABEL[value as Severity] ?? value}</span>;
 }
@@ -105,7 +105,7 @@ export function DecisionBadge({ value }: { value: string | null | undefined }) {
 
 export function DocTypeBadge({ value }: { value: string | null | undefined }) {
   if (!value) return null;
-  return <span className="inline-flex items-center h-[22px] px-2 rounded-md bg-brand-700 text-white text-2xs font-semibold tracking-wider">{value}</span>;
+  return <span className="inline-flex items-center h-[22px] px-2 rounded-md bg-brand-fill text-brand-fill-ink text-2xs font-semibold tracking-wider">{value}</span>;
 }
 
 export function RoleTag({ value }: { value: string }) {

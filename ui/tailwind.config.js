@@ -1,7 +1,12 @@
 /** @type {import('tailwindcss').Config} */
-// Tokens are defined once here and mirrored as CSS variables in src/index.css (docs/design/DESIGN.md).
+// Colour tokens are CSS variables holding RGB channels; src/index.css defines the light and the dark
+// set, so `bg-surface`, `text-ink-3`, `bg-ok-soft/60` and friends switch with the theme without any
+// component knowing. docs/design/DESIGN.md is the contract, including the dark composition.
+const v = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  darkMode: ["selector", '[data-theme="dark"]'],
   theme: {
     extend: {
       fontFamily: {
@@ -9,18 +14,46 @@ export default {
         mono: ["Geist Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       colors: {
-        canvas: "#F4F6F9",
-        surface: { DEFAULT: "#FFFFFF", 2: "#EDF1F6", 3: "#E3E9F1" },
-        line: { DEFAULT: "#DCE3EC", 2: "#B8C4D4" },
-        ink: { DEFAULT: "#0F1F35", 2: "#3D4F66", 3: "#5C6E86", 4: "#5C6E86" },
-        brand: { 50: "#F3F6FB", 100: "#E8EEF8", 200: "#C9D6EC", 300: "#9DB3DA", 500: "#1F5AB0", 600: "#194890", 700: "#12305F", 800: "#0D2347", 900: "#091A35" },
-        accent: { 50: "#FFF6EE", 100: "#FDEBDD", 200: "#F9CFAE", 400: "#F5924A", 500: "#F07822", 600: "#D9660F", 700: "#B5540C" },
-        ok: { DEFAULT: "#1E7F4F", soft: "#E3F4EA", strong: "#155F3A" },
-        warn: { DEFAULT: "#B7791F", soft: "#FBF1DC", strong: "#8A5A12" },
-        bad: { DEFAULT: "#C13A2B", soft: "#FBE7E4", strong: "#8F2A1F" },
+        canvas: v("canvas"),
+        surface: { DEFAULT: v("surface"), 2: v("surface-2"), 3: v("surface-3") },
+        line: { DEFAULT: v("line"), 2: v("line-2") },
+        // ink-contrast is the text colour that sits on an ink-filled shape (white in light, canvas in dark).
+        ink: { DEFAULT: v("ink"), 2: v("ink-2"), 3: v("ink-3"), 4: v("ink-3"), contrast: v("ink-contrast") },
+        // The navigation rail has its own family: BD navy in light, a deeper navy in dark.
+        rail: { DEFAULT: v("rail"), ink: v("rail-ink"), muted: v("rail-muted"), dim: v("rail-dim") },
+        brand: {
+          50: v("brand-50"),
+          100: v("brand-100"),
+          200: v("brand-200"),
+          300: v("brand-300"),
+          500: v("brand-500"),
+          600: v("brand-600"),
+          700: v("brand-700"),
+          800: v("brand-800"),
+          900: v("brand-900"),
+          // A filled brand chip (document type): navy with white text in both themes.
+          fill: v("brand-fill"),
+          "fill-ink": v("brand-fill-ink"),
+        },
+        // BD orange is the same in both themes; only its soft surfaces change. accent-ink is the text
+        // colour on orange: always ink, never white (DESIGN.md).
+        accent: { 50: v("accent-50"), 100: v("accent-100"), 200: v("accent-200"), 400: "#F5924A", 500: "#F07822", 600: "#D9660F", 700: "#B5540C", ink: "#0F1F35" },
+        ok: { DEFAULT: v("ok"), soft: v("ok-soft"), strong: v("ok-strong") },
+        warn: { DEFAULT: v("warn"), soft: v("warn-soft"), strong: v("warn-strong") },
+        bad: { DEFAULT: v("bad"), soft: v("bad-soft"), strong: v("bad-strong") },
         // Classification and severity are meaning; never reuse these for decoration.
-        cls: { exact: "#1E7F4F", equivalent: "#0E7C86", potential: "#B7791F", mismatch: "#C13A2B", missing: "#7E3AA6" },
-        sev: { blocker: "#7A1F1F", major: "#C13A2B", minor: "#B7791F", info: "#194890" },
+        cls: {
+          exact: v("cls-exact"),
+          equivalent: v("cls-equivalent"),
+          potential: v("cls-potential"),
+          mismatch: v("cls-mismatch"),
+          missing: v("cls-missing"),
+          "equivalent-soft": v("cls-equivalent-soft"),
+          "equivalent-strong": v("cls-equivalent-strong"),
+          "missing-soft": v("cls-missing-soft"),
+          "missing-strong": v("cls-missing-strong"),
+        },
+        sev: { blocker: v("sev-blocker"), major: v("sev-major"), minor: v("sev-minor"), info: v("sev-info") },
       },
       fontSize: {
         "2xs": ["0.6875rem", { lineHeight: "1rem" }],
@@ -36,9 +69,9 @@ export default {
       },
       borderRadius: { sm: "6px", DEFAULT: "8px", md: "10px", lg: "12px", xl: "16px" },
       boxShadow: {
-        pop: "0 12px 32px -12px rgba(15,31,53,0.28), 0 2px 6px rgba(15,31,53,0.08)",
-        lift: "0 6px 18px -8px rgba(15,31,53,0.22), 0 1px 3px rgba(15,31,53,0.06)",
-        ring: "0 0 0 2px #FFFFFF, 0 0 0 4px #F07822",
+        pop: "var(--shadow-pop)",
+        lift: "var(--shadow-lift)",
+        ring: "0 0 0 2px rgb(var(--c-surface)), 0 0 0 4px #F07822",
       },
       transitionTimingFunction: {
         out: "cubic-bezier(0.16, 1, 0.3, 1)",

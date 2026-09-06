@@ -9,23 +9,142 @@
 @tailwind utilities;
 
 @layer base {
+  /* ---- tokens: light --------------------------------------------------------------------
+     RGB channels (so Tailwind can add alpha) mirrored from tailwind.config.js. */
   :root {
-    --canvas: #f4f6f9;
-    --surface: #ffffff;
-    --surface-2: #edf1f6;
-    --line: #dce3ec;
-    --line-2: #b8c4d4;
-    --ink: #0f1f35;
-    --ink-2: #3d4f66;
-    --ink-3: #5c6e86;
-    --brand: #194890;
-    --brand-deep: #12305f;
+    --c-canvas: 244 246 249;
+    --c-surface: 255 255 255;
+    --c-surface-2: 237 241 246;
+    --c-surface-3: 227 233 241;
+    --c-line: 220 227 236;
+    --c-line-2: 184 196 212;
+    --c-ink: 15 31 53;
+    --c-ink-2: 61 79 102;
+    --c-ink-3: 92 110 134;
+    --c-ink-contrast: 255 255 255;
+    --c-rail: 18 48 95;
+    --c-rail-ink: 255 255 255;
+    --c-rail-muted: 201 214 236;
+    --c-rail-dim: 157 179 218;
+    --c-brand-50: 243 246 251;
+    --c-brand-100: 232 238 248;
+    --c-brand-200: 201 214 236;
+    --c-brand-300: 157 179 218;
+    --c-brand-500: 31 90 176;
+    --c-brand-600: 25 72 144;
+    --c-brand-700: 18 48 95;
+    --c-brand-800: 13 35 71;
+    --c-brand-900: 9 26 53;
+    --c-brand-fill: 18 48 95;
+    --c-brand-fill-ink: 255 255 255;
+    --c-accent-50: 255 246 238;
+    --c-accent-100: 253 235 221;
+    --c-accent-200: 249 207 174;
+    --c-ok: 30 127 79;
+    --c-ok-soft: 227 244 234;
+    --c-ok-strong: 21 95 58;
+    --c-warn: 183 121 31;
+    --c-warn-soft: 251 241 220;
+    --c-warn-strong: 138 90 18;
+    --c-bad: 193 58 43;
+    --c-bad-soft: 251 231 228;
+    --c-bad-strong: 143 42 31;
+    --c-cls-exact: 30 127 79;
+    --c-cls-equivalent: 14 124 134;
+    --c-cls-potential: 183 121 31;
+    --c-cls-mismatch: 193 58 43;
+    --c-cls-missing: 126 58 166;
+    --c-cls-equivalent-soft: 224 243 244;
+    --c-cls-equivalent-strong: 11 95 102;
+    --c-cls-missing-soft: 241 230 248;
+    --c-cls-missing-strong: 94 42 128;
+    --c-sev-blocker: 122 31 31;
+    --c-sev-major: 193 58 43;
+    --c-sev-minor: 183 121 31;
+    --c-sev-info: 25 72 144;
+    --shadow-pop: 0 12px 32px -12px rgba(15, 31, 53, 0.28), 0 2px 6px rgba(15, 31, 53, 0.08);
+    --shadow-lift: 0 6px 18px -8px rgba(15, 31, 53, 0.22), 0 1px 3px rgba(15, 31, 53, 0.06);
+    --scrim: rgba(9, 26, 53, 0.4);
+    --skeleton-a: #edf1f6;
+    --skeleton-b: #f6f8fb;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 256 256' fill='%233d4f66'%3E%3Cpath d='M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80a8 8 0 0 1 11.32-11.32L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32z'/%3E%3C/svg%3E");
+    /* composed values for base styles */
     --accent: #f07822;
-    --accent-soft: #fdebdd;
+    /* Focus ring: a step darker in light so the ring reaches 3:1 on white; the brand orange itself in dark. */
+    --accent-focus: #d9660f;
+    --accent-soft: rgb(var(--c-accent-100));
+    --ink: rgb(var(--c-ink));
+    --line-2: rgb(var(--c-line-2));
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-inout: cubic-bezier(0.77, 0, 0.175, 1);
     color-scheme: light;
   }
+
+  /* ---- tokens: dark -----------------------------------------------------------------------
+     Composed, not inverted: a deep blue-black canvas, cards one step lighter, hairlines that are
+     barely there, off-white ink, brand blue lightened to read as text, meaning colours brightened
+     so dots and bars carry on a dark ground. Orange is unchanged and still carries ink text. */
+  :root[data-theme="dark"] {
+    --c-canvas: 15 21 32;
+    --c-surface: 22 29 43;
+    --c-surface-2: 29 38 55;
+    --c-surface-3: 38 49 69;
+    --c-line: 39 51 74;
+    --c-line-2: 63 78 110;
+    --c-ink: 230 236 245;
+    --c-ink-2: 179 191 209;
+    --c-ink-3: 134 148 171;
+    --c-ink-contrast: 15 21 32;
+    --c-rail: 13 26 51;
+    --c-rail-ink: 238 243 251;
+    --c-rail-muted: 147 168 204;
+    --c-rail-dim: 106 128 168;
+    --c-brand-50: 23 34 56;
+    --c-brand-100: 28 44 75;
+    --c-brand-200: 46 70 112;
+    --c-brand-300: 78 111 168;
+    --c-brand-500: 157 188 240;
+    --c-brand-600: 134 169 230;
+    --c-brand-700: 185 205 242;
+    --c-brand-800: 210 224 247;
+    --c-brand-900: 0 0 0;
+    --c-brand-fill: 46 79 140;
+    --c-brand-fill-ink: 255 255 255;
+    --c-accent-50: 43 26 14;
+    --c-accent-100: 61 35 19;
+    --c-accent-200: 90 50 24;
+    --c-ok: 61 191 122;
+    --c-ok-soft: 15 42 29;
+    --c-ok-strong: 126 221 168;
+    --c-warn: 228 163 59;
+    --c-warn-soft: 44 34 16;
+    --c-warn-strong: 242 192 103;
+    --c-bad: 240 112 95;
+    --c-bad-soft: 51 23 20;
+    --c-bad-strong: 248 160 148;
+    --c-cls-exact: 61 191 122;
+    --c-cls-equivalent: 56 182 194;
+    --c-cls-potential: 228 163 59;
+    --c-cls-mismatch: 240 112 95;
+    --c-cls-missing: 182 133 217;
+    --c-cls-equivalent-soft: 15 42 46;
+    --c-cls-equivalent-strong: 122 221 230;
+    --c-cls-missing-soft: 42 26 58;
+    --c-cls-missing-strong: 210 176 238;
+    --c-sev-blocker: 163 35 35;
+    --c-sev-major: 193 58 43;
+    --c-sev-minor: 228 163 59;
+    --c-sev-info: 43 99 199;
+    --shadow-pop: 0 12px 32px -12px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.45);
+    --shadow-lift: 0 6px 18px -8px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
+    --scrim: rgba(0, 0, 0, 0.6);
+    --skeleton-a: #1d2637;
+    --skeleton-b: #263145;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 256 256' fill='%23b3bfd1'%3E%3Cpath d='M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80a8 8 0 0 1 11.32-11.32L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32z'/%3E%3C/svg%3E");
+    --accent-focus: #f07822;
+    color-scheme: dark;
+  }
+
   html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
@@ -58,7 +177,7 @@
     background: transparent;
   }
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-focus);
     outline-offset: 2px;
     border-radius: 6px;
   }
@@ -119,8 +238,9 @@
       @apply bg-surface-2 border-ink-3;
     }
   }
+  /* Orange carries ink text in both themes; white on orange is never used. */
   .btn-primary {
-    @apply bg-accent-500 text-ink border-accent-500;
+    @apply bg-accent-500 text-accent-ink border-accent-500;
   }
   @media (hover: hover) and (pointer: fine) {
     .btn-primary:hover:not(:disabled) {
@@ -169,7 +289,7 @@
   }
   .input:focus {
     @apply outline-none border-accent-500;
-    box-shadow: 0 0 0 3px #fdebdd;
+    box-shadow: 0 0 0 3px rgb(var(--c-accent-100));
   }
   .input:disabled {
     @apply bg-surface-2 text-ink-3 cursor-not-allowed;
@@ -179,7 +299,7 @@
   }
   select.input {
     @apply pr-8 appearance-none bg-no-repeat;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 256 256' fill='%233d4f66'%3E%3Cpath d='M213.66 101.66l-80 80a8 8 0 0 1-11.32 0l-80-80a8 8 0 0 1 11.32-11.32L128 164.69l74.34-74.35a8 8 0 0 1 11.32 11.32z'/%3E%3C/svg%3E");
+    background-image: var(--select-chevron);
     background-position: right 8px center;
   }
   .input-sm {
@@ -191,10 +311,16 @@
   .hint {
     @apply text-xs text-ink-3;
   }
+  /* The soft orange halo around a selected tile (decision buttons, reviewer slot). */
+  .glow-accent {
+    box-shadow: 0 0 0 3px rgb(var(--c-accent-100));
+  }
 
   /* ---- surfaces --------------------------------------------------------------------- */
   .card {
     @apply bg-surface border border-line rounded-lg;
+    /* A card in a grid never widens its track to fit a table; the table scrolls inside instead. */
+    min-width: 0;
   }
   .card-head {
     @apply flex items-center gap-3 px-4 py-3 border-b border-line;
@@ -221,6 +347,13 @@
   }
   .panel-title {
     @apply card-head text-sm font-semibold text-ink;
+  }
+  .scrim {
+    background: var(--scrim);
+  }
+  /* The rail is a solid brand object in light; in dark it needs a hairline to end. */
+  :root[data-theme="dark"] .rail {
+    border-right: 1px solid rgb(var(--c-line));
   }
 
   /* ---- data ------------------------------------------------------------------------- */
@@ -271,10 +404,13 @@
     @apply inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs font-medium bg-surface-2 text-ink-2 border border-transparent whitespace-nowrap;
   }
   .kbd {
-    @apply inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded text-[11px] font-medium font-mono text-ink-2 bg-surface border border-line-2 shadow-[0_1px_0_#b8c4d4];
+    @apply inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded text-[11px] font-medium font-mono text-ink-2 bg-surface border border-line-2;
+    box-shadow: 0 1px 0 rgb(var(--c-line-2));
   }
   .skeleton {
-    @apply rounded bg-[linear-gradient(90deg,#edf1f6_25%,#f6f8fb_50%,#edf1f6_75%)] bg-[length:200%_100%] animate-shimmer;
+    @apply rounded animate-shimmer;
+    background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 50%, var(--skeleton-a) 75%);
+    background-size: 200% 100%;
   }
   /* Entrances are transitions from @starting-style, so the resting state is always the visible one:
      if the animation never runs (hidden tab, reduced motion, old browser) nothing is left invisible. */
@@ -321,4 +457,13 @@
   .bar-enter {
     transform: scaleX(0);
   }
+}
+
+/* Switching theme cross-fades every colour for a moment instead of snapping. The class is added by
+   the toggle for 240ms and never under prefers-reduced-motion. */
+.theme-switch,
+.theme-switch *,
+.theme-switch *::before,
+.theme-switch *::after {
+  transition: background-color 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out, fill 200ms ease-out, box-shadow 200ms ease-out !important;
 }

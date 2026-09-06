@@ -7,7 +7,7 @@ Start: `.venv/bin/kaizen serve` → open http://127.0.0.1:8765. Everything is lo
 
 | # | Beat | Where | What to say / show |
 |---|---|---|---|
-| 0 | Sign in | Name + reviewer slot | Identity is server-side: every decision is recorded against this name, and slot 2 is blind whether or not the reviewer wants to be. |
+| 0 | Sign in | Name + reviewer slot | Identity is server-side: every decision is recorded against this name, and slot 2 is blind whether or not the reviewer wants to be. The moon/sun button (top right, also in the top bar once signed in) switches between the light and dark theme; the choice is remembered, and until one is made the tool follows the operating system. Pick the theme that suits the room before you start. |
 | 1 | The manual process | Slide 7 of the brief | An hour per SKU per reviewer, coloured pens, a separate tracker; the independent reviewer is only free half a day. |
 | 2 | Drop the documents | Runs → "Load demo dataset" (or drop the `datasets/golden` folder) | 10 SKU sets: BOM (PDF/XLSX/CSV), labels incl. old revisions, drawings, two PCOs. |
 | 3 | Grouping | Dashboard → groups | Sets formed per folder / product family; documents by type; unrecognised files listed. |

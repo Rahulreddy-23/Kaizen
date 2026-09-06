@@ -139,7 +139,7 @@ export function DecisionPanel({ runId, rowId, detail, onChanged }: Props) {
                   disabled={isFinal}
                   onClick={() => setDecision(k)}
                   className={`flex items-center justify-between gap-2 h-11 px-3 rounded-md border text-sm font-medium text-left transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed ${
-                    on ? "border-accent-500 bg-accent-50 text-ink shadow-[0_0_0_3px_#fdebdd]" : "border-line-2 bg-surface text-ink-2 hover:border-ink-3 hover:bg-surface-2"
+                    on ? "border-accent-500 bg-accent-50 text-ink glow-accent" : "border-line-2 bg-surface text-ink-2 hover:border-ink-3 hover:bg-surface-2"
                   }`}
                   aria-pressed={on}
                 >

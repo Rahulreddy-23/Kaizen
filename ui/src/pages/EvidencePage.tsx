@@ -182,28 +182,30 @@ export default function EvidencePage() {
               <p className="text-md font-medium text-ink mt-1 leading-6">{res.explanation}</p>
               {res.discrepancies.length > 0 ? (
                 <div className="mt-4 -mx-5 -mb-5 border-t border-line">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Severity</th>
-                        <th>Discrepancy</th>
-                        <th>Detail</th>
-                        <th>Recommended action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {res.discrepancies.map((x, i) => (
-                        <tr key={i}>
-                          <td>
-                            <SeverityBadge value={x.severity} />
-                          </td>
-                          <td className="mono whitespace-nowrap">{x.type}</td>
-                          <td className="text-ink-2">{x.detail}</td>
-                          <td className="text-ink">{x.recommended_action || "—"}</td>
+                  <div className="overflow-x-auto">
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Severity</th>
+                          <th>Discrepancy</th>
+                          <th>Detail</th>
+                          <th>Recommended action</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {res.discrepancies.map((x, i) => (
+                          <tr key={i}>
+                            <td>
+                              <SeverityBadge value={x.severity} />
+                            </td>
+                            <td className="mono whitespace-nowrap">{x.type}</td>
+                            <td className="text-ink-2">{x.detail}</td>
+                            <td className="text-ink">{x.recommended_action || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : (
                 <div className="text-sm text-ink-3 mt-2">No discrepancy recorded by the engine.</div>

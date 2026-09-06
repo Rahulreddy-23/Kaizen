@@ -1,5 +1,5 @@
-// App shell: a BD-blue navigation rail, a white top bar with the run switcher and the reviewer's
-// identity, and the page. Routes and behaviour are unchanged from the first build.
+// App shell: a BD-navy navigation rail, a top bar with the run switcher, the theme toggle and the
+// reviewer's identity, and the page. Routes and behaviour are unchanged from the first build.
 import { ChartBar, ClipboardText, Files, Folders, GitDiff, Lightbulb, ListChecks, SignOut, SquaresFour, TextAa } from "@phosphor-icons/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import { enc } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
 import { SignIn } from "./SignIn";
+import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "./ui";
 
 const LAST_RUN_KEY = "kaizen.lastRun";
@@ -58,7 +59,7 @@ export function Layout() {
         title={label}
         className={({ isActive }) =>
           `relative flex items-center justify-center lg:justify-start gap-2.5 h-9 px-0 lg:pl-4 lg:pr-3 mx-2 rounded-md text-sm no-underline transition-colors duration-150 ${
-            isActive ? "bg-white/10 text-white font-medium" : "text-brand-200 hover:bg-white/5 hover:text-white"
+            isActive ? "bg-rail-ink/10 text-rail-ink font-medium" : "text-rail-muted hover:bg-rail-ink/5 hover:text-rail-ink"
           }`
         }
       >
@@ -71,7 +72,7 @@ export function Layout() {
         )}
       </NavLink>
     ) : (
-      <span className="flex items-center justify-center lg:justify-start gap-2.5 h-9 px-0 lg:pl-4 lg:pr-3 mx-2 rounded-md text-sm text-brand-300/60 cursor-default" title={`${label}: select a run first`}>
+      <span className="flex items-center justify-center lg:justify-start gap-2.5 h-9 px-0 lg:pl-4 lg:pr-3 mx-2 rounded-md text-sm text-rail-dim/70 cursor-default" title={`${label}: select a run first`}>
         <span className="shrink-0">{icon}</span>
         <span className="truncate hidden lg:inline">{label}</span>
       </span>
@@ -82,22 +83,22 @@ export function Layout() {
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70] btn btn-primary">
         Skip to content
       </a>
-      <nav className="w-16 lg:w-[232px] shrink-0 bg-brand-700 text-white flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-out" aria-label="Main">
-        <NavLink to="/" className="flex items-center gap-2.5 h-14 px-4 lg:px-5 no-underline text-white" title="Kaizen Cross-Check">
-          <span className="w-7 h-7 rounded-md bg-accent-500 grid place-items-center font-semibold text-ink text-sm shrink-0" aria-hidden>
+      <nav className="rail w-16 lg:w-[232px] shrink-0 bg-rail text-rail-ink flex flex-col sticky top-0 h-screen transition-[width] duration-200 ease-out" aria-label="Main">
+        <NavLink to="/" className="flex items-center gap-2.5 h-14 px-4 lg:px-5 no-underline text-rail-ink" title="Kaizen Cross-Check">
+          <span className="w-7 h-7 rounded-md bg-accent-500 grid place-items-center font-semibold text-accent-ink text-sm shrink-0" aria-hidden>
             K
           </span>
           <span className="leading-tight hidden lg:block">
             <span className="block text-sm font-semibold tracking-tight">Kaizen</span>
-            <span className="block text-2xs text-brand-200 tracking-wide">Cross-Check</span>
+            <span className="block text-2xs text-rail-muted tracking-wide">Cross-Check</span>
           </span>
         </NavLink>
-        <div className="mt-2 text-2xs font-medium tracking-wider text-brand-300/80 px-6 pb-1 hidden lg:block">WORKSPACE</div>
+        <div className="mt-2 text-2xs font-medium tracking-wider text-rail-dim px-6 pb-1 hidden lg:block">WORKSPACE</div>
         {item("/", "Runs", <Folders size={18} />, true)}
         {item("/terminology", "Terminology", <TextAa size={18} />)}
         {item("/action-items", "Action items", <ClipboardText size={18} />)}
-        <div className="mt-5 text-2xs font-medium tracking-wider text-brand-300/80 px-6 pb-1 hidden lg:block">THIS RUN</div>
-        <div className="px-6 pb-1.5 mono text-2xs text-brand-200/80 truncate hidden lg:block" title={runId ?? undefined}>
+        <div className="mt-5 text-2xs font-medium tracking-wider text-rail-dim px-6 pb-1 hidden lg:block">THIS RUN</div>
+        <div className="px-6 pb-1.5 mono text-2xs text-rail-muted/80 truncate hidden lg:block" title={runId ?? undefined}>
           {runId ?? "none selected"}
         </div>
         {item(r(""), "Dashboard", <SquaresFour size={18} />, true)}
@@ -106,7 +107,7 @@ export function Layout() {
         {item(r("/mining"), "Worklist and mining", <Lightbulb size={18} />)}
         {item(r("/business"), "Business case", <ChartBar size={18} />)}
         {item(r("/diff"), "Compare runs", <GitDiff size={18} />)}
-        <div className="mt-auto px-5 py-4 text-2xs text-brand-300/70 leading-4 hidden lg:block">The engine recommends. The reviewer decides. Every value is traceable to a page and a box.</div>
+        <div className="mt-auto px-5 py-4 text-2xs text-rail-dim leading-4 hidden lg:block">The engine recommends. The reviewer decides. Every value is traceable to a page and a box.</div>
       </nav>
 
       <div className="flex-1 min-w-0 flex flex-col">
@@ -124,6 +125,7 @@ export function Layout() {
             </select>
           </label>
           <div className="ml-auto flex items-center gap-3 shrink-0">
+            <ThemeToggle />
             {session ? (
               <div className="flex items-center gap-2.5" title={`${session.reviewer} · reviewer ${session.slot}${session.blind ? " · blind" : ""}. Identity, slot and blind mode are held by the server for this session.`}>
                 <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 grid place-items-center text-xs font-semibold shrink-0" aria-hidden>

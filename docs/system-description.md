@@ -502,6 +502,17 @@ animation on keyboard-driven actions). Product truth for the interface is in
 [`design/PRODUCT.md`](design/PRODUCT.md). Shared primitives live in `ui/src/components/ui.tsx`
 (buttons, cards, page header, fields, skeletons, empty states, dialog) and `ui/src/lib/toast.tsx`.
 
+The interface has a light and a dark theme. Every colour token is a CSS variable holding RGB channels
+(`ui/src/index.css` defines the light set on `:root` and the dark set on `:root[data-theme="dark"]`,
+`ui/tailwind.config.js` maps the Tailwind colour utilities onto them), so components never name a
+theme. `ui/src/lib/theme.ts` owns the rule (stored choice under `kaizen.theme`, otherwise the operating
+system's preference, followed live) and is unit-tested with vitest (`npm test`, also run in CI); a
+boot script in `ui/index.html` applies the same rule before first paint so there is no flash;
+`ui/src/components/ThemeToggle.tsx` is the moon/sun button in the top bar and on the sign-in page.
+The dark set is composed rather than inverted (BD blue lightened until it reads as text, meaning
+colours brightened, orange unchanged with ink text), and every text pair used by the interface was
+measured at 4.5:1 or better in both themes.
+
 | Page | Purpose |
 |---|---|
 | Runs | Load the demo set, drop a folder, or run a local path; lists previous runs |

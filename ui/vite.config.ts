@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
 
 // The production bundle is served by the FastAPI backend at "/" (StaticFiles, html=True).
 // Relative base + HashRouter means deep links work from a static mount.
@@ -11,4 +11,6 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": { target: "http://127.0.0.1:8765", changeOrigin: false } },
   },
+  // Unit tests for browser-free logic (theme rules); the pages are verified in a real browser.
+  test: { environment: "node", include: ["src/**/*.test.ts"] },
 });

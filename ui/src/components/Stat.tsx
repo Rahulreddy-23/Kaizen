@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
 
-// Meaning colours mirror tailwind.config.js (cls.* / sev.*). Used for inline styles on bars.
-export const CLASS_COLORS: Record<string, string> = { EXACT: "#1E7F4F", EQUIVALENT: "#0E7C86", POTENTIAL: "#B7791F", MISMATCH: "#C13A2B", MISSING: "#7E3AA6" };
-export const SEV_COLORS: Record<string, string> = { BLOCKER: "#7A1F1F", MAJOR: "#C13A2B", MINOR: "#B7791F", INFO: "#194890" };
+// Meaning colours for inline styles on bars. They read the theme's CSS variables (index.css), so bars
+// follow light and dark like everything else.
+const c = (name: string) => `rgb(var(--c-${name}))`;
+export const CLASS_COLORS: Record<string, string> = { EXACT: c("cls-exact"), EQUIVALENT: c("cls-equivalent"), POTENTIAL: c("cls-potential"), MISMATCH: c("cls-mismatch"), MISSING: c("cls-missing") };
+export const SEV_COLORS: Record<string, string> = { BLOCKER: c("sev-blocker"), MAJOR: c("sev-major"), MINOR: c("sev-minor"), INFO: c("sev-info") };
+export const BRAND_COLOR = c("brand-600");
+export const BAD_COLOR = c("bad");
 
 export function Stat({ label, value, sub, tone = "neutral", icon, className = "", size = "md" }: { label: ReactNode; value: ReactNode; sub?: ReactNode; tone?: "neutral" | "good" | "warn" | "bad" | "brand"; icon?: ReactNode; className?: string; size?: "md" | "lg" }) {
   const tones = { neutral: "text-ink", good: "text-ok-strong", warn: "text-warn-strong", bad: "text-bad-strong", brand: "text-brand-700" };
@@ -53,7 +57,7 @@ export function Bar({ segments, height = 10, legend = true, animate = false }: {
 }
 
 /** Single horizontal bar for dense tables (value / max). */
-export function MiniBar({ value, max, color = "#194890", width = 88 }: { value: number; max: number; color?: string; width?: number }) {
+export function MiniBar({ value, max, color = BRAND_COLOR, width = 88 }: { value: number; max: number; color?: string; width?: number }) {
   const w = max > 0 ? Math.min(100, (100 * value) / max) : 0;
   return (
     <span className="inline-block align-middle bg-surface-3 h-1.5 rounded-full overflow-hidden" style={{ width }} aria-hidden>

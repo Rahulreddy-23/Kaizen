@@ -318,34 +318,36 @@ export default function DocumentPage() {
               <EmptyState icon={<MagnifyingGlass size={36} />} title="No line matches" description={`Clear the filter to see all ${plural(d.items.length, "extracted line")}.`} action={<Button onClick={clearFilters}>Clear filter</Button>} />
             ) : (
               <div className="overflow-auto max-h-[76vh]">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th className="text-right">#</th>
-                      {pdf && <th className="text-right">Page</th>}
-                      {cols.map((c) => (
-                        <th key={c.h} className={c.head}>
-                          {c.h}
-                        </th>
-                      ))}
-                      <th className="text-right">Confidence</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(({ item, n }) => (
-                      <tr key={item.id} className={`clickable ${item.is_active ? "" : "text-ink-4"}`} data-selected={item.id === selectedId ? "true" : undefined} onClick={() => select(item)}>
-                        <td className="num text-right text-ink-3">{n}</td>
-                        {pdf && <td className={`num text-right ${item.page === page ? "text-ink-2" : "text-ink-4"}`}>{item.page ?? "—"}</td>}
+                <div className="overflow-x-auto">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th className="text-right">#</th>
+                        {pdf && <th className="text-right">Page</th>}
                         {cols.map((c) => (
-                          <td key={c.h} className={c.cls}>
-                            {c.cell(item)}
-                          </td>
+                          <th key={c.h} className={c.head}>
+                            {c.h}
+                          </th>
                         ))}
-                        <td className={`num text-right ${item.confidence < LOW_CONFIDENCE ? "text-warn-strong font-semibold" : "text-ink-3"}`}>{pct(item.confidence)}</td>
+                        <th className="text-right">Confidence</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {rows.map(({ item, n }) => (
+                        <tr key={item.id} className={`clickable ${item.is_active ? "" : "text-ink-4"}`} data-selected={item.id === selectedId ? "true" : undefined} onClick={() => select(item)}>
+                          <td className="num text-right text-ink-3">{n}</td>
+                          {pdf && <td className={`num text-right ${item.page === page ? "text-ink-2" : "text-ink-4"}`}>{item.page ?? "—"}</td>}
+                          {cols.map((c) => (
+                            <td key={c.h} className={c.cls}>
+                              {c.cell(item)}
+                            </td>
+                          ))}
+                          <td className={`num text-right ${item.confidence < LOW_CONFIDENCE ? "text-warn-strong font-semibold" : "text-ink-3"}`}>{pct(item.confidence)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </Card>

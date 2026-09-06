@@ -3,6 +3,7 @@
 import { EyeSlash, UserCircle, UsersThree } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useReviewer } from "../lib/reviewer";
+import { ThemeToggle } from "./ThemeToggle";
 import { Button, Field } from "./ui";
 
 export function SignIn() {
@@ -38,9 +39,12 @@ export function SignIn() {
 
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center p-6">
+      <div className="fixed top-3 right-3">
+        <ThemeToggle />
+      </div>
       <form onSubmit={submit} className="w-full max-w-[30rem] card shadow-pop p-7 enter-pop">
         <div className="flex items-center gap-3 mb-6">
-          <span className="w-9 h-9 rounded-md bg-accent-500 grid place-items-center font-semibold text-ink" aria-hidden>
+          <span className="w-9 h-9 rounded-md bg-accent-500 grid place-items-center font-semibold text-accent-ink" aria-hidden>
             K
           </span>
           <div className="leading-tight">
@@ -65,7 +69,7 @@ export function SignIn() {
                 <label
                   key={r.n}
                   className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
-                    on ? "border-accent-500 bg-accent-50 shadow-[0_0_0_3px_#fdebdd]" : "border-line hover:border-line-2 hover:bg-surface-2/60"
+                    on ? "border-accent-500 bg-accent-50 glow-accent" : "border-line hover:border-line-2 hover:bg-surface-2/60"
                   }`}
                 >
                   <input type="radio" name="slot" className="sr-only" checked={on} onChange={() => setSlot(r.n)} />

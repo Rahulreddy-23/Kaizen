@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Badge } from "../components/Badges";
 import { ErrorBox } from "../components/Feedback";
-import { MiniBar, Stat } from "../components/Stat";
+import { BAD_COLOR, BRAND_COLOR, MiniBar, Stat } from "../components/Stat";
 import { Button, Card, CardHead, Field, PageHeader, SectionTitle, Skeleton } from "../components/ui";
 import { fmtMoney, pct } from "../lib/format";
 import { useToast } from "../lib/toast";
@@ -25,8 +25,8 @@ const FIELDS: { key: keyof BusinessParams; label: string; def: number; step?: nu
 
 /** The API keeps the brief's assumption until this many decisions have been timed (docs/api-contract.md). */
 const MIN_TIMED_DECISIONS = 10;
-const OVER = "#C13A2B";
-const UNDER = "#194890";
+const OVER = BAD_COLOR;
+const UNDER = BRAND_COLOR;
 
 function paramsFrom(sp: URLSearchParams): BusinessParams {
   const out: BusinessParams = {};

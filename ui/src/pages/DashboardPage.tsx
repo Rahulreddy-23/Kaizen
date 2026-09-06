@@ -191,30 +191,32 @@ export default function DashboardPage() {
             )}
             {typeRows.length === 0 && !nv.loading && !nv.error && <div className="p-5 text-sm text-ink-3">No open discrepancies.</div>}
             {typeRows.length > 0 && (
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Severity</th>
-                    <th>Discrepancy</th>
-                    <th className="text-right">Rows</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {typeRows.map(([t, v]) => (
-                    <tr key={t}>
-                      <td>
-                        <SeverityBadge value={v.top} />
-                      </td>
-                      <td className="mono">{t}</td>
-                      <td className="text-right num font-medium">{v.count}</td>
-                      <td className="text-right">
-                        <Link to={queue({ discrepancy: t, nv: "0" })}>open</Link>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Severity</th>
+                      <th>Discrepancy</th>
+                      <th className="text-right">Rows</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {typeRows.map(([t, v]) => (
+                      <tr key={t}>
+                        <td>
+                          <SeverityBadge value={v.top} />
+                        </td>
+                        <td className="mono">{t}</td>
+                        <td className="text-right num font-medium">{v.count}</td>
+                        <td className="text-right">
+                          <Link to={queue({ discrepancy: t, nv: "0" })}>open</Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             {r.warnings.length > 0 && (
               <div className="border-t border-line px-5 py-4">
@@ -248,37 +250,41 @@ export default function DashboardPage() {
             <div className="grid md:grid-cols-2 gap-5">
               <Card>
                 <CardHead title="By check" />
-                <table className="tbl">
-                  <tbody>
-                    {CHECK_TYPES.map((c) => (
-                      <tr key={c}>
-                        <td>{CHECK_LABEL[c] ?? c}</td>
-                        <td className="text-right num">{r.per_check[c] ?? 0}</td>
-                        <td className="text-right">
-                          <Link to={queue({ check: c })}>review</Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="tbl">
+                    <tbody>
+                      {CHECK_TYPES.map((c) => (
+                        <tr key={c}>
+                          <td>{CHECK_LABEL[c] ?? c}</td>
+                          <td className="text-right num">{r.per_check[c] ?? 0}</td>
+                          <td className="text-right">
+                            <Link to={queue({ check: c })}>review</Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </Card>
               <Card>
                 <CardHead title="Review state" />
-                <table className="tbl">
-                  <tbody>
-                    {REVIEW_STATES.map((s) => (
-                      <tr key={s}>
-                        <td>
-                          <StateBadge value={s} />
-                        </td>
-                        <td className="text-right num">{r.state_counts[s] ?? 0}</td>
-                        <td className="text-right">
-                          <Link to={queue({ state: s, nv: "0" })}>open</Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="tbl">
+                    <tbody>
+                      {REVIEW_STATES.map((s) => (
+                        <tr key={s}>
+                          <td>
+                            <StateBadge value={s} />
+                          </td>
+                          <td className="text-right num">{r.state_counts[s] ?? 0}</td>
+                          <td className="text-right">
+                            <Link to={queue({ state: s, nv: "0" })}>open</Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </Card>
             </div>
           </div>
@@ -288,33 +294,35 @@ export default function DashboardPage() {
           <Card>
             <CardHead title="PCO coverage and SKU sets" count={`${coverageIssues.length} issue${coverageIssues.length === 1 ? "" : "s"}`} />
             <div className="max-h-80 overflow-auto">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Kind</th>
-                    <th>SKU</th>
-                    <th>Detail</th>
-                    <th>Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...r.coverage]
-                    .sort((a, b) => (a.status === "OK" ? 1 : 0) - (b.status === "OK" ? 1 : 0))
-                    .map((c, i) => {
-                      const bad = c.status.startsWith("MISSING");
-                      return (
-                        <tr key={i} className={bad ? "bg-bad-soft/40" : ""}>
-                          <td>{bad ? <SeverityBadge value="BLOCKER" /> : <Badge tone="ok">OK</Badge>}</td>
-                          <td className="text-ink-3">{c.kind.replace(/_/g, " ")}</td>
-                          <td className="mono">{c.sku}</td>
-                          <td className={bad ? "text-bad-strong font-medium" : ""}>{c.detail}</td>
-                          <td className="mono text-ink-3 break-all">{c.source}</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Kind</th>
+                      <th>SKU</th>
+                      <th>Detail</th>
+                      <th>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...r.coverage]
+                      .sort((a, b) => (a.status === "OK" ? 1 : 0) - (b.status === "OK" ? 1 : 0))
+                      .map((c, i) => {
+                        const bad = c.status.startsWith("MISSING");
+                        return (
+                          <tr key={i} className={bad ? "bg-bad-soft/40" : ""}>
+                            <td>{bad ? <SeverityBadge value="BLOCKER" /> : <Badge tone="ok">OK</Badge>}</td>
+                            <td className="text-ink-3">{c.kind.replace(/_/g, " ")}</td>
+                            <td className="mono">{c.sku}</td>
+                            <td className={bad ? "text-bad-strong font-medium" : ""}>{c.detail}</td>
+                            <td className="mono text-ink-3 break-all">{c.source}</td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </Card>
           <Card>
@@ -323,28 +331,30 @@ export default function DashboardPage() {
               <div className="p-5 text-sm text-ink-3">No parser warnings. Every document was read without a caveat.</div>
             ) : (
               <div className="max-h-80 overflow-auto">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Document</th>
-                      <th>Warning</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {r.parser_warnings.flatMap((p) =>
-                      p.warnings.map((w, i) => (
-                        <tr key={`${p.doc_id}-${i}`}>
-                          <td className="whitespace-nowrap">
-                            <Link className="mono" to={`${base}/documents/${enc(p.doc_id)}`}>
-                              {p.document}
-                            </Link>
-                          </td>
-                          <td className="text-ink-2">{w}</td>
-                        </tr>
-                      )),
-                    )}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Document</th>
+                        <th>Warning</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {r.parser_warnings.flatMap((p) =>
+                        p.warnings.map((w, i) => (
+                          <tr key={`${p.doc_id}-${i}`}>
+                            <td className="whitespace-nowrap">
+                              <Link className="mono" to={`${base}/documents/${enc(p.doc_id)}`}>
+                                {p.document}
+                              </Link>
+                            </td>
+                            <td className="text-ink-2">{w}</td>
+                          </tr>
+                        )),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             {r.unrecognised_files.length > 0 && (
@@ -441,28 +451,30 @@ export default function DashboardPage() {
                 <div>
                   <div className="text-sm font-medium mb-2">Inputs ({r.inputs.length})</div>
                   <div className="max-h-64 overflow-auto">
-                    <table className="tbl">
-                      <thead>
-                        <tr>
-                          <th>Path</th>
-                          <th>Type</th>
-                          <th className="text-right">Size</th>
-                          <th>SHA-256</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {r.inputs.map((f) => (
-                          <tr key={f.path}>
-                            <td className="mono break-all">{f.path}</td>
-                            <td>{f.doc_type ?? <span className="text-warn-strong">unrecognised</span>}</td>
-                            <td className="text-right num whitespace-nowrap">{fmtBytes(f.size_bytes)}</td>
-                            <td className="mono text-ink-3" title={f.sha256}>
-                              {shortSha(f.sha256, 16)}
-                            </td>
+                    <div className="overflow-x-auto">
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>Path</th>
+                            <th>Type</th>
+                            <th className="text-right">Size</th>
+                            <th>SHA-256</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {r.inputs.map((f) => (
+                            <tr key={f.path}>
+                              <td className="mono break-all">{f.path}</td>
+                              <td>{f.doc_type ?? <span className="text-warn-strong">unrecognised</span>}</td>
+                              <td className="text-right num whitespace-nowrap">{fmtBytes(f.size_bytes)}</td>
+                              <td className="mono text-ink-3" title={f.sha256}>
+                                {shortSha(f.sha256, 16)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>

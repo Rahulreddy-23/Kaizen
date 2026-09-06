@@ -3,7 +3,7 @@
 # Runs on every pull request and on every push to main:
 #   1. python  - ruff lint, the full pytest suite (unit, integration, golden accuracy)
 #                on Python 3.12 and 3.13, then the golden-dataset accuracy gate.
-#   2. ui      - TypeScript type-check and production build of the reviewer UI.
+#   2. ui      - unit tests (vitest), TypeScript type-check and production build of the reviewer UI.
 #
 # There is no deployment stage: the tool is a local/offline application.
 name: CI
@@ -75,6 +75,9 @@ jobs:
 
       - name: Install (clean, from lockfile)
         run: npm ci
+
+      - name: Unit tests (vitest)
+        run: npm test
 
       - name: Type-check and build
         run: npm run build
