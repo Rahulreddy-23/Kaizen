@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.formatting.rule import CellIsRule
@@ -26,6 +26,8 @@ class ReviewBundle:
     action_items: list[Any] = field(default_factory=list)
     business: Any | None = None
     worklist: dict[str, Any] | None = None  # terminology worklist (ranked unconfirmed pairings)
+    current_rows: dict[str, dict[str, Any]] = field(default_factory=dict)
+    exported_at: str | None = None
 
 
 def _decision_cell(d) -> str | None:
@@ -49,7 +51,7 @@ def _review_cells(review: ReviewBundle | None, r) -> list[Any]:
     ]
 
 
-def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str, Any] | None = None) -> Path:
+def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str, Any] | None = None, *, detail: Literal["summary", "complete"] | None = None) -> Path:
     """Workbook with the workspace's reviewer decisions, action items and business case merged in."""
     from kaizen.review.action_items import ActionItemStore
     from kaizen.review.business import business_case
@@ -69,17 +71,25 @@ def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str,
             import json
 
             metrics = json.loads(sidecar.read_text(encoding="utf-8"))
-    decisions = review.all_decisions(rid)
-    finals = review.finals(rid)
-    states = {r.row_id: review.state_of(decisions.get(r.row_id, {}), finals.get(r.row_id)) for r in run.results}
+    from kaizen.review.progress import review_snapshot
+
+    with workspace.db.lock:
+        exported_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        decisions = review.all_decisions(rid)
+        finals = review.finals(rid)
+        states = {r.row_id: review.state_of(decisions.get(r.row_id, {}), finals.get(r.row_id)) for r in run.results}
+        current_rows = {r["row_id"]: r for r in review_snapshot(run, review)[0]} if detail else {}
+        history_events = {r.row_id: review.history(rid, r.row_id)[1:] for r in run.results} if collaborative and detail != "summary" else {}
     from kaizen.review.learning import LearningStore
     from kaizen.review.mining import terminology_worklist
 
     learning = LearningStore(workspace.db)
     training = run.model_copy(update={"results": [r for r in run.results if learning.split(r.sku) != "evaluation"]})
-    bundle = ReviewBundle(decisions=decisions, finals=finals, states=states, action_items=ActionItemStore(workspace.db).for_run(rid), business=business_case(run, timing=review.timing(rid)), worklist=terminology_worklist(training, review, workspace.repository).to_dict())
-    result = write_report(run, path, metrics=metrics, review=bundle)
-    if collaborative:
+    bundle = ReviewBundle(decisions=decisions, finals=finals, states=states, action_items=ActionItemStore(workspace.db).for_run(rid), current_rows=current_rows, exported_at=exported_at,
+                          business=business_case(run, timing=review.timing(rid)) if detail is None else None,
+                          worklist=terminology_worklist(training, review, workspace.repository).to_dict() if detail is None else None)
+    result = write_report(run, path, metrics=metrics, review=bundle, detail=detail)
+    if collaborative and detail != "summary":
         wb = load_workbook(result)
         for sheet in wb:
             # Preserve legacy data for old two-reviewer runs. New collaborative work has one decision.
@@ -91,7 +101,7 @@ def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str,
         history = wb.create_sheet('Approval history')
         history.append(['Row ID', 'Event', 'User', 'When', 'Decision', 'Classification', 'Comment', 'Self-approved'])
         for row in run.results:
-            for event in review.history(rid, row.row_id)[1:]:
+            for event in history_events[row.row_id]:
                 history.append([row.row_id, event['event'], event.get('reviewer') or event.get('finalized_by'), event.get('decided_at') or event.get('finalized_at'), event.get('decision') or event.get('final_decision'), event.get('override_classification'), event.get('comment') or event.get('note'), 'Yes' if event.get('self_approved') else ''])
         history.freeze_panes = 'A2'
         history.auto_filter.ref = history.dimensions
@@ -156,9 +166,30 @@ def _autosize(ws, headers: list[str], default: int = 16) -> None:
         ws.column_dimensions[get_column_letter(c)].width = _WIDTHS.get(h, max(default, min(len(h) + 2, 40)))
 
 
-def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = None, review: ReviewBundle | None = None) -> Path:
+def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = None, review: ReviewBundle | None = None, *, detail: Literal["summary", "complete"] | None = None) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if detail is not None:
+        from kaizen.reporting.sku_excel import sku_workbook
+
+        wb = sku_workbook(run, detail, review)
+        if detail == "complete":
+            _action_items_sheet(wb.create_sheet("Action_Items"), run, review)
+            _coverage_sheet(wb.create_sheet("Coverage"), run)
+            _manual_checklist_sheet(wb.create_sheet("Manual_Checklist"), run)
+            _documents_sheet(wb.create_sheet("Documents"), run)
+            _relationships_sheet(wb.create_sheet("Relationships_Used"), run)
+            _audit_sheet(wb.create_sheet("Audit_Log"), run)
+            if metrics:
+                _accuracy_sheet(wb.create_sheet("Accuracy"), metrics)
+        metadata = wb.create_sheet("Run_Metadata")
+        _metadata_sheet(metadata, run, review.exported_at if review else None)
+        metadata.insert_rows(2)
+        metadata.cell(2, 1, "Export layout")
+        metadata.cell(2, 2, "sku")
+        metadata.sheet_state = "hidden"
+        save_workbook(wb, path)
+        return path
     wb = Workbook()
     _summary_sheet(wb.active, run, review)
     _pairing_sheet(wb.create_sheet("BOM_Label"), run, "BOM_LABEL", review)
@@ -173,7 +204,7 @@ def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = No
     _manual_checklist_sheet(wb.create_sheet("Manual_Checklist"), run)
     _documents_sheet(wb.create_sheet("Documents"), run)
     _relationships_sheet(wb.create_sheet("Relationships_Used"), run)
-    _metadata_sheet(wb.create_sheet("Run_Metadata"), run)
+    _metadata_sheet(wb.create_sheet("Run_Metadata"), run, review.exported_at if review else None)
     _audit_sheet(wb.create_sheet("Audit_Log"), run)
     if metrics:
         _accuracy_sheet(wb.create_sheet("Accuracy"), metrics)
@@ -446,14 +477,14 @@ def _relationships_sheet(ws, run: Run) -> None:
     ws.column_dimensions["L"].width = 60
 
 
-def _metadata_sheet(ws, run: Run) -> None:
+def _metadata_sheet(ws, run: Run, exported_at: str | None = None) -> None:
     m = run.metadata
     rows: list[tuple[str, Any]] = [("Run ID", m.run_id), ("Timestamp", m.timestamp.isoformat(timespec="seconds")), ("Tool version", m.tool_version)]
     rows += [(f"Parser version: {k}", v) for k, v in m.parser_versions.items()]
     rows += [("Extraction signature (SHA-256)", m.extraction_signature)]
     rows += [(f"Threshold: {k}", v) for k, v in m.thresholds.model_dump().items()]
     rows += [("Terminology version (SHA-256)", m.terminology_version), ("Terminology relationship count", m.terminology_count), ("Input root", m.input_root), ("Relationships used in this run", ", ".join(run.relationships_used) or "none")]
-    rows += [("Exported at", datetime.now(timezone.utc).isoformat(timespec="microseconds"))]  # imports must detect decisions changed in the same second
+    rows += [("Exported at", exported_at or datetime.now(timezone.utc).isoformat(timespec="microseconds"))]  # imports must detect decisions changed in the same second
     ws.cell(row=1, column=1, value="Run metadata").font = TITLE_FONT
     for i, (k, v) in enumerate(rows, start=2):
         ws.cell(row=i, column=1, value=k).font = SECTION_FONT

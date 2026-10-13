@@ -39,6 +39,9 @@ PCOs and label revisions, with the reviewer as the final decision-maker. Built f
 - Produces an audit-grade Excel workbook, an annotated BOM PDF with coloured marks, measured accuracy against
   ground truth, and a business case computed from the actual run (measured figure plus a labelled projection
   for after reviewers confirm strong pairings as relationships).
+- **Download Excel** on Overview offers **Summary** (check totals and rows needing attention) and
+  **Complete details** (all comparisons, source evidence, approvals and audit sheets). Both put each SKU
+  on its own worksheet and support importing reviewer decisions back into Kaizen.
 - Works fully offline. An AI provider can be enabled explicitly; its output is labelled as a suggestion and
   never changes a classification, decision or relationship.
 

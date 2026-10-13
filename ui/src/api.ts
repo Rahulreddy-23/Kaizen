@@ -225,7 +225,7 @@ export const api = {
   businessCase: (runId: string, p: BusinessParams) => request<BusinessCase>(`/api/runs/${enc(runId)}/business-case${qs(p as Params)}`),
 
   // ---- exports
-  exportUrl: (runId: string) => `/api/runs/${enc(runId)}/export.xlsx`,
+  exportUrl: (runId: string, detail: "summary" | "complete" = "summary") => `/api/runs/${enc(runId)}/export.xlsx?detail=${detail}`,
 
   // ---- terminology
   terminology: {

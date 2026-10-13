@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import pymupdf
@@ -920,11 +920,21 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     # ---- exports -----------------------------------------------------------------------------
     @app.get("/api/runs/{run_id}/export.xlsx")
-    def export_run(run_id: str, session: ReviewSession | None = Depends(_identified)):
+    def export_run(run_id: str, detail: Literal["summary", "complete"] = "summary", session: ReviewSession | None = Depends(_identified)):
         _refuse_if_blind(session)
         run = cache.get(run_id)
-        path = export_with_review(ws, run, ws.runs_dir / run_id / "report.xlsx")
-        return FileResponse(path, media_type=XLSX, filename=f"kaizen-{run_id}.xlsx")
+        # Each request owns its file until streaming ends; simultaneous downloads
+        # must never overwrite another reviewer's workbook or the saved CLI report.
+        temporary = tempfile.TemporaryDirectory()
+        try:
+            filename = f"kaizen-{run_id}-{detail}.xlsx"
+            metrics_path = ws.runs_dir / run_id / "accuracy.json"
+            metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else None
+            path = export_with_review(ws, run, Path(temporary.name) / filename, metrics=metrics, detail=detail)
+            return FileResponse(path, media_type=XLSX, filename=filename, background=BackgroundTask(temporary.cleanup))
+        except Exception:
+            temporary.cleanup()
+            raise
 
     @app.get("/api/runs/{run_id}/annotated-bom/{doc_id}")
     def annotated_bom(run_id: str, doc_id: str, session: ReviewSession | None = Depends(_identified)):
