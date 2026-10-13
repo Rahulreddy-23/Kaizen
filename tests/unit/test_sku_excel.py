@@ -7,8 +7,8 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from kaizen.models import Classification, Thresholds
-from kaizen.pipeline import run_folder, save_run
+from kaizen.models import Classification, DocType, Thresholds
+from kaizen.pipeline import Ingested, run_checks, run_folder, save_run
 from kaizen.reporting.excel import export_with_review, write_report
 from kaizen.reporting.excel_import import import_decisions, read_metadata
 from kaizen.review.progress import review_snapshot
@@ -165,6 +165,24 @@ def test_empty_export_and_group_without_comparisons_are_explicit(run, tmp_path):
     wb = openpyxl.load_workbook(write_report(changed, tmp_path / "empty.xlsx", detail="summary"))
     assert wb["No SKUs"].sheet_state == "visible"
     assert any(c.value == "No comparisons available for this SKU." for row in wb["No SKUs"] for c in row)
+
+
+@pytest.mark.parametrize("remaining, missing", [(DocType.BOM, "MISSING_LABEL"), (DocType.LABEL, "MISSING_BOM")])
+def test_summary_retains_missing_document_coverage_when_comparisons_are_skipped(run, tmp_path, remaining, missing):
+    document = next(d for d in run.documents if d.doc_type is remaining)
+    incomplete = run_checks(Ingested(root=Path(run.metadata.input_root), documents=[document]), RelationshipStore.default())
+    assert not incomplete.results
+    finding = next(c for c in incomplete.coverage if c.status == missing)
+    ws = workspace(tmp_path, incomplete)
+    path = export_with_review(ws, incomplete, tmp_path / "summary.xlsx", detail="summary")
+    wb = openpyxl.load_workbook(path)
+    sheet = wb[incomplete.groups[0].sku]
+    contents = [cell.value for row in sheet for cell in row]
+    assert missing.replace("_", " ").capitalize() in contents
+    assert finding.detail in contents
+    assert "No comparisons available for this SKU." in contents
+    assert not table(sheet)[1]
+    assert import_decisions(ws, incomplete, path, 1, "Reviewer", dry_run=True).applied == []
 
 
 def test_a_decision_changed_while_generating_the_download_remains_a_conflict(run, tmp_path, monkeypatch):

@@ -129,6 +129,16 @@ def _overview(ws, run, sku, rows, current, detail):
     line += 1
     for col, value in enumerate(["Total", *counts([r for r in rows if r.role != "exempt"])], 1):
         ws.cell(line, col, value).font = Font(name="Calibri", size=11, bold=True)
+    # Missing document sets can have no comparison rows at all. Keep their
+    # coverage warning visible even when the attention table is empty.
+    for finding in run.coverage:
+        if finding.sku != sku or finding.kind != "sku_set" or finding.status in ("OK", "INFO"):
+            continue
+        line += 1
+        ws.cell(line, 1, finding.status.replace("_", " ").capitalize()).alignment = Alignment(vertical="top", wrap_text=True)
+        ws.merge_cells(start_row=line, start_column=2, end_row=line, end_column=7)
+        ws.cell(line, 2, finding.detail).alignment = Alignment(vertical="top", wrap_text=True)
+        ws.row_dimensions[line].height = min(409, max(30, math.ceil(len(finding.detail) / 140) * 14 + 2))
     return line + 2
 
 
