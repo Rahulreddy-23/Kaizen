@@ -70,24 +70,30 @@ def _split_fused_label_token(token: str) -> str:
     if upper in _LABEL_WORDS:
         return token
 
-    @lru_cache(maxsize=None)
-    def segment(start: int) -> tuple[tuple[str, ...], ...]:
-        if start == len(token):
-            return ((),)
-        paths = []
-        for end in range(start + 2, len(token) + 1):
-            if upper[start:end] not in _LABEL_WORDS:
-                continue
-            for suffix in segment(end):
-                paths.append((token[start:end], *suffix))
-                if len(paths) > 1:
-                    return tuple(paths[:2])
-        return tuple(paths)
-
-    candidates = segment(0)
-    if len(candidates) == 1 and len(candidates[0]) > 1:
-        return " ".join(candidates[0])
-    return token
+    # Count complete segmentations from right to left, capped at two: only a unique
+    # path is safe to recover. Bound each lookup by the longest approved word and
+    # avoid recursion so even a long OCR join cannot exhaust Python's call stack.
+    size = len(token)
+    max_word_length = max(map(len, _LABEL_WORDS))
+    counts = [0] * (size + 1)
+    next_end = [0] * size
+    counts[size] = 1
+    for start in range(size - 1, -1, -1):
+        for end in range(start + 2, min(size, start + max_word_length) + 1):
+            if counts[end] and upper[start:end] in _LABEL_WORDS:
+                next_end[start] = end
+                counts[start] = min(2, counts[start] + counts[end])
+                if counts[start] == 2:
+                    break
+    if counts[0] != 1:
+        return token
+    parts = []
+    start = 0
+    while start < size:
+        end = next_end[start]
+        parts.append(token[start:end])
+        start = end
+    return " ".join(parts)
 
 
 def correct_fused_label_words(text: str) -> str:
