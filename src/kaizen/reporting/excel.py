@@ -107,6 +107,11 @@ def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str,
         history.auto_filter.ref = history.dimensions
         for col in history.columns:
             history.column_dimensions[col[0].column_letter].width = 28
+        if detail is not None:
+            from kaizen.reporting.sku_excel import plain_workbook
+
+            _write_header(history, 1, ['Row ID', 'Event', 'User', 'When', 'Decision', 'Classification', 'Comment', 'Self-approved'])
+            plain_workbook(wb)
         save_workbook(wb, result)
     return result
 
@@ -170,7 +175,7 @@ def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = No
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if detail is not None:
-        from kaizen.reporting.sku_excel import sku_workbook
+        from kaizen.reporting.sku_excel import plain_workbook, sku_workbook
 
         wb = sku_workbook(run, detail, review)
         if detail == "complete":
@@ -188,6 +193,7 @@ def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = No
         metadata.cell(2, 1, "Export layout")
         metadata.cell(2, 2, "sku")
         metadata.sheet_state = "hidden"
+        plain_workbook(wb)
         save_workbook(wb, path)
         return path
     wb = Workbook()

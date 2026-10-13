@@ -25,6 +25,9 @@ def run():
 def table(sheet):
     header = next(row for row in sheet if any(c.value == "Row ID" for c in row))
     columns = {c.value: c.column for c in header if c.value is not None}
+    for display, field in {"Result": "Current Classification", "Status": "Review State", "Finding": "Finding / Next Step", "Item": "Source A Item", "Description A": "Source A Description", "Description B": "Source B Description", "Qty A": "Source A Quantity", "Qty B": "Source B Quantity"}.items():
+        if display in columns:
+            columns[field] = columns[display]
     records = {str(sheet.cell(row, columns["Row ID"]).value): row for row in range(header[0].row + 1, sheet.max_row + 1) if sheet.cell(row, columns["Row ID"]).value}
     return columns, records
 
@@ -48,7 +51,7 @@ def test_summary_has_one_visible_tab_per_sku_and_only_attention_rows(run, tmp_pa
         assert {r.row_id for r in run.results if r.sku == sku} >= records.keys()
         assert "Score" not in cols and "Source A File" not in cols
         assert not any("composite_fuzzy" in str(cell.value) or "token_sort=" in str(cell.value) for row in sh for cell in row)
-        assert sh.auto_filter.ref and sh.freeze_panes and not sh.sheet_view.showGridLines
+        assert sh.auto_filter.ref and sh.freeze_panes and sh.sheet_view.showGridLines
         assert sh.column_dimensions[openpyxl.utils.get_column_letter(cols["Row ID"])].hidden
         assert sh.data_validations.dataValidation
         total = next(r for r in sh.iter_rows(max_col=6) if r[0].value == "Total")
@@ -134,9 +137,27 @@ def test_sheet_names_handle_collisions_reserved_names_and_leading_zeros(run, tmp
     sku_sheets = wb.worksheets[:len(names)]
     assert len({sh.title.casefold() for sh in sku_sheets}) == len(names)
     assert all(len(sh.title) <= 31 and not any(c in sh.title for c in "[]:*?/\\") for sh in sku_sheets)
-    assert wb["000123"]["A2"].value.startswith("000123")
+    assert wb["000123"].title == "000123"
     assert wb["Run_Metadata"].sheet_state == "hidden"
     assert any(sh.title == "Run_Metadata (2)" for sh in sku_sheets)
+
+
+@pytest.mark.parametrize("detail", ["summary", "complete"])
+def test_download_layout_is_a_plain_compact_table(run, tmp_path, detail):
+    wb = openpyxl.load_workbook(write_report(run, tmp_path / "plain.xlsx", detail=detail))
+    sheet = wb["1295108FNS"]
+    columns, records = table(sheet)
+    header = next(row for row in sheet if any(c.value == "Row ID" for c in row))
+    visible = [c.value for c in header if not sheet.column_dimensions[c.column_letter].hidden]
+    expected = ["Check", "Component", "Result", "Status", "Finding", "Reviewer Decision", "Reviewer Comment"] if detail == "summary" else ["Check", "Item", "Description A", "Description B", "Qty A", "Qty B", "Result", "Status", "Reviewer Decision", "Reviewer Comment"]
+    assert visible == expected
+    assert header[0].row < 12 and (detail != "complete" or header[0].row == 1)
+    assert sheet.sheet_view.zoomScale == 100 and sheet.sheet_properties.tabColor is None
+    for index in records.values():
+        for cell in sheet[index]:
+            assert cell.fill.patternType is None
+            assert cell.font.sz == 11
+    assert not any("Review this comparison" in str(c.value) or "Confirm whether these descriptions" in str(c.value) or "Engine classifications are" in str(c.value) for row in sheet for c in row)
 
 
 def test_empty_export_and_group_without_comparisons_are_explicit(run, tmp_path):
