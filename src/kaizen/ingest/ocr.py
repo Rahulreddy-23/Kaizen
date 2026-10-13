@@ -52,6 +52,54 @@ _STRUCTURAL_CORRECTIONS: tuple[tuple[re.Pattern, str], ...] = (
     (re.compile(r"(?<=X)(?=\d)", re.IGNORECASE), " "),
 )
 
+_LABEL_WORDS = frozenset(
+    """
+    ABSORBENT ADHESIVE ALCOHOL AMPULE APPLICATOR ASSEMBLY ASPIRATION BAND BARRIER BENDABLE BLUE
+    BOUFFANT CAP CATHETER CHLORAPREP CONTROL DEVICE DILATOR DRAPE DRESSING DUAL EACH ECG ELECTRODE
+    ELECTRODES END FENESTRATED FLEXURA FUNNEL GAUZE GLOVE GLOVES GUIDE GUIDEWIRE HOLDER HYPODERMIC
+    ID INTRODUCER ISOPROPYL IV LEAD LEADS LENGTH LID LUMEN MASK MEASURE MEASURING MICROINTRODUCER
+    NEEDLE NITINOL OD PERIPHERAL PICC PROTECTIVE SAFETY SALINE SCALPEL SHERLOCK SOLUTION STRAIGHT
+    STYLET SURGICAL SYRINGE TAPE TIP TOURNIQUET TRIMMING VESSEL WITH
+    """.split()
+)
+_FUSED_LABEL_TOKEN_RE = re.compile(r"\b[A-Za-z]{8,}\b")
+
+
+def _split_fused_label_token(token: str) -> str:
+    upper = token.upper()
+    if upper in _LABEL_WORDS:
+        return token
+
+    # Count complete segmentations from right to left, capped at two: only a unique
+    # path is safe to recover. Bound each lookup by the longest approved word and
+    # avoid recursion so even a long OCR join cannot exhaust Python's call stack.
+    size = len(token)
+    max_word_length = max(map(len, _LABEL_WORDS))
+    counts = [0] * (size + 1)
+    next_end = [0] * size
+    counts[size] = 1
+    for start in range(size - 1, -1, -1):
+        for end in range(start + 2, min(size, start + max_word_length) + 1):
+            if counts[end] and upper[start:end] in _LABEL_WORDS:
+                next_end[start] = end
+                counts[start] = min(2, counts[start] + counts[end])
+                if counts[start] == 2:
+                    break
+    if counts[0] != 1:
+        return token
+    parts = []
+    start = 0
+    while start < size:
+        end = next_end[start]
+        parts.append(token[start:end])
+        start = end
+    return " ".join(parts)
+
+
+def correct_fused_label_words(text: str) -> str:
+    """Split only uniquely segmented OCR tokens made entirely of known label terms."""
+    return _FUSED_LABEL_TOKEN_RE.sub(lambda match: _split_fused_label_token(match.group()), text)
+
 
 def correct_ocr_text(text: str) -> str:
     for pattern, replacement in _PRODUCT_CORRECTIONS:
