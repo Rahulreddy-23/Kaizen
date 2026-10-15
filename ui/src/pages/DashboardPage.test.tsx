@@ -34,6 +34,16 @@ function show() {
 }
 
 describe("overview review progress", () => {
+  it("makes the Excel choices available on the overview and hides them for view-only access", async () => {
+    const data = summary();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(data))));
+    const router = show();
+    expect(await screen.findByRole("button", { name: "Download Excel" })).toBeTruthy();
+    data.permission = "view";
+    await act(async () => { await router.navigate("/runs/view-only"); });
+    await screen.findByText("Overview");
+    expect(screen.queryByRole("button", { name: "Download Excel" })).toBeNull();
+  });
   it("updates after approval without using a second, truncated queue request", async () => {
     const data = summary();
     const fetch = vi.fn(async (path: string, init?: RequestInit) => {

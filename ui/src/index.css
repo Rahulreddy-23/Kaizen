@@ -982,6 +982,14 @@
   .overview-heading .head-title { flex: 0 1 auto; min-width: 0; }
   .overview-review-action { padding-top: 2px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
   .overview-review-action > span { font-size: 12px; color: rgb(var(--c-ink-3)); }
+  .excel-export { position: relative; align-self: flex-start; padding-top: 2px; }
+  .excel-export-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: min(24rem, calc(100vw - 48px)); padding: 8px; border: 1px solid rgb(var(--c-line-2)); border-radius: var(--radius-input); background: rgb(var(--c-surface)); }
+  .excel-export-panel a { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 6px; text-decoration: none; color: rgb(var(--c-ink)); font-size: 14px; }
+  .excel-export-panel a:hover, .excel-export-panel a:focus-visible { background: rgb(var(--c-brand-100)); }
+  .excel-export-panel a:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: -2px; }
+  .excel-export-description { color: rgb(var(--c-ink-2)); font-size: 13px; line-height: 1.5; }
+  .excel-export-note { margin: 4px 12px; color: rgb(var(--c-ink-3)); font-size: 12px; line-height: 1.5; }
+  .excel-export-note:last-child { padding-top: 8px; border-top: 1px solid rgb(var(--c-line)); }
   .queue-count { display: inline-flex; align-items: center; justify-content: center; padding: 1px 6px; border-radius: 4px; background: rgb(var(--c-accent-ink) / .1); font-size: 12px; font-variant-numeric: tabular-nums; }
   .profile-page { max-width: 1040px; }
   .profile-identity { display: flex; align-items: center; gap: var(--space-lg); padding: var(--space-lg); margin-bottom: var(--space-lg); }
@@ -1024,6 +1032,7 @@
   .profile-note, .profile-preference { padding-inline: var(--space-md); }
   .overview-heading { flex-direction: column; }
   .overview-review-action { flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+  .excel-export-panel { right: auto; left: 0; }
 }
 @media (max-width: 479px) {
   .profile-details > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }

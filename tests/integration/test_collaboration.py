@@ -176,7 +176,7 @@ def test_approval_by_another_editor_and_export_history(env):
     assert c[EDITOR].get(f'/api/runs/{rid}/results/{row}').json()['final']['self_approved'] is False
     detail = save(c[EDITOR], rid, row, 'My own edit')
     assert c[EDITOR].post(f'/api/runs/{rid}/finalize', json={'row_id':row,'final_decision':'ACCEPT','expected_revision':detail['revision'],'confirm_self_approval':True}).status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(c[EDITOR].get(f'/api/runs/{rid}/export.xlsx').content))
+    wb = openpyxl.load_workbook(io.BytesIO(c[EDITOR].get(f'/api/runs/{rid}/export.xlsx?detail=complete').content))
     events = list(wb['Approval history'].values)
     assert events[-1][-1] == 'Yes' and events[-1][2] == EDITOR
     clone = c[EDITOR].post(f'/api/runs/{rid}/copy').json()['run_id']

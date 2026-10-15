@@ -1,7 +1,8 @@
-import { ArrowRight, Certificate, CheckCircle, FileXls, GitDiff, ShieldWarning, Warning } from "@phosphor-icons/react";
+import { ArrowRight, Certificate, CheckCircle, GitDiff, ShieldWarning, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { RunSharing } from "../components/RunSharing";
+import { ExcelExport } from "../components/ExcelExport";
 import { api } from "../api";
 import { Badge, ClassificationBadge, SeverityBadge, StateBadge } from "../components/Badges";
 import { ErrorBox } from "../components/Feedback";
@@ -89,10 +90,10 @@ export default function DashboardPage() {
           </>
         }
         description="Results and review status for this run."
-        actions={<div className="overview-review-action">
+        actions={<><div className="overview-review-action">
           <LinkButton variant="primary" to={queue({ nv: "1" })} iconRight={<ArrowRight size={16} />}>Review queue <span className="queue-count">{flagged}</span></LinkButton>
           <span>{flagged ? "Awaiting review or approval" : "No pending reviews"}</span>
-        </div>}
+        </div>{r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}</>}
       />
       <details className="run-management">
         <summary>Run settings and exports</summary>
@@ -107,9 +108,6 @@ export default function DashboardPage() {
             {r.permission !== "view" && <>
             <AnchorButton href={api.certificateUrl(runId)} download icon={<Certificate size={16} />} title="One page per SKU: run id, file hashes, counts, named reviewers, open action items">
               Certificate
-            </AnchorButton>
-            <AnchorButton href={api.exportUrl(runId)} download icon={<FileXls size={16} />}>
-              Export workbook
             </AnchorButton>
             </>}
         </div>

@@ -77,7 +77,7 @@ export function ImportDecisions({ runId, onApplied }: { runId: string; onApplied
         }
       >
         <p className="text-ink-2">
-          Export the workbook, fill the <b>Reviewer {session?.slot === 2 ? "2 " : ""}Decision</b> and comment columns (an override is written as <span className="mono">OVERRIDE→EQUIVALENT</span>), then choose the file. Values are validated. A decision changed in the tool after the export is a conflict and is not overwritten unless you say so. Every applied decision is audited under your name ({session?.reviewer}).
+          Use <b>Download Excel</b> on the Overview page. Choose Summary for rows needing attention or Complete details for all comparisons. Fill the <b>Reviewer {session?.slot === 2 ? "2 " : ""}Decision</b> and comment columns on the SKU worksheets, then choose the file. An override is written as <span className="mono">OVERRIDE→EQUIVALENT</span>. A decision changed in the tool after the export is a conflict and is not overwritten unless you say so. Every applied decision is audited under your name ({session?.reviewer}).
         </p>
         <input
           type="file"

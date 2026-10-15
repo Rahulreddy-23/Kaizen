@@ -186,7 +186,7 @@ Evaluation SKUs are excluded from relationship mining and relationship creation 
 ActionItem: `{id, run_id, row_id, sku, check_type, discrepancy_type, severity, detail, recommended_action, owner, status, reviewer, created_at, updated_at, resolved_in_run, resolved_at, comparison_key}`.
 
 ## Exports
-| GET | `/api/runs/{run_id}/export.xlsx` | workbook with reviewer decisions merged |
+| GET | `/api/runs/{run_id}/export.xlsx?detail=summary\|complete` | Excel download with one worksheet per SKU and reviewer decisions merged. Default `summary`: per-check totals, current review status and rows needing attention. `complete`: every comparison, source evidence, approvals and supporting audit sheets. Filenames include the selected detail level. Invalid levels return 422. |
 | GET | `/api/runs/{run_id}/annotated-bom/{doc_id}` | PDF; headers `X-Kaizen-Fallback` (true when the BOM had no page geometry) and `X-Kaizen-Marks` |
 
 ## Terminology
