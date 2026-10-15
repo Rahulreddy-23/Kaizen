@@ -53,14 +53,13 @@ def env(tmp_path, sample):
     ws.db.close()
 
 
-def test_registration_requires_admin_approval(env):
+def test_registration_allows_immediate_sign_in_without_admin_access(env):
     ws, access, clients, rid, row = env
     c = TestClient(clients[ADMIN].app)
-    assert c.post('/api/auth/signup', json={'email':'pending@bd.com', 'password': PW}).json()['status'] == 'pending'
-    assert c.post('/api/auth/signin', json={'email':'pending@bd.com', 'password': PW}).status_code == 403
+    assert c.post('/api/auth/signup', json={'email':'new-user@bd.com', 'password': PW}).json()['status'] == 'approved'
     assert c.get('/api/runs').status_code == 401
-    assert clients[ADMIN].patch('/api/admin/users/pending@bd.com', json={'status':'approved'}).status_code == 200
-    assert c.post('/api/auth/signin', json={'email':'pending@bd.com', 'password': PW, 'slot':2}).json()['blind'] is False
+    assert c.post('/api/auth/signin', json={'email':'new-user@bd.com', 'password': PW, 'slot':2}).json()['blind'] is False
+    assert c.get('/api/admin/users').status_code == 403
     assert c.get('/api/runs').json() == []
 
 

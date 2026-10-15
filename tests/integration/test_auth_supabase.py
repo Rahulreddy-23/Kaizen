@@ -75,10 +75,7 @@ def client(tmp_path, fake, monkeypatch):
 
 
 def signup(client, email=BD, password=PW):
-    response = client.post("/api/auth/signup", json={"email": email, "password": password})
-    if response.status_code == 200 and hasattr(client, 'ws'):
-        AccessStore(client.ws.db).update(email, 'test administrator', 'approved', False)
-    return response
+    return client.post("/api/auth/signup", json={"email": email, "password": password})
 
 
 def signin(client, email=BD, password=PW, slot=1):
@@ -90,7 +87,7 @@ def signin(client, email=BD, password=PW, slot=1):
 
 def test_sign_up_stores_the_account_in_supabase_not_the_workspace(client, fake):
     r = signup(client)
-    assert r.status_code == 200 and r.json() == {"ok": True, "email": BD, "status": "pending"}
+    assert r.status_code == 200 and r.json() == {"ok": True, "email": BD, "status": "approved"}
     assert BD in fake.users
     assert client.ws.db.conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"] == 0, "no password is kept locally"
 
@@ -122,7 +119,7 @@ def test_confirm_email_left_on_in_supabase_is_explained(tmp_path):
     s = signin(c)
     assert s.status_code == 403 and "Kaizen admin" in s.json()["detail"], "the stuck account is explained too"
     fake.confirm(BD)
-    assert signin(c).status_code == 403, "Provider confirmation does not grant Kaizen approval"
+    assert signin(c).status_code == 200, "A verified provider account does not need application approval"
 
 
 # ---- signing in ---------------------------------------------------------------------------------
@@ -135,12 +132,20 @@ def test_sign_in_opens_a_user_session(client, fake):
     assert client.ws.db.conn.execute("SELECT reviewer FROM sessions").fetchone()["reviewer"] == BD
 
 
-def test_provider_account_does_not_bypass_workspace_approval(tmp_path, fake):
+@pytest.mark.parametrize("pending", [False, True])
+def test_provider_account_can_sign_in_on_another_laptop_without_approval(tmp_path, fake, pending):
     """Two laptops, one Supabase project: sign up on one, sign in on the other."""
     laptop_a = TestClient(create_app(Workspace(tmp_path / "a"), accounts=SupabaseAccounts(URL, KEY, http=fake)))
-    laptop_b = TestClient(create_app(Workspace(tmp_path / "b"), accounts=SupabaseAccounts(URL, KEY, http=fake)))
+    workspace_b = Workspace(tmp_path / "b")
+    laptop_b = TestClient(create_app(workspace_b, accounts=SupabaseAccounts(URL, KEY, http=fake)))
     signup(laptop_a)
-    assert signin(laptop_b).status_code == 403
+    if pending:
+        access = AccessStore(workspace_b.db)
+        access.register(BD)
+        access.update(BD, 'test administrator', 'pending', False)
+    assert signin(laptop_b).status_code == 200
+    assert laptop_b.get('/api/sessions/current').json()['session']['is_admin'] is False
+    assert laptop_b.get('/api/admin/users').status_code == 403
 
 
 def test_wrong_password_and_unknown_account_look_the_same(client, fake):

@@ -11,7 +11,7 @@ interface Ctx {
   error: string | null;
   /** Where passwords are checked: this workspace ("local") or Supabase. Decides the forgotten-password advice. */
   accounts: AccountsBackend;
-  /** Create an account for a BD address; an administrator must approve it before sign-in. */
+  /** Create an account for a BD address; it can sign in immediately. */
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;

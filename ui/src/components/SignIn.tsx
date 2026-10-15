@@ -71,7 +71,7 @@ export function SignIn() {
         setMode("signin");
         setPassword("");
         setConfirm("");
-        setNotice("Registration received. An administrator must approve your account before you can sign in.");
+        setNotice("Account created. Sign in with your email and password.");
       } else {
         await signIn(address, password);
       }

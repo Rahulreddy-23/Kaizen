@@ -28,10 +28,15 @@ class AccessStore:
 
     def register(self, email: str) -> dict:
         email = bd_email(email)
-        with self.db.lock:
-            self.conn.execute("INSERT OR IGNORE INTO profiles (email, status, is_admin, created_at) VALUES (?, 'pending', 0, ?)", (email, now()))
-            self.conn.commit()
-        return self.profile(email)
+        with self.db.transaction():
+            changed = self.conn.execute(
+                "INSERT INTO profiles (email, status, is_admin, created_at) VALUES (?, 'approved', 0, ?) "
+                "ON CONFLICT(email) DO UPDATE SET status='approved', is_admin=0 WHERE profiles.status='pending'",
+                (email, now()),
+            )
+            if changed.rowcount:
+                self.db.audit(email, 'account.auto_approved', 'Account access enabled without administrator approval')
+            return self.profile(email)
 
     def bootstrap(self, email: str, password: str | None = None) -> None:
         """Operator-only initial setup. Never promotes users merely because they register first."""

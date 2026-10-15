@@ -25,11 +25,7 @@ def client(tmp_path, monkeypatch):
 
 
 def signup(client, email=BD, password=PW):
-    response = client.post("/api/auth/signup", json={"email": email, "password": password})
-    # Credential tests use approved members; pending membership is covered in test_collaboration.
-    if response.status_code == 200:
-        AccessStore(client.ws.db).update(email.strip().lower(), 'test administrator', 'approved', False)
-    return response
+    return client.post("/api/auth/signup", json={"email": email, "password": password})
 
 
 def signin(client, email=BD, password=PW, slot=1, **extra):
@@ -74,13 +70,36 @@ def test_an_address_cannot_be_registered_twice(client):
 
 
 def test_sign_up_then_sign_in_opens_a_session(client):
-    assert signup(client).json() == {"ok": True, "email": BD, "status": "pending"}
+    assert signup(client).json() == {"ok": True, "email": BD, "status": "approved"}
     r = signin(client)
     assert r.status_code == 200, r.text
     s = r.json()
     assert s["reviewer"] == BD and s["slot"] == 1 and s["blind"] is False
     assert "token" not in s, "the token belongs in the cookie, not the response body"
     assert client.get("/api/sessions/current").json()["session"]["reviewer"] == BD
+
+
+@pytest.mark.parametrize("existing_profile", [False, True])
+def test_existing_account_can_sign_in_without_approval(client, existing_profile):
+    UserStore(client.ws.db).create(BD, PW)
+    if existing_profile:
+        client.ws.db.conn.execute("INSERT INTO profiles (email,status,is_admin,created_at) VALUES (?,'pending',0,'before-update')", (BD,))
+        client.ws.db.conn.commit()
+    assert signin(client, password="wrong-password").status_code == 401
+    profile = AccessStore(client.ws.db).profile(BD)
+    assert profile is None or profile['status'] == 'pending'
+    assert signin(client).status_code == 200
+    profile = AccessStore(client.ws.db).profile(BD)
+    assert profile['status'] == 'approved' and not profile['is_admin']
+    assert client.get('/api/admin/users').status_code == 403
+
+
+def test_revoked_account_cannot_restore_its_own_access(client):
+    signup(client)
+    AccessStore(client.ws.db).update(BD, 'test administrator', 'rejected', False)
+    assert signin(client).status_code == 403
+    assert AccessStore(client.ws.db).profile(BD)['status'] == 'rejected'
+    assert client.get('/api/sessions/current').json()['session'] is None
 
 
 def test_the_address_is_normalised(client):

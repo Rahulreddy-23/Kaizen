@@ -21,7 +21,7 @@ themselves up. Accounts live in one of two places (see `kaizen auth show`):
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | `/api/auth/signup` | `{email, password}` | Account registration with `status: "pending"`; administrator approval is required. |
+| POST | `/api/auth/signup` | `{email, password}` | Account registration with `status: "approved"`; administrator approval is not required. New accounts are regular users. |
 | POST | `/api/auth/signin` | `{email, password}` | `{reviewer, slot:1, blind:false, is_admin, created_at, blind_review_policy}` + `Set-Cookie` |
 
 If the Supabase project still has "Confirm email" on, sign-up is **503** with an explanation (the
@@ -70,7 +70,7 @@ returned in an HttpOnly cookie (`kaizen_session`), so page scripts cannot read o
 | DELETE | `/api/sessions/current` | | `{ended: bool}` and clears the cookie |
 
 HTTP sessions use `slot: 1` and `blind: false`; changes and approvals are shared with collaborators
-who have access to the run. Accounts require administrator approval. Run creation and every run-data
+who have access to the run. Account approval is automatic for new and pending profiles after valid registration or password verification; revoked profiles remain blocked. Run creation and every run-data
 endpoint require an approved session. Health is public. Owners can share a run with edit or view
 access; viewers cannot mutate or download review exports. Inaccessible run IDs return 404.
 

@@ -18,7 +18,7 @@ Open http://localhost:5173, create an account with any `@bd.com` address, sign i
 ## Signing in
 
 Reviewers sign themselves up with a BD email address and a password (`POST /api/auth/signup`), then sign
-in and pick a reviewer slot (`POST /api/auth/signin`) — see `docs/api-contract.md`. `GET
+in immediately without administrator approval (`POST /api/auth/signin`) — see `docs/api-contract.md`. Existing pending accounts are enabled on successful sign-in. `GET
 /api/sessions/current` says where accounts live (`accounts: "local" | "supabase"`):
 
 - **local**: a forgotten password is cleared by an administrator with `kaizen users reset <email>`, and

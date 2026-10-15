@@ -2,7 +2,7 @@
 
 ## Hosted collaboration
 
-Kaizen now uses approved BD accounts, application administrators, and per-run ownership with View/Edit sharing. Users can make private copies, download independent workbooks and source files, and explicitly confirm self-approval. See [accounts, sharing and Render deployment](docs/hosted-collaboration.md). The web app no longer asks users to choose a facilitator or independent-reviewer slot; legacy CLI review commands remain available.
+Kaizen uses BD accounts, application administrators, and per-run ownership with View/Edit sharing. Account approval is currently automatic: new users and users previously waiting for approval can sign in immediately with their password. Users can make private copies, download independent workbooks and source files, and explicitly confirm self-approval. See [accounts, sharing and Render deployment](docs/hosted-collaboration.md). The web app no longer asks users to choose a facilitator or independent-reviewer slot; legacy CLI review commands remain available.
 
 For closed testing, open **Closed testing** on a run. Testers annotate true pairings, discrepancies,
 attributes, assemblies and released drawing applicability. Independent verification automatically rebuilds
@@ -32,7 +32,7 @@ PCOs and label revisions, with the reviewer as the final decision-maker. Built f
   severity, explanation and evidence (file, SHA-256, page, bounding box, raw text).
 - Uses explicit, versioned terminology relationships (global / product-family / SKU, item-anchored) that
   reviewers create, edit, import/export, and that runs pin by version.
-- Requires an approved `@bd.com` account. Application administrators approve registrations and appoint other administrators.
+- Accepts `@bd.com` accounts without waiting for administrator approval. Application administrators manage revocation and appoint other administrators.
 - Gives each uploaded run an owner, a descriptive name, and explicit View/Edit sharing. Shared runs appear in the recipient's workspace.
 - Records decisions and approvals with the user's identity. Self-approval requires confirmation and is labelled in the history. Independent copies keep their own documents, decisions and action items.
 - Turns the business-case projection into a **terminology worklist** (approve these pairings, in this order, and this many rows clear), **measures** review effort per row instead of assuming it, and keeps the reviewer on the keyboard (j/k/Enter, a/c/o/n, ? for help).
@@ -63,7 +63,7 @@ If PowerShell prevents activation, run `Set-ExecutionPolicy -Scope Process -Exec
 ## Run
 ```bash
 .venv/bin/kaizen run <folder> --out out/myrun   # one SKU set per sub-folder (bom.*, label.pdf, label_old.pdf, drawing.pdf) plus pco/*.xlsx|pdf
-.venv/bin/kaizen serve                          # local API + UI at http://127.0.0.1:8765 (register with your BD email, wait for admin approval, then sign in)
+.venv/bin/kaizen serve                          # local API + UI at http://127.0.0.1:8765 (register with your BD email, then sign in immediately)
 ```
 
 On Windows PowerShell, use:

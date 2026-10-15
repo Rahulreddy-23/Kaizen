@@ -454,19 +454,19 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     @app.post("/api/auth/signup")
     def signup(payload: Credentials):
-        """Register a BD account; access remains pending until an administrator approves it."""
+        """Register a BD account with immediate access; administrator approval is not required."""
         payload = payload.model_dump()
         email = _bd_email(payload.get("email", ""))
         try:
             accounts.sign_up(email, str(payload.get("password", "")))
         except AuthError as e:
             raise HTTPException(e.status, e.message)
-        access.register(email)
-        return {"ok": True, "email": email, "status": "pending"}
+        profile = access.register(email)
+        return {"ok": True, "email": email, "status": profile['status']}
 
     @app.post("/api/auth/signin")
     def signin(response: FastResponse, payload: Credentials):
-        """Open a session only after password verification and application approval."""
+        """Verify the password and enable new or pending accounts before opening a session."""
         payload = payload.model_dump()
         email = _bd_email(payload.get("email", ""))
         try:
@@ -475,7 +475,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise HTTPException(e.status, e.message)
         profile = access.register(email)
         if profile['status'] != 'approved':
-            raise HTTPException(403, 'Your account is awaiting administrator approval.' if profile['status'] == 'pending' else 'Your account has not been approved. Contact an administrator.')
+            raise HTTPException(403, 'Your account access has been revoked. Contact an administrator.')
         return _start_session(response, email, payload)
 
     # ---- runs ---------------------------------------------------------------------------------
