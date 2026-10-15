@@ -1,14 +1,16 @@
 """Check 1: BOM ↔ Label — the shared pairing engine with the quantity policy, plus a REF/parent row and a
 single BLOCKER when the label's contents could not be extracted. Non-physical BOM lines are never compared."""
 
-from kaizen.checks.assemblies import apply_assemblies
+import re
+
+from kaizen.checks.assemblies import apply_assemblies, propose_assemblies
 from kaizen.checks.base import RowIdFactory, header_item, pair_token, unparsed_bom_rows
 from kaizen.checks.pairing import CheckPolicy, disc, merge_duplicate_items, run_pairing_check
 from kaizen.ingest.grouping import identity_key
 from kaizen.matching.ladder import MatchLadder
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, Document, DocumentItem, ItemCategory, MatchLevel, Severity, Thresholds
 
-CHECK_VERSION = "3"
+CHECK_VERSION = "4"
 POLICY = CheckPolicy(check_type=CheckType.BOM_LABEL, row_letter="R", quantity_relevant=True, missing_a=DiscrepancyType.MISSING_IN_LABEL, missing_b=DiscrepancyType.MISSING_IN_BOM, a_label="BOM component", b_label="label line")
 
 
@@ -44,8 +46,31 @@ def run_bom_label_check(bom: Document, label: Document, ladder: MatchLadder, thr
         return results
     bom_items, label_items, assemblies = apply_assemblies(bom_items, list(label.items), assembly_rules or [], sku, ids, thresholds)
     results.extend(assemblies)
+    bom_items, label_items, proposals = propose_assemblies(bom_items, label_items, sku, ids)
+    results.extend(proposals)
     results.extend(run_pairing_check(bom, bom_items, label, label_items, POLICY, ladder, thresholds, sku, ids))
+    _overlay_findings(results, bom)
     return results
+
+
+def _overlay_findings(results, bom):
+    """Distinguish unresolved label configuration from a verified missing part."""
+    overlays = [(item, match[1]) for item in bom.items if item.is_active and item.quantity and item.quantity > 0
+                if (match := re.search(r"\bNO\s+(SALINE|SCISSORS)\b", item.description, re.I))]
+    for row in results:
+        if row.role != "item" or row.source_a is not None or row.source_b is None:
+            continue
+        for overlay, word in overlays:
+            if re.search(rf"\b{word}\b", row.source_b.description, re.I):
+                detail = (f"LABEL CONFIGURATION: the base label lists '{row.source_b.description}', while BOM {overlay.item_number} "
+                          f"'{overlay.description}' indicates a possible overlabel. Obtain the applicable overlay artwork and confirm "
+                          "the final label configuration; absence of this component is not established by the base label alone.")
+                row.source_a = overlay
+                row.classification = Classification.POTENTIAL
+                row.explanation = detail
+                row.discrepancies = [disc(DiscrepancyType.LABEL_CONFIGURATION_REVIEW, Severity.MAJOR, detail)]
+                row.requires_validation = True
+                break
 
 
 def _exempt_rows(bom: Document, sku: str, ids: RowIdFactory) -> list[CheckResult]:

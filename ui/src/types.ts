@@ -41,6 +41,7 @@ export const ROLES: Role[] = ["item", "header", "reference", "coverage", "exempt
 
 export const DISCREPANCY_TYPES = [
   "QTY_MISMATCH",
+  "QUANTITY_BASIS_UNCONFIRMED",
   "DESC_MISMATCH",
   "MISSING_IN_LABEL",
   "MISSING_IN_BOM",
@@ -55,6 +56,8 @@ export const DISCREPANCY_TYPES = [
   "UNEXPECTED_LABEL_CHANGE",
   "EXPECTED_CHANGE_ABSENT",
   "DRAWING_REV_MISMATCH",
+  "DRAWING_APPLICABILITY_UNCONFIRMED",
+  "LABEL_CONFIGURATION_REVIEW",
 ];
 
 export interface Health {
@@ -365,6 +368,7 @@ export interface ActionItem {
 }
 
 export interface RowDetail {
+  can_save_relationship?: boolean;
   permission: "owner" | "edit" | "view";
   owner: string;
   revision: number;

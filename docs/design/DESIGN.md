@@ -295,9 +295,9 @@ Reviewed on 2026-09-30:
 - [GitHub's inclusive colour system](https://github.blog/engineering/unlocking-inclusive-design-how-primers-color-system-is-making-github-com-more-inclusive/):
   informed contrast checks and distinct light/dark surface levels.
 
-Validation and local backend limitations are recorded in
-[UX-verification.md](UX-verification.md). This refinement covers the shared system
-and copy across all twelve application pages and the authentication views.
+The shared system applies across application screens and authentication views.
+Use `npm test` and `npm run build` in `ui/` for automated UI verification, then
+exercise affected routes at desktop and narrow viewport widths.
 
 ## Navigation and profile feedback
 

@@ -65,7 +65,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -128,14 +130,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -760,7 +766,7 @@
         "PK0100002",
         "PK0100003"
       ],
-      "note": "Clean baseline: every physical component is on the label with the right quantity. Exercises reordered wording, relationships, fuzzy potentials, wrapped label lines, the '(3 per)' idiom and 12 non-physical BOM rows that must not be flagged."
+      "note": "Baseline: every physical component is on the label with the same printed quantity. Pack/pair counts still require quantity-basis review. Exercises reordered wording, relationships, fuzzy potentials, wrapped label lines, the '(3 per)' idiom and 12 non-physical BOM rows that must not be flagged."
     },
     "1295108FNS": {
       "folder": "sku-002",
@@ -825,7 +831,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -892,14 +900,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -1597,7 +1609,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -1660,14 +1674,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -2363,7 +2381,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -2426,14 +2446,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -3153,7 +3177,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -3216,14 +3242,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -3894,7 +3924,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -3957,14 +3989,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -4683,7 +4719,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -4746,14 +4784,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -5533,7 +5575,9 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
@@ -6218,7 +6262,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -6281,14 +6327,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },
@@ -6943,7 +6993,9 @@
         {
           "bom_item": "2220001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "parenthetical-quantity",
           "label": "Tape Strips"
         },
@@ -7006,14 +7058,18 @@
         {
           "bom_item": "2290001",
           "classification": "EXACT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "reordered",
           "label": "ECG Electrodes"
         },
         {
           "bom_item": "2300001",
           "classification": "EQUIVALENT",
-          "discrepancies": [],
+          "discrepancies": [
+            "QUANTITY_BASIS_UNCONFIRMED"
+          ],
           "scenario": "item-anchored-relationship",
           "label": "Gloves"
         },

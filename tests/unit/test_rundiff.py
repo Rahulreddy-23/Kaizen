@@ -71,3 +71,16 @@ def test_diff_is_json_serialisable(tmp_path):
     d = diff_runs(_run(_dataset(tmp_path / "a")), _run(_dataset(tmp_path / "b", end_cap_qty="1.0000")))
     payload = json.loads(json.dumps(d.to_dict()))
     assert payload["before_run_id"] and payload["after_run_id"] and payload["counts"]["resolved"] == 1
+
+
+def test_independent_copy_relocation_does_not_report_document_replacements(tmp_path):
+    from kaizen.review.copies import snapshot
+
+    before = _run(_dataset(tmp_path / "source"))
+    copied = snapshot(before, tmp_path / "copy", "copy-run")
+    assert diff_runs(before, copied).documents == {"changed": [], "added": [], "removed": []}
+
+    # A new document at a different path is still an addition when content differs.
+    copied.documents[0].sha256 = "f" * 64
+    documents = diff_runs(before, copied).documents
+    assert len(documents["added"]) == len(documents["removed"]) == 1

@@ -41,6 +41,9 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
   }, [rowId, a?.description, b?.description, a?.item_number]);
 
   const existing = detail.result.relationship_id;
+  const attributes = a?.attributes ?? {};
+  const identityPair = detail.can_save_relationship !== false && detail.result.role === "item" && !attributes.assembly_candidate && !attributes.assembly_rule &&
+    !detail.result.discrepancies.some(d => ["LABEL_CONFIGURATION_REVIEW", "DRAWING_APPLICABILITY_UNCONFIRMED"].includes(d.type));
   const existingLine = existing && (
     <div className="text-sm text-ink-2">
       This comparison used relationship{" "}
@@ -50,7 +53,7 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
       .
     </div>
   );
-  if (!a || !b || !session?.is_admin || detail.permission === "view") {
+  if (!a || !b || !identityPair || !session?.is_admin || detail.permission === "view") {
     return existing ? (
       <Card>
         <CardHead title="Terminology" icon={<BookmarkSimple size={18} />} />

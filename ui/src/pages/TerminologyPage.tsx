@@ -6,6 +6,8 @@ import { useSearchParams } from "react-router-dom";
 import { api, type RelationshipCreateBody } from "../api";
 import { Badge } from "../components/Badges";
 import { ErrorBox, Loading, Notice } from "../components/Feedback";
+import { Pagination } from "../components/Pagination";
+import { usePagedList } from "../lib/pagination";
 import { TerminologyImport } from "../components/TerminologyImport";
 import { Button, Card, CardHead, Dialog, Divider, EmptyState, Field, PageHeader, TableSkeleton } from "../components/ui";
 import { fmtDate } from "../lib/format";
@@ -59,6 +61,8 @@ function Toggle({ on, onClick, children, title, disabled }: { on: boolean; onCli
 export default function TerminologyPage() {
   const [sp, setSp] = useSearchParams();
   const toast = useToast();
+  const {session} = useReviewer();
+  const canManage = !!session?.is_admin;
   const [search, setSearch] = useState("");
   const [applied, setApplied] = useState("");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("");
@@ -76,6 +80,7 @@ export default function TerminologyPage() {
     if (scopeFilter) return visible.filter((x) => x.scope.startsWith(`${scopeFilter}:`));
     return visible;
   }, [visible, scopeFilter]);
+  const pagination = usePagedList(rows, `${applied}:${scopeFilter}:${showInactive}`);
   const scopeCount = (f: ScopeFilter) =>
     f === "" ? visible.length : f === "global" ? visible.filter((x) => x.scope === "global").length : visible.filter((x) => x.scope.startsWith(`${f}:`)).length;
   const inactive = (list.data ?? []).filter((x) => !x.active).length;
@@ -97,7 +102,7 @@ export default function TerminologyPage() {
         description="Manage terms that should be treated as equivalent in future runs."
         actions={
           <>
-            <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+            <Button variant="primary" icon={<Plus size={16} />} disabled={!canManage} title={canManage ? undefined : "Administrators manage shared terminology"} onClick={() => setCreating(true)}>
               New relationship
             </Button>
           </>
@@ -106,7 +111,7 @@ export default function TerminologyPage() {
 
       <div className="space-y-5 stagger">
         <Notice>
-          Changes apply to future runs. Previous versions are kept in the history.
+          {canManage ? "Changes apply to future runs. Previous versions are kept in the history." : "You can browse shared terminology. Administrators create, import and edit relationships."}
         </Notice>
 
         <div className="flex flex-col xl:flex-row gap-5 items-start">
@@ -181,7 +186,7 @@ export default function TerminologyPage() {
                     : "Clear the search or widen the scope filter to see the rest, or create a relationship for the wording you were looking for."
                 }
                 action={
-                  <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+                  <Button variant="primary" icon={<Plus size={16} />} disabled={!canManage} title={canManage ? undefined : "Administrators manage shared terminology"} onClick={() => setCreating(true)}>
                     New relationship
                   </Button>
                 }
@@ -204,7 +209,7 @@ export default function TerminologyPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {pagination.rows.map((r) => (
                       <tr key={r.id} className={`clickable ${r.id === selectedId ? "selected" : ""}`} onClick={() => openRel(r.id)}>
                         <td className="mono whitespace-nowrap"><button type="button" className="text-brand-600 underline underline-offset-2" aria-label={`Open relationship ${r.id}: ${r.canonical}`} onClick={e => { e.stopPropagation(); openRel(r.id); }}>{r.id}</button></td>
                         <td className="min-w-[16rem]">
@@ -259,6 +264,7 @@ export default function TerminologyPage() {
                 </table>
               </div>
             )}
+            <Pagination {...pagination} onChange={pagination.setOffset} label="Relationships" />
           </Card>
 
           {selectedId && (
@@ -268,10 +274,10 @@ export default function TerminologyPage() {
           )}
         </div>
 
-        <TerminologyImport onImported={list.reload} />
+        {canManage && <TerminologyImport onImported={list.reload} />}
       </div>
 
-      {creating && (
+      {creating && canManage && (
         <CreateDialog
           onClose={() => setCreating(false)}
           onCreated={(rel) => {
@@ -288,7 +294,8 @@ export default function TerminologyPage() {
 
 /** The selected relationship: what it is, an edit that saves a new version, and the version history. */
 function RelationshipPanel({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
-  const { name } = useReviewer();
+  const { name, session } = useReviewer();
+  const canManage = !!session?.is_admin;
   const toast = useToast();
   const uid = useId();
   const rel = useAsync(() => api.terminology.get(id), [id]);
@@ -379,7 +386,7 @@ function RelationshipPanel({ id, onClose, onChanged }: { id: string; onClose: ()
 
           <Divider />
 
-          <div className="space-y-3">
+          {canManage && <div className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-ink">Edit</h3>
               <p className="hint mt-0.5">Changes apply to future runs. Previous versions remain in the history.</p>
@@ -446,7 +453,7 @@ function RelationshipPanel({ id, onClose, onChanged }: { id: string; onClose: ()
               )}
             </div>
             {err && <ErrorBox error={err} />}
-          </div>
+          </div>}
 
           <Divider />
 
@@ -537,7 +544,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={() => { if (!busy) onClose(); }}
       title="New relationship"
       description="Enter the preferred term and its equivalent terms."
       width="lg"

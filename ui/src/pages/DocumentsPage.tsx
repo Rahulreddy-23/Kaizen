@@ -5,27 +5,14 @@ import { api } from "../api";
 import { Badge, DocTypeBadge } from "../components/Badges";
 import { ErrorBox } from "../components/Feedback";
 import { AnchorButton, Button, Card, CardHead, EmptyState, LinkButton, PageHeader, TableSkeleton } from "../components/ui";
-import { enc, shortSha } from "../lib/format";
+import { enc, isPdf, shortSha } from "../lib/format";
 import { useAsync } from "../lib/useAsync";
-import { DOC_TYPES, type DocType, type DocumentSummary } from "../types";
+import { groupDocuments } from "../lib/documentGroups";
 
 /** Number of columns in the table below: the SKU group header spans all of them. */
-const SPAN = 8;
+const SPAN = 6;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-/** BOM, label, drawing, PCO: the order a reviewer reads a SKU set in. */
-function typeOrder(t: string): number {
-  const i = DOC_TYPES.indexOf(t as DocType);
-  return i < 0 ? DOC_TYPES.length : i;
-}
-
-interface Group {
-  sku: string;
-  docs: DocumentSummary[];
-  items: number;
-  warnings: number;
-}
 
 export default function DocumentsPage() {
   const { runId = "" } = useParams();
@@ -34,24 +21,8 @@ export default function DocumentsPage() {
   const docs = useAsync(() => api.getDocuments(runId), [runId]);
   const [filter, setFilter] = useState("");
 
-  // One group per SKU set, in SKU order; files that belong to no SKU set come last.
-  const groups = useMemo<Group[]>(() => {
-    const needle = filter.trim().toLowerCase();
-    const hit = (d: DocumentSummary) => !needle || [d.file_name, d.file, d.sku ?? "", d.doc_type, d.parser].some((s) => s.toLowerCase().includes(needle));
-    const by = new Map<string, DocumentSummary[]>();
-    for (const d of docs.data ?? []) {
-      if (!hit(d)) continue;
-      const list = by.get(d.sku ?? "");
-      if (list) list.push(d);
-      else by.set(d.sku ?? "", [d]);
-    }
-    return [...by.entries()]
-      .sort((a, b) => (a[0] === "" ? 1 : b[0] === "" ? -1 : a[0].localeCompare(b[0])))
-      .map(([sku, list]) => {
-        const ordered = [...list].sort((a, b) => typeOrder(a.doc_type) - typeOrder(b.doc_type) || a.file_name.localeCompare(b.file_name));
-        return { sku, docs: ordered, items: ordered.reduce((n, d) => n + d.items, 0), warnings: ordered.reduce((n, d) => n + d.warnings.length, 0) };
-      });
-  }, [docs.data, filter]);
+  const groups = useMemo(() => groupDocuments(docs.data ?? [], access.data?.groups ?? [], filter), [docs.data, access.data?.groups, filter]);
+  const allGroups = useMemo(() => groupDocuments(docs.data ?? [], access.data?.groups ?? []), [docs.data, access.data?.groups]);
 
   const all = docs.data ?? [];
   const shown = groups.reduce((n, g) => n + g.docs.length, 0);
@@ -71,7 +42,7 @@ export default function DocumentsPage() {
               <span>{plural(all.length, "document")}</span>
               <span>{plural(lines, "extracted line")}</span>
               <span className={warnings ? "text-warn-strong" : undefined}>{plural(warnings, "parser warning")}</span>
-              <span>{plural(groups.length, "SKU set")}</span>
+              <span>{plural(allGroups.filter(group => group.sku).length, "SKU set")}</span>
             </>
           )
         }
@@ -98,9 +69,9 @@ export default function DocumentsPage() {
           />
 
           {docs.loading && !docs.data && <TableSkeleton rows={8} cols={7} />}
-          {docs.error && (
+          {(docs.error || access.error) && (
             <div className="p-4">
-              <ErrorBox error={docs.error} onRetry={docs.reload} />
+              <ErrorBox error={docs.error || access.error || ""} onRetry={() => {docs.reload(); access.reload();}} />
             </div>
           )}
 
@@ -130,16 +101,14 @@ export default function DocumentsPage() {
                     <tr>
                       <th>Type</th>
                       <th>File</th>
-                      <th>Parser</th>
                       <th className="text-right">Lines</th>
                       <th className="text-right">Pages</th>
                       <th>Warnings</th>
-                      <th>SHA-256</th>
                       <th className="text-right">Open</th>
                     </tr>
                   </thead>
                   {groups.map((g) => (
-                    <tbody key={g.sku || "unassigned"}>
+                    <tbody key={g.key}>
                       <tr>
                         <td colSpan={SPAN} className="bg-surface-2 py-2 border-b border-line">
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -149,7 +118,7 @@ export default function DocumentsPage() {
                                 <span className="mono text-sm font-semibold text-ink">{g.sku}</span>
                               </>
                             ) : (
-                              <span className="text-sm font-semibold text-ink">No SKU set</span>
+                              <span className="text-sm font-semibold text-ink">{g.label}</span>
                             )}
                             <span className="text-xs text-ink-3">
                               {plural(g.docs.length, "document")} · {plural(g.items, "line")}
@@ -169,12 +138,7 @@ export default function DocumentsPage() {
                               <Link className="mono font-medium" to={to} onClick={(e) => e.stopPropagation()}>
                                 {d.file_name}
                               </Link>
-                              <div className="mono text-xs text-ink-3 truncate max-w-[24rem]" title={d.file}>
-                                {d.file}
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap text-ink-2">
-                              {d.parser} <span className="text-ink-3">v{d.parser_version}</span>
+                              <details className="mt-1 text-xs text-ink-3 max-w-[24rem]" onClick={event => event.stopPropagation()}><summary className="cursor-pointer">Source details</summary><dl className="mt-2 space-y-1"><div><dt className="inline font-medium">Parser: </dt><dd className="inline">{d.parser} v{d.parser_version}</dd></div><div><dt className="inline font-medium">File: </dt><dd className="inline break-all">{d.file}</dd></div><div><dt className="inline font-medium">SHA-256: </dt><dd className="inline mono break-all" title={d.sha256}>{shortSha(d.sha256)}</dd></div></dl></details>
                             </td>
                             <td className="text-right num">{d.items}</td>
                             <td className="text-right num text-ink-2">{d.pages > 0 ? d.pages : <span className="text-xs text-ink-3">Spreadsheet</span>}</td>
@@ -183,20 +147,16 @@ export default function DocumentsPage() {
                                 <span className="text-ink-4">—</span>
                               ) : (
                                 <>
-                                  <Badge tone="warn">{plural(d.warnings.length, "warning")}</Badge>
-                                  <div className="text-xs text-warn-strong mt-1">{d.warnings.join("; ")}</div>
+                                  <details className="document-warnings"><summary>{plural(d.warnings.length, "warning")}</summary><ul className="list-disc pl-4 mt-2 space-y-1 text-xs text-warn-strong">{d.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>
                                 </>
                               )}
-                            </td>
-                            <td className="mono text-ink-3" title={d.sha256}>
-                              {shortSha(d.sha256)}
                             </td>
                             <td className="whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1.5">
                                 <LinkButton size="sm" to={to} icon={<Eye size={16} />}>
                                   Document
                                 </LinkButton>
-                                {d.doc_type === "BOM" && access.data?.permission !== "view" && (
+                                {d.doc_type === "BOM" && isPdf(d.file_name) && access.data && access.data.permission !== "view" && (
                                   <AnchorButton size="sm" href={api.annotatedBomUrl(runId, d.id)} download icon={<FileArrowDown size={16} />} title="BOM PDF with check marks from the reviewer decisions">
                                     Annotated BOM
                                   </AnchorButton>

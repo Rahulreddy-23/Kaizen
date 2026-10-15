@@ -37,6 +37,36 @@ def upload(client, source, names=('Project/bom.pdf', 'Project/label.pdf'), **kwa
     return client.post('/api/runs/upload', files=[('files', (name, (source / ('label.pdf' if 'label' in name else 'bom.pdf')).read_bytes(), 'application/pdf')) for name in names], **kwargs)
 
 
+@pytest.mark.parametrize('kind', ['assembly_candidate', 'assembly_rule', 'configuration', 'reference', 'type_conflict', 'alternatives', 'ambiguous'])
+def test_configuration_and_assembly_members_cannot_teach_one_to_one_identity(env, kind):
+    from kaizen.models import Discrepancy, DiscrepancyType, Severity
+    from kaizen.pipeline import save_run
+
+    ws, client, run, _ = env
+    row = next(r for r in run.results if r.role == 'item' and r.source_a and r.source_b)
+    if kind.startswith('assembly_'):
+        row.source_a.attributes[kind] = True
+    elif kind == 'configuration':
+        row.discrepancies = [Discrepancy(type=DiscrepancyType.LABEL_CONFIGURATION_REVIEW, severity=Severity.MAJOR, detail='Overlabel configuration needs review.')]
+    elif kind == 'ambiguous':
+        row.discrepancies = [Discrepancy(type=DiscrepancyType.AMBIGUOUS_MATCH, severity=Severity.MAJOR, detail='More than one variant fits.')]
+    elif kind == 'type_conflict':
+        row.source_a.description = 'Needle 23 G'
+        row.source_b.description = 'Needle holder with protective tube'
+    elif kind == 'alternatives':
+        row.source_a.description = 'Scissors'
+        row.source_b.description = 'Scissors OR catheter trimming device'
+    else:
+        row.role = 'reference'
+    save_run(run, ws.runs.get(run.metadata.run_id)['json_path'])
+    before = len(ws.repository.list())
+    detail = client.get(f'/api/runs/{run.metadata.run_id}/results/{row.row_id}')
+    assert detail.status_code == 200 and detail.json()['can_save_relationship'] is False
+    response = client.post(f'/api/runs/{run.metadata.run_id}/relationships/from-row', json={'row_id': row.row_id})
+    assert response.status_code == 400 and 'not a one-to-one' in response.json()['detail']
+    assert len(ws.repository.list()) == before
+
+
 def test_upload_on_migrated_database_preserves_existing_run(env):
     ws, client, existing, source = env
     # This reproduces the migrated, ten-column schema that the old running server could not insert into.

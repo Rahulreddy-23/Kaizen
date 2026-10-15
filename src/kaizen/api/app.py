@@ -57,7 +57,7 @@ from kaizen.review.business import BusinessAssumptions, business_case
 from kaizen.review.collaborative import CollaborativeReviewStore
 from kaizen.review.copies import copy_run, portable_payload, snapshot
 from kaizen.review.learning import DrawingInput, GroundTruthInput, LabelApproval, LearningStore
-from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_suggestion, terminology_worklist
+from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_suggestion, relationship_eligible, terminology_worklist
 from kaizen.review.progress import review_snapshot
 from kaizen.review.rundiff import diff_runs
 from kaizen.review.sessions import ReviewSession, SessionStore
@@ -634,7 +634,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             hidden = ReviewStore.is_blind_hidden(review.decisions(run_id, row_id), slot, blind)
             if session is not None and access.permission(run_id, session.reviewer) != "view":
                 review.mark_opened(run_id, row_id, session.slot)  # starts the effort clock for this reviewer
-            return {"result": r.model_dump(mode="json"), "evidence": {"a": _evidence(r.source_a), "b": _evidence(r.source_b)}, "decisions": {str(k): v for k, v in merged["decisions"].items()}, "state": merged["state"], "final": merged["final"], "effective_classification": merged["effective_classification"], "permission": access.permission(run_id, session.reviewer), "revision": review.revision(run_id, row_id), "owner": ws.runs.get(run_id)["owner"], "history": [{"event": "engine", "detail": "engine recommendation recorded with the run"}] if hidden else review.history(run_id, row_id), "viewer": {"slot": slot, "blind": blind, "reviewer": session.reviewer if session else None}, "action_items": [asdict(a) for a in items.for_row(run_id, row_id)]}
+            return {"result": r.model_dump(mode="json"), "can_save_relationship": relationship_eligible(r), "evidence": {"a": _evidence(r.source_a), "b": _evidence(r.source_b)}, "decisions": {str(k): v for k, v in merged["decisions"].items()}, "state": merged["state"], "final": merged["final"], "effective_classification": merged["effective_classification"], "permission": access.permission(run_id, session.reviewer), "revision": review.revision(run_id, row_id), "owner": ws.runs.get(run_id)["owner"], "history": [{"event": "engine", "detail": "engine recommendation recorded with the run"}] if hidden else review.history(run_id, row_id), "viewer": {"slot": slot, "blind": blind, "reviewer": session.reviewer if session else None}, "action_items": [asdict(a) for a in items.for_row(run_id, row_id)]}
 
     @app.get("/api/runs/{run_id}/documents")
     def get_documents(run_id: str):
@@ -830,6 +830,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise HTTPException(400, 'This SKU is reserved for evaluation. Its examples cannot become training terminology.')
         if r.source_a is None or r.source_b is None:
             raise HTTPException(400, "row has no pair to save as a relationship")
+        if not relationship_eligible(r):
+            raise HTTPException(400, "This row describes configuration or assembly membership, not a one-to-one component identity. Confirm the configuration or assembly allocations instead.")
         canonical = payload.get("canonical") or r.source_b.description
         aliases = payload.get("aliases") or [r.source_a.description]
         anchors = [r.source_a.item_number] if payload.get("anchor") and r.source_a.item_number else []

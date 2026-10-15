@@ -4,8 +4,9 @@ or rejects; nothing is created automatically."""
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
+from kaizen.matching.components import alternatives, compatible, component
 from kaizen.matching.normalize import normalize
-from kaizen.models import MatchLevel, Relationship, Run
+from kaizen.models import CheckResult, DiscrepancyType, MatchLevel, Relationship, Run
 from kaizen.review.store import ReviewStore
 from kaizen.storage.db import Database
 from kaizen.terminology.repository import TerminologyRepository
@@ -47,6 +48,20 @@ class Suggestion:
         return "; ".join(parts)
 
 
+def relationship_eligible(row: CheckResult) -> bool:
+    """Only one-to-one identity comparisons can teach a terminology equivalence."""
+    if row.role != "item" or row.source_a is None or row.source_b is None:
+        return False
+    if any(row.source_a.attributes.get(k) for k in ("assembly_candidate", "assembly_rule")):
+        return False
+    a, b = row.source_a.description, row.source_b.description
+    if len(alternatives(a)) > 1 or len(alternatives(b)) > 1:
+        return False
+    if compatible(component(normalize(a).normalized), component(normalize(b).normalized))[0]:
+        return False
+    return not any(d.type in (DiscrepancyType.LABEL_CONFIGURATION_REVIEW, DiscrepancyType.DRAWING_APPLICABILITY_UNCONFIRMED, DiscrepancyType.AMBIGUOUS_MATCH) for d in row.discrepancies)
+
+
 def mine_suggestions(run: Run, review: ReviewStore, repo: TerminologyRepository, min_skus: int = 2) -> list[Suggestion]:
     store = repo.store()
     rejected = {r[0] for r in repo.conn.execute("SELECT pair_key FROM mining_rejections")}
@@ -54,7 +69,7 @@ def mine_suggestions(run: Run, review: ReviewStore, repo: TerminologyRepository,
     groups: dict[tuple[str, str], Suggestion] = {}
     metrics: dict[tuple[str, str], list[float]] = {}
     for r in run.results:
-        if r.match_level is not MatchLevel.FUZZY or r.source_a is None or r.source_b is None:
+        if r.match_level is not MatchLevel.FUZZY or not relationship_eligible(r):
             continue
         na, nb = normalize(r.source_a.description), normalize(r.source_b.description)
         key = (na.sorted_key, nb.sorted_key)

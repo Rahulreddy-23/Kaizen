@@ -54,7 +54,7 @@ is still unmeasured.
   validation. No standalone case-label source was supplied.
 
 ## Review workflow
-- The shared app requires administrator approval for `@bd.com` registrations and checks each run's access
+- The shared app permits immediate sign-in for `@bd.com` registrations and checks each run's access
   grants. Registration still does not prove email ownership; a company-wide deployment should use BD
   single sign-on. Hosted configuration enables Secure cookies over HTTPS; local development uses HTTP.
   Historical two-reviewer records remain readable, while new work uses a shared decision and explicit

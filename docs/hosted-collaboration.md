@@ -12,6 +12,9 @@ Each saved decision records the signed-in user's identity in append-only history
 
 ## Deploy on Render
 
+Render deployment is the next setup step; the supplied files prepare it. Pushing to GitHub does not
+create a Render service or deploy the application through this repository's CI workflow.
+
 This application uses Python, Tesseract, SQLite and document files. The supplied Dockerfile serves the React frontend and API on the same origin. A single Render web service with a persistent disk preserves the workspace across deployments. See [Render disks](https://render.com/docs/disks) and [Docker services](https://render.com/docs/docker).
 
 1. Push the application changes to the GitHub repository.

@@ -253,7 +253,11 @@ def test_reviewer_pair_corrections_do_not_double_count_expected_pair(learning_en
     row = row_for(run, learning, description='MASK, VAPOR BARRIER')
     a, b = learning.items_for_row(run, row)
     mask = next(i for i in b.values() if i.description == 'Mask')
-    b_only = next(r for r in run.results if r.sku == row.sku and r.check.value == 'BOM_LABEL' and r.source_a is None and r.source_b and r.source_b.id == mask.id)
+    # Exercise an imported older run with two unpaired sides. The live matcher
+    # now proposes the short Mask wording as one review-required pair.
+    row.source_b = None
+    b_only = row.model_copy(deep=True, update={'row_id': row.row_id + '-unpaired-label', 'source_a': None, 'source_b': mask})
+    run.results.append(b_only)
     data = body_for(row, verdict='INCORRECT_PAIR', classification='EQUIVALENT', discrepancies=[], expected_b_ids=[mask.id])
     verify(learning, run, row, data)
     verify(learning, run, b_only, data.model_copy(update={'expected_a_ids': [row.source_a.id]}))

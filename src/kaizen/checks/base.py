@@ -13,6 +13,7 @@ CLASSIFICATION_BY_LEVEL = {
 
 RECOMMENDED_ACTION = {
     DiscrepancyType.QTY_MISMATCH: "Confirm the correct quantity against the approved redline; correct the BOM or the label.",
+    DiscrepancyType.QUANTITY_BASIS_UNCONFIRMED: "Confirm the BOM unit of measure and the number of individual components in each supplied pair, pack or set.",
     DiscrepancyType.DESC_MISMATCH: "Confirm the two descriptions refer to the same component; add a relationship if they do.",
     DiscrepancyType.MISSING_IN_LABEL: "Confirm whether this BOM component must appear on the label; if it does under another wording, add a relationship.",
     DiscrepancyType.MISSING_IN_BOM: "Confirm whether this label line corresponds to a BOM component under a different description.",
@@ -51,6 +52,8 @@ RECOMMENDED_ACTION.update(
         DiscrepancyType.MISSING_IN_DRAWING: "Confirm whether the component must be shown on the packaging drawing; update the drawing or the BOM.",
         DiscrepancyType.EXTRA_ON_DRAWING: "Confirm whether the drawing callout refers to a BOM component under another description or an obsolete item.",
         DiscrepancyType.DRAWING_REV_MISMATCH: "Confirm the drawing number / revision referenced by the BOM against the released drawing.",
+        DiscrepancyType.DRAWING_APPLICABILITY_UNCONFIRMED: "Supply or confirm the drawing referenced by this SKU before assessing component presence.",
+        DiscrepancyType.LABEL_CONFIGURATION_REVIEW: "Inspect the applicable overlabel artwork and final assembled label against the base label and BOM.",
         DiscrepancyType.UNEXPECTED_LABEL_CHANGE: "Confirm the change against the approved redline; it is not covered by the PCO.",
         DiscrepancyType.EXPECTED_CHANGE_ABSENT: "Apply the approved change to the new label revision or update the PCO.",
     }

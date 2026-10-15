@@ -7,7 +7,7 @@ import { ClassificationBadge } from "../components/Badges";
 import { ErrorBox, Notice } from "../components/Feedback";
 import { Stat } from "../components/Stat";
 import { Button, Card, CardHead, EmptyState, Field, LinkButton, PageHeader, TableSkeleton } from "../components/ui";
-import { enc, shortSha } from "../lib/format";
+import { enc, fmtDate, issueLabel, shortSha } from "../lib/format";
 import { errorMessage, useAsync } from "../lib/useAsync";
 import type { DiffStatus, RunDiffRow } from "../types";
 
@@ -100,7 +100,7 @@ export default function DiffPage() {
               <option value="">Choose an earlier run</option>
               {others.map((r) => (
                 <option key={r.run_id} value={r.run_id}>
-                  {r.run_id} · {r.created_at.slice(0, 16)} · {r.summary.skus} SKUs
+                  {r.name || r.run_id} · {fmtDate(r.created_at)} · {r.summary?.skus ?? 0} SKUs
                 </option>
               ))}
             </select>
@@ -263,7 +263,7 @@ function Side({ b, run, label }: { b: RunDiffRow["before"]; run: string; label: 
           Open row
         </Link>
       </div>
-      {b.discrepancies.length > 0 && <div className="mono text-xs text-ink-2">{b.discrepancies.join(", ")}</div>}
+      {b.discrepancies.length > 0 && <div className="mono text-xs text-ink-2">{b.discrepancies.map(issueLabel).join(", ")}</div>}
     </div>
   );
 }

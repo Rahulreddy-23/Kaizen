@@ -20,8 +20,6 @@ PCOs and label revisions, with the reviewer as the final decision-maker. Built f
 > The system recommends. The reviewer decides. Every recommendation says why, points at the page and box it
 > came from, and is reproducible from the recorded inputs, thresholds and terminology version.
 
-> New here? Read [docs/solution-overview.md](docs/solution-overview.md): the problem and the solution in plain language.
-
 ## What it does
 - Reads the documents reviewers already download: JDE BOM prints (PDF) or exports (XLSX/CSV), product labels
   (PDF, multi-column kit contents, old and new revisions), packaging drawings (text or scanned PDF, EN/ES callouts) and
@@ -77,9 +75,8 @@ terminology and action items live in the workspace database (`./kaizen-workspace
 
 ## Demo
 ```bash
-rm -rf kaizen-workspace
-.venv/bin/kaizen demo          # golden dataset: run + measured accuracy + workbook
-.venv/bin/kaizen serve         # then follow docs/demo-script.md in the browser
+.venv/bin/kaizen --workspace /tmp/kaizen-demo demo  # isolated synthetic demo workspace
+.venv/bin/kaizen --workspace /tmp/kaizen-demo serve # then follow docs/demo-script.md
 ```
 
 ## Tests and evaluation
@@ -130,7 +127,7 @@ Real-data matching needs approved terminology and assembly mappings. Hand-drawn 
 are not parsed; thresholds are tuned on synthetic data. No compliance claim.
 
 ## Optional: shared sign-in with Supabase
-The hosted app stores accounts in its central workspace by default. Supabase can optionally check passwords instead. **Only email and password authentication move to Supabase.** Kaizen's account approvals, sessions, decisions, run grants and documents remain in the central workspace. Provider accounts still need Kaizen administrator approval. Sign-in with this provider needs internet access.
+The hosted app stores accounts in its central workspace by default. Supabase can optionally check passwords instead. **Only email and password authentication move to Supabase.** Kaizen's account roles, sessions, decisions, run grants and documents remain in the central workspace. Registration follows the same immediate sign-in policy as local accounts. Sign-in with this provider needs internet access.
 **No email is ever sent**: BD mail blocks external senders, so there are no confirmation or reset emails.
 
 In the Supabase dashboard (once per project):
@@ -206,9 +203,27 @@ a preview, atomic validation and repeat imports without duplicate rules. Then ru
 `--workspace kaizen-workspace --baseline out/real-bd/run.json --out out/real-bd-after-relationships` to
 measure coverage changes on identical input files. See [the import workflow](docs/relationship-import.md).
 
-## Documents
-`docs/solution-overview.md` (plain-language overview for presenting), `docs/system-description.md` (what was built, module by module),
-`docs/design/DESIGN.md` and `docs/design/PRODUCT.md` (the reviewer interface's visual system and product truth),
-`docs/problem-understanding.md` (problem and proposal), `docs/implementation-plan.md` (plan and status),
-`docs/final-architecture.md`, `docs/api-contract.md`, `docs/demo-script.md`, `docs/test-strategy.md`,
-`docs/known-limitations.md`, `docs/security-review.md`, `datasets/golden/SCENARIOS.md`.
+## Repository guide
+
+| Area | Purpose |
+| --- | --- |
+| `src/kaizen/` | Parsers, comparison engine, review storage, API, CLI and exports |
+| `ui/` | Reviewer interface; [development instructions](ui/README.md) |
+| `tests/` | Unit, integration and synthetic accuracy regressions |
+| `datasets/golden/` | Generated synthetic documents and declared ground truth used by tests and the demo |
+| `scripts/` | Hosted server entry point and optional local real-data audit |
+
+Real BD source documents, review databases, credentials, generated reports and local validation artifacts
+are excluded from Git and Docker's build context. Keep them in the ignored source folders or workspace;
+they are not required to install or run the application. The synthetic golden dataset remains versioned
+so a clean checkout can run the demo and accuracy checks.
+
+## Documentation
+
+- [Architecture](docs/final-architecture.md) and [API contract](docs/api-contract.md)
+- [Accounts, sharing and deployment](docs/hosted-collaboration.md)
+- [Security and data handling](docs/security-review.md)
+- [Review walkthrough](docs/demo-script.md) and [closed testing](docs/closed-testing.md)
+- [Relationship imports](docs/relationship-import.md)
+- [Test strategy](docs/test-strategy.md), [limitations](docs/known-limitations.md), and [real-data validation](docs/real-data-validation.md)
+- [UI product context](docs/design/PRODUCT.md) and [design system](docs/design/DESIGN.md)

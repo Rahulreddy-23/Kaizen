@@ -10,6 +10,24 @@ dist/
 .DS_Store
 kaizen-workspace/
 
+# Local credentials, review databases, and SQLite sidecars are never application source.
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.ses
+*.ses-*
+
+# Supplied BD source folders stay on the reviewer's machine.
+/Attachment I- BOM/
+/BOM cross check Folder/
+/SKUs/
+
 # The hackathon brief is BD-internal material; keep it local, never in the public repo.
 docs/reference/*.pdf
 
@@ -26,3 +44,5 @@ docs/private/
 .claude/launch.json
 .claude/settings.json
 .playwright-mcp/
+.hallmark/
+skills-lock.json

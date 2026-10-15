@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useHotkeys } from "../lib/hotkeys";
 import { useReviewer } from "../lib/reviewer";
-import { displayName, fmtDate } from "../lib/format";
+import { classificationLabel, displayName, fmtDate } from "../lib/format";
 import { CLASSIFICATIONS, DECISION_KINDS, DECISION_LABELS, type Classification, type DecisionKind, type RowDetail } from "../types";
 import { Button, Card, CardHead, Field } from "./ui";
 import { ErrorBox } from "./Feedback";
@@ -43,7 +43,7 @@ export function DecisionPanel({runId, rowId, detail, onChanged}: {runId: string;
       <div className="space-y-4">
         <fieldset disabled={!canEdit || busy} className="space-y-3">
           <Field label="Decision"><select className="input w-full" value={decision} onChange={e => {setDecision(e.target.value as DecisionKind); setConfirm(false);}}>{DECISION_KINDS.map(k => <option key={k} value={k}>{DECISION_LABELS[k]}</option>)}</select></Field>
-          {decision === "OVERRIDE" && <Field label="Override classification"><select className="input w-full" value={classification} onChange={e => setClassification(e.target.value as Classification)}>{CLASSIFICATIONS.map(c => <option key={c}>{c}</option>)}</select></Field>}
+          {decision === "OVERRIDE" && <Field label="Override classification"><select className="input w-full" value={classification} onChange={e => setClassification(e.target.value as Classification)}>{CLASSIFICATIONS.map(c => <option key={c} value={c}>{classificationLabel(c)}</option>)}</select></Field>}
           <Field label="Comment"><textarea className="input w-full" rows={3} value={comment} onChange={e => setComment(e.target.value)} /></Field>
           {canEdit && <Button variant="primary" disabled={!changed} loading={busy} onClick={saveDecision}>Save decision</Button>}
         </fieldset>
@@ -56,13 +56,13 @@ export function DecisionPanel({runId, rowId, detail, onChanged}: {runId: string;
       <div className="space-y-4">
         <h3 className="font-semibold">Approval</h3>
         {detail.final ? <div className="text-sm"><b>{detail.final.self_approved ? "Self-approved" : "Approved"}</b> by {detail.final.finalized_by}<p>{fmtDate(detail.final.finalized_at)} · {DECISION_LABELS[detail.final.final_decision]}</p>{detail.final.note && <p>{detail.final.note}</p>}</div> : canEdit && current ? <>
-          <p className="text-sm">Approve <b>{DECISION_LABELS[current.decision]}</b>{current.override_classification ? ` → ${current.override_classification}` : ""}{current.comment ? ` — ${current.comment}` : ""}.</p>
+          <p className="text-sm">Approve <b>{DECISION_LABELS[current.decision]}</b>{current.override_classification ? ` → ${classificationLabel(current.override_classification)}` : ""}{current.comment ? ` — ${current.comment}` : ""}.</p>
           {changed && <p className="text-xs text-ink-3">Save your changes before approving.</p>}
           {selfApproval && <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} disabled={changed || busy} /><span>I reviewed these changes and confirm approval of my own work. This will be recorded as <b>self-approved</b>.</span></label>}
           <Button disabled={changed || busy || (selfApproval && !confirm)} onClick={() => perform(() => api.finalize(runId, {row_id: rowId, final_decision: current.decision, expected_revision: detail.revision, confirm_self_approval: selfApproval && confirm}))}>{selfApproval ? "Confirm self-approval" : "Approve decision"}</Button>
         </> : <p className="text-sm text-ink-3">{current ? "Awaiting approval" : "Record a decision before approving."}</p>}
         <details className="border-t border-line pt-3"><summary className="text-sm font-medium cursor-pointer">History ({detail.history.length})</summary><ol className="space-y-3 text-xs mt-3">
-          {detail.history.map((h, index) => <li key={index}><b>{h.event === "engine" ? "Automated result" : h.final_decision ? h.self_approved ? "Self-approved" : "Approved" : "Decision saved"}</b><div className="text-ink-3">{h.reviewer || h.finalized_by} {h.decided_at || h.finalized_at ? `· ${fmtDate(h.decided_at || h.finalized_at)}` : ""}</div><p>{h.decision ? DECISION_LABELS[h.decision] : h.final_decision ? DECISION_LABELS[h.final_decision] : h.detail}{h.override_classification ? ` → ${h.override_classification}` : ""}{h.comment || h.note ? ` · ${h.comment || h.note}` : ""}</p></li>)}
+          {detail.history.map((h, index) => <li key={index}><b>{h.event === "engine" ? "Automated result" : h.final_decision ? h.self_approved ? "Self-approved" : "Approved" : "Decision saved"}</b><div className="text-ink-3">{h.reviewer || h.finalized_by} {h.decided_at || h.finalized_at ? `· ${fmtDate(h.decided_at || h.finalized_at)}` : ""}</div><p>{h.decision ? DECISION_LABELS[h.decision] : h.final_decision ? DECISION_LABELS[h.final_decision] : h.detail}{h.override_classification ? ` → ${classificationLabel(h.override_classification)}` : ""}{h.comment || h.note ? ` · ${h.comment || h.note}` : ""}</p></li>)}
         </ol></details>
       </div>
     </div>

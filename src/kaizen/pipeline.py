@@ -12,7 +12,7 @@ from kaizen import __version__
 from kaizen.ai.matcher import AiAdjudicationMatcher
 from kaizen.ai.providers import AdjudicationProvider, NullProvider, get_provider
 from kaizen.checks.bom_drawing import CHECK_VERSION as BOM_DRAWING_VERSION
-from kaizen.checks.bom_drawing import run_bom_drawing_check
+from kaizen.checks.bom_drawing import drawing_applicability, run_bom_drawing_check
 from kaizen.checks.bom_label import CHECK_VERSION, run_bom_label_check
 from kaizen.checks.label_drawing import CHECK_VERSION as LABEL_DRAWING_VERSION
 from kaizen.checks.label_drawing import run_label_drawing_check
@@ -170,7 +170,8 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
                 audit.append(AuditEvent(action="check.completed", detail=f"BOM_DRAWING {g.sku}: {len(res)} rows ({_rel(Path(bom.path), root)} vs {_rel(Path(drawing.path), root)})"))
         for label in labels:
             for drawing in drawings:
-                res = run_label_drawing_check(label, drawing, ladder, thresholds, sku=g.sku)
+                applicable = False if boms and all(drawing_applicability(b, drawing) is False for b in boms) else None
+                res = run_label_drawing_check(label, drawing, ladder, thresholds, sku=g.sku, applicable=applicable)
                 results.extend(res)
                 audit.append(AuditEvent(action="check.completed", detail=f"LABEL_DRAWING {g.sku}: {len(res)} rows ({_rel(Path(label.path), root)} vs {_rel(Path(drawing.path), root)})"))
         if old_labels and labels:
@@ -213,6 +214,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         "label_pdf": label_pdf.PARSER_VERSION,
         "normalizer": NORMALIZER_VERSION,
         "assignment": ASSIGNMENT_VERSION,
+        "component_candidates": "2",
         "categorizer_rules": CATEGORIZER_VERSION,
         "check_bom_label": CHECK_VERSION,
         "pco": pco_parser.PARSER_VERSION,

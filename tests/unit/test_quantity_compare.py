@@ -9,6 +9,18 @@ def test_equal_quantities():
     assert v.equal is True and v.explainable_by_idiom is False
 
 
+def test_equal_printed_quantities_do_not_establish_a_package_basis():
+    for sub in (SubQuantity(value=3, kind="per", raw="3 per pouch"), SubQuantity(value=1, kind="pair", raw="1 pair")):
+        v = compare_quantities(Decimal("1"), Decimal("1"), sub, bom_uom="EA", label_uom="EACH")
+        assert v.equal and v.basis_uncertain
+        assert "confirm" in v.detail
+
+
+def test_equal_numbers_with_pair_uom_still_need_basis_review():
+    assert compare_quantities(Decimal("1"), Decimal("1"), bom_uom="EA", label_uom="PAIR").basis_uncertain
+    assert not compare_quantities(Decimal("1"), Decimal("1"), bom_uom="PAIR", label_uom="PAIR").basis_uncertain
+
+
 def test_plain_mismatch():
     v = compare_quantities(Decimal("2.0000"), Decimal("1"))
     assert v.equal is False and v.explainable_by_idiom is False

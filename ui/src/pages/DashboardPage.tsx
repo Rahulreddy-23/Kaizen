@@ -226,7 +226,7 @@ export default function DashboardPage() {
             <Card>
               <CardHead title="Automated results" count={`${reviewable} reviewable comparisons`} />
               <div className="p-5">
-                <p className="text-xs text-ink-3 mb-3">Original engine recommendations, recorded before review. Approvals appear in the review status above.</p>
+                <p className="text-xs text-ink-3 mb-3">Original engine recommendations, recorded before review. Unmapped means no accepted counterpart was found; it does not establish that a component is absent.</p>
                 <Bar segments={CLASSIFICATIONS.map((c) => ({ label: c, value: r.counts[c] ?? 0, color: CLASS_COLORS[c] }))} />
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {CLASSIFICATIONS.map((c) => (

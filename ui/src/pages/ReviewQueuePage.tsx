@@ -101,8 +101,13 @@ export default function ReviewQueuePage() {
   };
 
   const offset = query.offset ?? 0;
+  useEffect(() => {
+    if (!page.data || page.loading || offset === 0 || page.data.rows.length) return;
+    const last = Math.max(0, Math.floor((page.data.total - 1) / PAGE_SIZE) * PAGE_SIZE);
+    if (offset > last) set("offset", String(last));
+  }, [page.data, page.loading, offset]);
   const total = page.data?.total ?? 0;
-  const from = total === 0 ? 0 : offset + 1;
+  const from = total === 0 ? 0 : Math.min(offset + 1, total);
   const to = Math.min(offset + PAGE_SIZE, total);
   const nvOn = sp.get("nv") !== "0";
 
@@ -130,14 +135,14 @@ export default function ReviewQueuePage() {
         meta={<HotkeyHint />}
         actions={
           <>
-            {run.data?.permission !== "view" && <ImportDecisions
+            {run.data && run.data.permission !== "view" && <ImportDecisions
               runId={runId}
               onApplied={() => {
                 page.reload();
                 run.reload();
               }}
             />}
-            <Button onClick={openBulk} disabled={!name || run.data?.permission === "view"} icon={<CheckSquare size={16} />} title={name ? "" : "Sign in first"}>
+            <Button onClick={openBulk} disabled={!name || !run.data || run.data.permission === "view"} icon={<CheckSquare size={16} />} title={name ? "" : "Sign in first"}>
               Accept all clean rows
             </Button>
           </>
@@ -189,7 +194,7 @@ export default function ReviewQueuePage() {
             <summary>More filters{["discrepancy", "severity", "classification", "role"].some(k => sp.get(k)) ? " · active" : ""}</summary>
             <div className="flex flex-wrap gap-3 pt-3">            {sel("discrepancy", "Discrepancy", DISCREPANCY_TYPES, issueLabel)}
             {sel("severity", "Severity", SEVERITIES, title)}
-            {sel("classification", "Classification", CLASSIFICATIONS, title)}
+            {sel("classification", "Classification", CLASSIFICATIONS, c => c === "MISSING" ? "Unmapped" : title(c))}
             {sel("role", "Role", ROLES, title)}
 </div>
           </details>
@@ -210,8 +215,8 @@ export default function ReviewQueuePage() {
               {page.loading && page.data && <span className="text-ink-3"> · refreshing</span>}
             </span>
             <div className="ml-auto flex items-center gap-1">
-              <Button size="sm" variant="ghost" iconOnly aria-label={`Previous ${PAGE_SIZE}`} disabled={offset === 0} onClick={() => set("offset", String(Math.max(0, offset - PAGE_SIZE)))} icon={<CaretLeft size={16} />} />
-              <Button size="sm" variant="ghost" iconOnly aria-label={`Next ${PAGE_SIZE}`} disabled={to >= total} onClick={() => set("offset", String(offset + PAGE_SIZE))} icon={<CaretRight size={16} />} />
+              <Button size="sm" variant="ghost" iconOnly aria-label={`Previous ${PAGE_SIZE}`} disabled={page.loading || offset === 0} onClick={() => set("offset", String(Math.max(0, offset - PAGE_SIZE)))} icon={<CaretLeft size={16} />} />
+              <Button size="sm" variant="ghost" iconOnly aria-label={`Next ${PAGE_SIZE}`} disabled={page.loading || to >= total} onClick={() => set("offset", String(offset + PAGE_SIZE))} icon={<CaretRight size={16} />} />
             </div>
           </div>
           {page.loading && !page.data && <TableSkeleton rows={8} cols={7} />}

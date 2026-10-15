@@ -16,13 +16,14 @@ const MIN_PASSWORD = 10;
 type Mode = "signin" | "signup";
 
 /** A password box with a reveal toggle. Typing a long password blind is where most typos come from. */
-function PasswordInput({ id, value, onChange, autoComplete }: { id: string; value: string; onChange: (v: string) => void; autoComplete: string }) {
+function PasswordInput({ id, value, onChange, autoComplete, disabled, error }: { id: string; value: string; onChange: (v: string) => void; autoComplete: string; disabled: boolean; error?: boolean }) {
   const [shown, setShown] = useState(false);
   return (
     <div className="relative">
-      <input id={id} type={shown ? "text" : "password"} className="input w-full pr-10" autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input disabled={disabled} aria-invalid={error || undefined} aria-describedby={error ? `${id}-note` : undefined} id={id} type={shown ? "text" : "password"} className="input w-full pr-10" autoComplete={autoComplete} value={value} onChange={(e) => onChange(e.target.value)} />
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setShown((s) => !s)}
         className="absolute inset-y-0 right-0 w-10 grid place-items-center text-ink-3 hover:text-ink rounded-r-md"
         aria-label={shown ? "Hide password" : "Show password"}
@@ -62,6 +63,7 @@ export function SignIn() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy || !ready) return;
     setBusy(true);
     setFailed(null);
     setNotice(null);
@@ -108,6 +110,7 @@ export function SignIn() {
         <Field label="BD email address" htmlFor="reviewer-email" className="mb-4" error={wrongDomain ? BAD_DOMAIN : undefined}>
           <input
             id="reviewer-email"
+            disabled={busy}
             type="email"
             className="input w-full"
             autoFocus
@@ -120,12 +123,12 @@ export function SignIn() {
         </Field>
 
         <Field label="Password" htmlFor="reviewer-password" className="mb-4" error={tooShort ? `At least ${MIN_PASSWORD} characters` : undefined}>
-          <PasswordInput id="reviewer-password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} />
+          <PasswordInput disabled={busy} error={tooShort} id="reviewer-password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} />
         </Field>
 
         {mode === "signup" && (
           <Field label="Confirm password" htmlFor="reviewer-confirm" className="mb-4" error={mismatch ? "The two passwords do not match" : undefined}>
-            <PasswordInput id="reviewer-confirm" value={confirm} onChange={setConfirm} autoComplete="new-password" />
+            <PasswordInput disabled={busy} error={mismatch} id="reviewer-confirm" value={confirm} onChange={setConfirm} autoComplete="new-password" />
           </Field>
         )}
 
@@ -148,14 +151,14 @@ export function SignIn() {
           {mode === "signin" ? (
             <>
               No account yet?{" "}
-              <button type="button" className="underline hover:text-ink" onClick={() => switchTo("signup")}>
+              <button type="button" disabled={busy} className="underline hover:text-ink" onClick={() => switchTo("signup")}>
                 Create account
               </button>
             </>
           ) : (
             <>
               Already have an account?{" "}
-              <button type="button" className="underline hover:text-ink" onClick={() => switchTo("signin")}>
+              <button type="button" disabled={busy} className="underline hover:text-ink" onClick={() => switchTo("signin")}>
                 Sign in
               </button>
             </>

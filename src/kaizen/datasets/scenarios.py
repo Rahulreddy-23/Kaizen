@@ -134,7 +134,8 @@ def _np(rows) -> list[Line]:
 def base_lines() -> list[Line]:
     physical = [
         Line(
-            c.item, c.bom_desc, f"{c.qty}.0000", c.label_text, c.qty, Expected(c.expected, [], c.scenario), t=c.t, oper_seq=c.oper_seq,
+            c.item, c.bom_desc, f"{c.qty}.0000", c.label_text, c.qty,
+            Expected(c.expected, ["QUANTITY_BASIS_UNCONFIRMED"] if c.item in ("2220001", "2290001", "2300001") else [], c.scenario), t=c.t, oper_seq=c.oper_seq,
             callout=c.callout, callout_es=c.callout_es,
             expected_drawing=Expected(c.expected_drawing, [], "drawing-" + c.expected_drawing.lower()) if c.callout else Expected("MISSING", ["MISSING_IN_DRAWING"], "missing-on-drawing"),
             expected_label_drawing=Expected(c.expected_label_drawing, [], "label-drawing-" + c.expected_label_drawing.lower()) if c.callout else Expected("MISSING", ["MISSING_IN_DRAWING"], "missing-on-drawing"),
@@ -180,7 +181,7 @@ def s01() -> Scenario:
         "1295108NS", "sku-001", "1295108", "pdf", base_lines(), pco_bom=list(_PCO_A_OK),
         old_label=True, old_label_remove=[TRIMMING], old_label_add=[SCISSORS_OLD], label_revision=list(REV_APPLIED),
         tags=["non-physical", "wrapped-line", "parenthetical-quantity", "multipage", "exact", "reordered", "relationship", "potential-fuzzy", "abbreviation", "pco-applied", "rev-expected-changes"],
-        notes="Clean baseline: every physical component is on the label with the right quantity. Exercises reordered wording, relationships, fuzzy potentials, wrapped label lines, the '(3 per)' idiom and 12 non-physical BOM rows that must not be flagged.",
+        notes="Baseline: every physical component is on the label with the same printed quantity. Pack/pair counts still require quantity-basis review. Exercises reordered wording, relationships, fuzzy potentials, wrapped label lines, the '(3 per)' idiom and 12 non-physical BOM rows that must not be flagged.",
     )
 
 

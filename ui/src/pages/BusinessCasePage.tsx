@@ -8,6 +8,7 @@ import { ErrorBox } from "../components/Feedback";
 import { BAD_COLOR, BRAND_COLOR, MiniBar, Stat } from "../components/Stat";
 import { Button, Card, CardHead, Field, PageHeader, SectionTitle, Skeleton } from "../components/ui";
 import { enc, fmtMoney, pct } from "../lib/format";
+import { businessValueError } from "../lib/businessValidation";
 import { useToast } from "../lib/toast";
 import { useAsync } from "../lib/useAsync";
 import type { BusinessParams } from "../types";
@@ -32,7 +33,7 @@ function paramsFrom(sp: URLSearchParams): BusinessParams {
   const out: BusinessParams = {};
   for (const f of FIELDS) {
     const v = sp.get(f.key);
-    if (v !== null && v !== "" && !Number.isNaN(Number(v))) out[f.key] = Number(v);
+    if (v !== null && v !== "" && !businessValueError(f.key, v)) out[f.key] = Number(v);
   }
   return out;
 }
@@ -43,6 +44,7 @@ export default function BusinessCasePage() {
   const toast = useToast();
   const params = paramsFrom(sp);
   const bc = useAsync(() => api.businessCase(runId, params), [runId, sp.toString()]);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   useEffect(() => {
     const f: Record<string, string> = {};
@@ -52,6 +54,11 @@ export default function BusinessCasePage() {
   }, [sp.toString()]);
 
   const recompute = () => {
+    for (const field of FIELDS) {
+      const error = businessValueError(field.key, form[field.key] ?? "");
+      if (error) { setValidationError(`${field.label}: ${error}`); return; }
+    }
+    setValidationError(null);
     const n = new URLSearchParams();
     let changed = 0;
     for (const x of FIELDS) {
@@ -67,6 +74,7 @@ export default function BusinessCasePage() {
   };
 
   const reset = () => {
+    setValidationError(null);
     setSp(new URLSearchParams(), { replace: true });
     toast({ tone: "info", title: "Assumptions reset", description: "Default values restored." });
   };
@@ -214,6 +222,7 @@ export default function BusinessCasePage() {
                       </Field>
                     ))}
                   </div>
+                  {validationError && <div className="mt-3"><ErrorBox error={validationError} /></div>}
                   <div className="flex flex-wrap gap-2 mt-4">
                     <Button variant="primary" onClick={recompute} icon={<ArrowsClockwise size={16} />}>
                       Recalculate

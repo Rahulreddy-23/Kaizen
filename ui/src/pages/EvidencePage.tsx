@@ -12,44 +12,17 @@ import { ActionItemPanel, SaveRelationshipPanel } from "../components/RowActions
 import { Button, Card, LinkButton, PageHeader } from "../components/ui";
 import { enc, fmtScore, issueLabel } from "../lib/format";
 import { useHotkeys } from "../lib/hotkeys";
-import { PAGE_SIZE, queueParams, queueQueryFromParams } from "../lib/queue";
+import { queueParams, queueQueryFromParams } from "../lib/queue";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
+import { loadNeighbors, type Neighbor } from "../lib/neighbors";
 import type { ViewerParams } from "../types";
 
 const CHECK_LABEL: Record<string, string> = { BOM_LABEL: "BOM to label", BOM_DRAWING: "BOM to drawing", LABEL_DRAWING: "Label to drawing", PCO_BOM: "PCO to BOM", LABEL_REVISION: "Label revision" };
 
-interface Neighbor {
-  id: string;
-  offset: number;
-}
-interface Neighbors {
-  prev: Neighbor | null;
-  next: Neighbor | null;
-  index: number | null;
-  total: number;
-}
-
-/** Prev/next within the queue's current filters (carried in the query string). */
+/** Prev/next follows the queue filters, including direct links into later pages. */
 function useNeighbors(runId: string, rowId: string, sp: URLSearchParams, v: ViewerParams) {
-  return useAsync<Neighbors>(async () => {
-    const q = queueQueryFromParams(sp, v);
-    const offset = q.offset ?? 0;
-    const page = await api.getResults(runId, q);
-    const idx = page.rows.findIndex((r) => r.row_id === rowId);
-    if (idx < 0) return { prev: null, next: null, index: null, total: page.total };
-    let prev: Neighbor | null = idx > 0 ? { id: page.rows[idx - 1].row_id, offset } : null;
-    let next: Neighbor | null = idx < page.rows.length - 1 ? { id: page.rows[idx + 1].row_id, offset } : null;
-    if (!prev && offset > 0) {
-      const p = await api.getResults(runId, { ...q, limit: 1, offset: offset - 1 });
-      if (p.rows[0]) prev = { id: p.rows[0].row_id, offset: Math.max(0, offset - PAGE_SIZE) };
-    }
-    if (!next && offset + page.rows.length < page.total) {
-      const p = await api.getResults(runId, { ...q, limit: 1, offset: offset + page.rows.length });
-      if (p.rows[0]) next = { id: p.rows[0].row_id, offset: offset + PAGE_SIZE };
-    }
-    return { prev, next, index: offset + idx + 1, total: page.total };
-  }, [runId, rowId, sp.toString(), v.viewer, v.blind]);
+  return useAsync(() => loadNeighbors(runId, rowId, queueQueryFromParams(sp, v)), [runId, rowId, sp.toString(), v.viewer, v.blind]);
 }
 
 export default function EvidencePage() {
@@ -78,7 +51,7 @@ export default function EvidencePage() {
     [nb.data, runId, help, queueLink],
   );
 
-  if (detail.error) return <ErrorBox error={detail.error} onRetry={detail.reload} />;
+  if (detail.error) return <div><PageHeader title="Comparison unavailable" back={{to: queueLink, label: "Review queue"}} /><ErrorBox error={detail.error} onRetry={detail.reload} /></div>;
   if (!detail.data) return <Loading label="Loading row" lines={6} />;
   const d = detail.data;
   const res = d.result;
@@ -194,7 +167,7 @@ export default function EvidencePage() {
                   ))}
                 </ul>
               ) : (
-                <div className="text-sm text-ink-3 mt-2">No discrepancy found.</div>
+                <div className="text-sm text-ink-3 mt-2">{res.requires_validation ? "Review required; no discrepancy confirmed." : "No discrepancy found."}</div>
               )}
             </div>
           </div>
@@ -209,14 +182,14 @@ export default function EvidencePage() {
 
         {/* ---- decide, and what follows from it */}
         <aside id="review-decision" className="review-tools space-y-5">
-          <DecisionPanel runId={runId} rowId={rowId} detail={d} onChanged={detail.reload} />
-          {res.role === "item" && ["BOM_LABEL", "BOM_DRAWING", "LABEL_DRAWING"].includes(res.check) && <GroundTruthPanel runId={runId} rowId={rowId} detail={d} />}
+          <DecisionPanel key={`${runId}:${rowId}`} runId={runId} rowId={rowId} detail={d} onChanged={detail.reload} />
           <div className="space-y-5">
             {d.permission !== "view" && session?.is_admin && <SaveRelationshipPanel runId={runId} detail={d} onCreated={detail.reload} />}
             {d.permission !== "view" && <ActionItemPanel runId={runId} detail={d} onCreated={detail.reload} />}
           </div>
         </aside>
         </div>
+        {res.role === "item" && ["BOM_LABEL", "BOM_DRAWING", "LABEL_DRAWING"].includes(res.check) && <GroundTruthPanel key={`${runId}:${rowId}`} runId={runId} rowId={rowId} detail={d} />}
       </div>
     </div>
   );

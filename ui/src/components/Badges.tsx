@@ -1,6 +1,6 @@
 // Colour is meaning, and meaning is always also a word. Palettes: docs/design/DESIGN.md.
 import type { ReactNode } from "react";
-import type { Classification, DecisionKind, ReviewState, Severity } from "../types";
+import type { Classification, ReviewState, Severity } from "../types";
 
 type Tone = "exact" | "equivalent" | "potential" | "mismatch" | "missing" | "ok" | "warn" | "bad" | "info" | "neutral" | "ink";
 
@@ -42,7 +42,7 @@ export function Badge({ tone = "neutral", dot = true, size = "sm", title, childr
 }
 
 const CLS_TONE: Record<Classification, Tone> = { EXACT: "exact", EQUIVALENT: "equivalent", POTENTIAL: "potential", MISMATCH: "mismatch", MISSING: "missing" };
-const CLS_LABEL: Record<Classification, string> = { EXACT: "Exact", EQUIVALENT: "Equivalent", POTENTIAL: "Potential", MISMATCH: "Mismatch", MISSING: "Missing" };
+const CLS_LABEL: Record<Classification, string> = { EXACT: "Exact", EQUIVALENT: "Equivalent", POTENTIAL: "Potential", MISMATCH: "Mismatch", MISSING: "Unmapped" };
 
 export function ClassificationBadge({ value, title, size = "sm" }: { value: string | null | undefined; title?: string; size?: "sm" | "lg" | "md" }) {
   if (!value) return <span className="text-ink-4">—</span>;
@@ -95,14 +95,6 @@ export function StateBadge({ value }: { value: string | null | undefined }) {
       {STATE_LABEL[value as ReviewState] ?? value.replace(/_/g, " ")}
     </Badge>
   );
-}
-
-const DEC_TONE: Record<DecisionKind, Tone> = { ACCEPT: "ok", OVERRIDE: "warn", CONFIRM_DISCREPANCY: "bad", NEEDS_MORE_INFORMATION: "info" };
-const DEC_LABEL: Record<DecisionKind, string> = { ACCEPT: "Accept", OVERRIDE: "Override", CONFIRM_DISCREPANCY: "Confirm discrepancy", NEEDS_MORE_INFORMATION: "Needs more information" };
-
-export function DecisionBadge({ value }: { value: string | null | undefined }) {
-  if (!value) return <span className="text-ink-4">—</span>;
-  return <Badge tone={DEC_TONE[value as DecisionKind] ?? "neutral"}>{DEC_LABEL[value as DecisionKind] ?? value.replace(/_/g, " ")}</Badge>;
 }
 
 export function DocTypeBadge({ value }: { value: string | null | undefined }) {

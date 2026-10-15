@@ -8,6 +8,7 @@ import { useAsync } from "../lib/useAsync";
 import { backendProblem } from "../lib/backend";
 import { useDataRefresh } from "../lib/dataRefresh";
 import { ErrorBox } from "./Feedback";
+import { ScreenBoundary } from "./ScreenBoundary";
 import { ScrollMemory } from "./ScrollMemory";
 import { SignIn } from "./SignIn";
 import { ThemeToggle } from "./ThemeToggle";
@@ -74,7 +75,15 @@ export function Layout() {
     if (!mobileOpen) return;
     const first = [...(sidebar.current?.querySelectorAll<HTMLElement>('button, a[href]') ?? [])].find(element => element.getClientRects().length > 0);
     first?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const close = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const controls = [...(sidebar.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') ?? [])].filter(element => element.getClientRects().length > 0);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         setMobileOpen(false);
@@ -82,7 +91,7 @@ export function Layout() {
       }
     };
     document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
+    return () => { document.removeEventListener("keydown", close); document.body.style.overflow = previousOverflow; };
   }, [mobileOpen]);
   useEffect(() => { setMobileOpen(false); }, [loc.pathname]);
   useEffect(() => {
@@ -197,6 +206,7 @@ export function Layout() {
         </nav>
         <div className="sidebar-footer">{item("/profile", "Profile", <UserCircle size={20} />)}</div>
       </aside>
+      {mobileOpen && <button className="navigation-backdrop" aria-label="Close navigation overlay" tabIndex={-1} onClick={() => { setMobileOpen(false); menuButton.current?.focus(); }} />}
       <div className="app-body">
         <header className="app-topbar">
           <button type="button" ref={menuButton} className="btn btn-ghost btn-icon mobile-menu" aria-label={mobileOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileOpen} aria-controls="app-navigation" onClick={() => setMobileOpen(!mobileOpen)} >{mobileOpen ? <X size={20} /> : <List size={20} />}</button>
@@ -217,7 +227,7 @@ export function Layout() {
           </select>
           <Link to="/">All runs <ArrowRight size={14} /></Link>
         </div>}
-        <main id="main" tabIndex={-1} className="app-main"><Outlet /></main>
+        <main id="main" tabIndex={-1} className="app-main"><ScreenBoundary key={loc.pathname}><Outlet /></ScreenBoundary></main>
       </div>
     </div>
   );

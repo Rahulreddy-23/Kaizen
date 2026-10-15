@@ -1,4 +1,4 @@
-"""Regression tests for the findings of the forensic audit (docs/implementation-plan.md §13)."""
+"""Regression tests for parsing, matching, review, and storage edge cases."""
 
 import threading
 from decimal import Decimal

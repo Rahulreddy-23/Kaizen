@@ -26,7 +26,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ variant, size, icon, iconRight, loading, iconOnly, className = "", children, disabled, type = "button", ...rest }: ButtonProps) {
   return (
-    <button type={type} className={btnClass(variant, size, iconOnly, className)} disabled={disabled || loading} {...rest}>
+    <button type={type} className={btnClass(variant, size, iconOnly, className)} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
       {loading ? <CircleNotch size={16} className="animate-spin" aria-hidden /> : icon}
       {children}
       {iconRight}

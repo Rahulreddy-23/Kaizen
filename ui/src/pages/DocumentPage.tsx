@@ -104,7 +104,8 @@ export default function DocumentPage() {
   const doc = useAsync(() => api.getDocumentItems(runId, docId), [runId, docId]);
   const [filter, setFilter] = useState("");
   const [pageOnly, setPageOnly] = useState(false);
-  const page = Math.max(1, Number(sp.get("page") || 1) || 1);
+  const requestedPage = Number(sp.get("page") || 1);
+  const page = Math.min(doc.data?.pages || 1, Number.isFinite(requestedPage) ? Math.max(1, Math.floor(requestedPage)) : 1);
   const selectedId = sp.get("item");
   const selected = useMemo(() => doc.data?.items.find((i) => i.id === selectedId) ?? null, [doc.data, selectedId]);
 

@@ -11,6 +11,7 @@ class QtyVerdict:
     equal: bool
     explainable_by_idiom: bool
     detail: str
+    basis_uncertain: bool = False
 
 
 def _fmt(q: Decimal | None) -> str:
@@ -30,6 +31,11 @@ def compare_quantities(
         side = "BOM" if bom_qty is None else "label"
         return QtyVerdict(False, False, f"quantity missing on the {side} side (BOM {_fmt(bom_qty)} vs label {_fmt(label_qty)})")
     if bom_qty == label_qty:
+        basis = sub.raw if sub is not None and (sub.kind == "pair" or sub.value > 1) else None
+        if label_uom and label_uom.upper() in ("PAIR", "PACK", "SET") and (bom_uom or "").upper() != label_uom.upper():
+            basis = label_uom
+        if basis:
+            return QtyVerdict(True, False, f"BOM {_fmt(bom_qty)} == label {_fmt(label_qty)} as printed, but '{basis}' introduces a package/unit basis that the BOM quantity does not establish; confirm the supplied pack configuration", basis_uncertain=True)
         return QtyVerdict(True, False, f"BOM {_fmt(bom_qty)} == label {_fmt(label_qty)}")
     base = f"BOM {_fmt(bom_qty)} vs label {_fmt(label_qty)}"
     if sub is not None:

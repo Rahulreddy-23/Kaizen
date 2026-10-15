@@ -99,6 +99,10 @@ when approved. Editing an approved row reopens review.
 
 ## Results (review queue)
 `GET /api/runs/{run_id}/results` params: `check` (BOM_LABEL|BOM_DRAWING|LABEL_DRAWING|PCO_BOM|LABEL_REVISION), `sku`, `classification` (current effective classification), `engine_classification` (original EXACT|EQUIVALENT|POTENTIAL|MISMATCH|MISSING), `unresolved` (true/false), `severity` (BLOCKER|MAJOR|MINOR|INFO), `discrepancy` (type name), `needs_validation` (true/false), `state`, `role` (item|header|reference|coverage|exempt|change), `search`, `limit` (default 500), `offset`. (`viewer` and `blind` are still accepted but ignored when a session is present.)
+
+Clean-document review types include `QUANTITY_BASIS_UNCONFIRMED` (equal printed quantities with an unverified pair/pack basis), `LABEL_CONFIGURATION_REVIEW` (base label versus an applicable NO SALINE/NO SCISSORS overlabel), and `DRAWING_APPLICABILITY_UNCONFIRMED` (supplied drawing absent from the BOM's explicit drawing references). These require validation. `MISSING` is displayed as **Unmapped**: failure to establish a counterpart does not establish physical absence. Inferred component/assembly candidates remain `POTENTIAL`; assembly members retain their individual source evidence and require verified per-unit allocations before approval.
+
+`POST /api/runs/{run_id}/relationships/from-row` accepts one-to-one identity rows. Configuration findings, reference rows and assembly members are rejected with HTTP 400 and excluded from terminology mining; assembly membership and overlabel configuration cannot become term equivalences.
 `needs_validation` filters current `pending_review`, and `severity` filters `current_severity`. With `unresolved=true`, `discrepancy` filters current findings; otherwise it filters original evidence. The UI defaults to pending rows; `nv=0` removes that filter.
 Default order: blocker → major → ambiguous → potential → low-confidence → sku → row id.
 Returns `{total, offset, limit, rows:[{row_id, sku, check, role, engine:{classification, match_level, score, relationship_id, requires_validation, severity, discrepancies[], explanation}, decisions:{"1": Decision|null, "2": Decision|null}, state, final, effective_classification, pending_review, unresolved, current_severity, current_discrepancies, a:{item_number, description, quantity, page, locator, file_name}|null, b:{...}|null, discrepancies:[{type, severity, detail, recommended_action}], action_items[]}]}`.
@@ -107,7 +111,7 @@ Decision: `{slot, reviewer, decision, comment, override_classification, decided_
 `effective_classification` includes the saved shared override. Approval is recorded separately in
 `final`, including `self_approved`, the approver, timestamp and note.
 
-`GET /api/runs/{run_id}/results/{row_id}` → `{result: full CheckResult (source_a/source_b with evidence), evidence:{a: Evidence|null, b: Evidence|null}, decisions, state, final, effective_classification, revision, owner, permission, history:[{event: engine|change|approval, ...}], viewer, action_items[]}`.
+`GET /api/runs/{run_id}/results/{row_id}` → `{result: full CheckResult (source_a/source_b with evidence), can_save_relationship: boolean, evidence:{a: Evidence|null, b: Evidence|null}, decisions, state, final, effective_classification, revision, owner, permission, history:[{event: engine|change|approval, ...}], viewer, action_items[]}`.
 Evidence: `{doc_id, doc_type, file, file_name, sha256, page, bbox:{x0,y0,x1,y1}|null, locator, raw_text, sheet, item_number, description, quantity, uom, oper_seq, category, category_reason, confidence, attributes, sub_quantity}`.
 
 ## Documents and evidence images
@@ -126,6 +130,8 @@ Evidence: `{doc_id, doc_type, file, file_name, sha256, page, bbox:{x0,y0,x1,y1}|
 Unconfirmed fuzzy pairings ranked by the rows they would auto-clear once approved as relationships (rows carrying a discrepancy or an ambiguity are `still_review`). Approval goes through `mining/approve`; nothing is created automatically.
 
 ## Review effort (measured)
+`can_save_relationship` is false for assemblies, configurations, ambiguous variants, explicit OR alternatives, or conflicting component types/specifications. The UI and creation endpoint use the same server eligibility rule.
+
 Opening a row (`GET .../results/{row_id}`) with a session records the time for that reviewer's slot; the next decision on that row by the same slot stores `seconds_spent` (only when the gap is between 5 seconds and 15 minutes; bulk accept and Excel imports are never timed). `GET .../business-case` uses the median of timed decisions once there are at least 10 (`effort_basis: "measured"`, `timed_decisions`, `measured_minutes_per_validation_row`, `minutes_per_validation_row_used`); below that it keeps the brief's assumption and says so.
 
 ## Closed testing

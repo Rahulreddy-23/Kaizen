@@ -7,7 +7,7 @@ import { Stat } from "../components/Stat";
 import { AnchorButton, Button, Card, CardHead, Field, LinkButton, PageHeader } from "../components/ui";
 import type { DrawingBody, LearningGroup, LearningMetrics } from "../learning";
 import { useDataRefresh } from "../lib/dataRefresh";
-import { enc, fmtDate } from "../lib/format";
+import { checkLabel, enc, fmtDate } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
 
@@ -62,7 +62,7 @@ export default function LearningPage() {
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  if (summary.error || run.error) return <ErrorBox error={summary.error || run.error || ""} onRetry={() => {summary.reload(); run.reload();}} />;
+  if (summary.error || run.error) return <div><PageHeader title="Closed testing" back={{to: `/runs/${enc(runId)}`, label: "Overview"}} /><ErrorBox error={summary.error || run.error || ""} onRetry={() => {summary.reload(); run.reload();}} /></div>;
   if (!summary.data || !run.data) return <Loading label="Loading closed testing" />;
   const data = summary.data;
   const canEdit = run.data.permission !== "view";
@@ -89,7 +89,7 @@ export default function LearningPage() {
       </div></Card>
       <div className="grid gap-4 lg:grid-cols-2">{data.groups.map(g => <Card key={g.sku}><CardHead title={`SKU ${g.sku}`} description={g.split === "evaluation" ? "Evaluation only · excluded from training" : "Training"} /><div className="p-5 text-sm">
         <p>{g.reviewed_rows} / {g.total_rows} reviewed · {g.annotated_rows} annotated · {g.verified_rows} eligible verified examples</p>
-        <DrawingReview key={`${g.sku}:${g.drawing?.version ?? 0}:${g.drawing?.status ?? "none"}`} runId={runId} group={g} canEdit={canEdit} isAdmin={isAdmin} name={name} reload={summary.reload} />
+        <DrawingReview key={`${runId}:${g.sku}:${g.drawing?.version ?? 0}:${g.drawing?.status ?? "none"}`} runId={runId} group={g} canEdit={canEdit} isAdmin={isAdmin} name={name} reload={summary.reload} />
       </div></Card>)}</div>
       <Card><CardHead title="Candidate evaluation" description="Verified training examples build a candidate; only held-out examples measure accuracy." actions={isAdmin && canEdit ? <Button loading={busy} disabled={["running", "queued"].includes(data.automatic_learning?.state ?? "")} onClick={() => perform(() => api.learning.shadow(runId))}>Rebuild and evaluate</Button> : undefined} /><div className="p-5 space-y-4">
         {["running", "queued"].includes(data.automatic_learning?.state ?? "") && <p className="text-sm">Rebuilding the candidate from the latest verified examples…</p>}
@@ -105,11 +105,11 @@ export default function LearningPage() {
         {isAdmin && canEdit && <div className="flex flex-wrap gap-2"><AnchorButton href={api.learning.exportUrl(runId, "train")}>Training dataset</AnchorButton><AnchorButton href={api.learning.exportUrl(runId, "evaluation")}>Evaluation dataset</AnchorButton><AnchorButton href={api.learning.observationsUrl(runId)}>Raw observations</AnchorButton></div>}
       </div></Card>
       <Card><CardHead title="Annotations to verify" count={data.labels.filter(a => !a.eligible).length} /><div className="p-5 space-y-3 text-sm">
-        {data.labels.filter(a => !a.eligible).map(a => <div key={a.row_id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3"><div><Link to={`/runs/${enc(runId)}/rows/${enc(a.row_id)}`}>{a.payload.sku} · {a.payload.engine.check} · {a.payload.verdict.toLowerCase().replace(/_/g, " ")}</Link><p className="text-xs text-ink-3">{a.annotated_by} · {a.eligibility_note}</p></div><LinkButton size="sm" to={`/runs/${enc(runId)}/rows/${enc(a.row_id)}`}>Inspect annotation</LinkButton></div>)}
+        {data.labels.filter(a => !a.eligible).map(a => <div key={a.row_id} className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3"><div><Link to={`/runs/${enc(runId)}/rows/${enc(a.row_id)}`}>{a.payload.sku} · {checkLabel(a.payload.engine.check)} · {a.payload.verdict.toLowerCase().replace(/_/g, " ")}</Link><p className="text-xs text-ink-3">{a.annotated_by} · {a.eligibility_note}</p></div><LinkButton size="sm" to={`/runs/${enc(runId)}/rows/${enc(a.row_id)}`}>Inspect annotation</LinkButton></div>)}
         {!data.labels.some(a => !a.eligible) && <p className="text-ink-3">No annotations awaiting verification.</p>}
       </div></Card>
       <Card><CardHead title="Next examples to verify" description="A balanced sample across SKUs, checks, flagged rows and auto-cleared rows." count={data.tasks.length} /><div className="p-5 space-y-3 text-sm">
-        {data.tasks.map(t => <div key={t.row_id} className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3"><div className="min-w-0"><Link to={`/runs/${enc(runId)}/rows/${enc(t.row_id)}`}>{t.description}</Link><p className="text-xs text-ink-3">{t.sku} · {t.check} · {t.auto_cleared ? "Audit auto-cleared result" : "Review flagged result"}</p></div><ClassificationBadge value={t.classification} /></div>)}
+        {data.tasks.map(t => <div key={t.row_id} className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3"><div className="min-w-0"><Link to={`/runs/${enc(runId)}/rows/${enc(t.row_id)}`}>{t.description}</Link><p className="text-xs text-ink-3">{t.sku} · {checkLabel(t.check)} · {t.auto_cleared ? "Audit auto-cleared result" : "Review flagged result"}</p></div><ClassificationBadge value={t.classification} /></div>)}
         {!data.tasks.length && <p>Every available component row has an annotation.</p>}
       </div></Card>
     </>}

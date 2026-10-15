@@ -100,7 +100,7 @@ def run_pairing_check(
 ) -> list[CheckResult]:
     ids = ids or RowIdFactory(sku, policy.row_letter)
     na = [normalize(i.description) for i in a_items]
-    nb = [normalize(i.description) for i in b_items]
+    nb = [normalize(i.attributes.get("matching_description", i.description)) for i in b_items]
     ctx = lambda i: MatchContext(sku=sku, doc_types=(a_doc.doc_type, b_doc.doc_type), item_number=a_items[i].item_number)  # noqa: E731
     asg = assign(na, nb, ladder, ctx, thresholds)
     pair_by_a = {p.a_index: p for p in asg.pairs}
@@ -126,6 +126,8 @@ def _pair_row(a, b, p: Candidate, alternatives: list[Candidate], b_items, policy
     if policy.quantity_relevant:
         verdict = compare_quantities(a.quantity, b.quantity, b.sub_quantity, a.uom, b.uom)
         qty_text = f"; quantity: {verdict.detail}"
+        if verdict.basis_uncertain:
+            discrepancies.append(disc(DiscrepancyType.QUANTITY_BASIS_UNCONFIRMED, Severity.MINOR, verdict.detail))
         if not verdict.equal:
             if classification in (Classification.EXACT, Classification.EQUIVALENT) and not verdict.explainable_by_idiom:
                 classification = Classification.MISMATCH
@@ -171,12 +173,18 @@ def _missing_a_row(a, hint: Candidate | None, ambiguous: list[Candidate], b_item
     )
 
 
+def _b_category(b):
+    if b.category is ItemCategory.PACKAGING:
+        return b.category, b.category_reason
+    return categorize(None, b.description, None)
+
+
 def _missing_b_row(b, hint: Candidate | None, a_items, policy: CheckPolicy, sku, ids, norm_b) -> CheckResult:
     if policy.conditional_b_exempt and b.attributes.get("conditional"):
         detail = f"conditional {policy.b_label} '{b.description}' (IF APPLICABLE PER BOM) has no matching {policy.a_label} — not required for this SKU"
         return CheckResult(row_id=ids.next(), sku=sku, check=policy.check_type, role="exempt", source_a=None, source_b=b, normalized_a=None, normalized_b=norm_b.normalized, classification=Classification.EXACT, match_level=MatchLevel.NONE, score=0.0, explanation=f"CONDITIONAL: {detail}", requires_validation=False)
     if policy.exempt_b_categories:
-        cat, reason = categorize(None, b.description, None)
+        cat, reason = _b_category(b)
         if cat in policy.exempt_b_categories:
             detail = f"{policy.b_label} '{b.description}' is {cat.value.lower()} ({reason}); not expected as a {policy.a_label}"
             return CheckResult(row_id=ids.next(), sku=sku, check=policy.check_type, role="exempt", source_a=None, source_b=b, normalized_a=None, normalized_b=norm_b.normalized, classification=Classification.EXACT, match_level=MatchLevel.NONE, score=0.0, explanation=f"NOT REQUIRED: {detail}", requires_validation=False)
