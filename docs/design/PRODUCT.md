@@ -1,50 +1,82 @@
-# PRODUCT.md — Kaizen Cross-Check
+# Product context
 
-Product truth for anyone designing or building the reviewer interface. Visual decisions live in
-[DESIGN.md](DESIGN.md).
+Kaizen Cross-Check helps BD engineering and quality reviewers compare JDE BOMs, labels, drawings,
+PCOs and label revisions. Recommendations retain source evidence; people decide and approve.
+See [the design system](DESIGN.md) for interface rules and [architecture](../final-architecture.md)
+for implementation boundaries.
 
-## What it is
+## Current workflow
 
-A local quality-engineering tool for BD (Becton Dickinson) sustenance engineering. It cross-checks the
-documents behind a medical kit SKU — the JDE bill of materials, the product label, the packaging drawing
-and the product change order — pairs the lines, classifies every comparison, and gives two reviewers the
-evidence to decide. The engine recommends; the reviewer decides. Every value on screen is traceable to a
-file, a page and a box.
+1. Register with an allowed BD address and sign in. Registration is immediate; it does not prove email ownership.
+2. Open **All runs → New cross-check**. Upload a project folder or individual PDF/XLSX/XLSM/CSV files,
+   review the selected-file list, or choose **Try a demo**. Word files are unsupported.
+3. Inspect **Overview** and **Documents**. Documents use actual SKU associations; shared sources appear
+   once, with extraction warnings and source details available.
+4. Filter **Review queue**, open **Evidence**, inspect both source pages and save a decision.
+   Approval is separate; changing a decision clears its previous approval.
+5. Use **Download Excel** on Overview: **Summary** shows totals and rows needing attention;
+   **Complete details** includes all comparisons, evidence and supporting audit sheets. Both provide
+   SKU worksheets and importable decision/comment columns. PDFs and independent-copy ZIPs remain available.
+6. Track action items and compare corrective runs. Use **Closed testing** for separately verified
+   ground truth and candidate evaluation, not as an automatic approval or live-model update.
 
-## Who uses it, where
+The website uses one shared decision and explicit approval. Reviewer-slot selection and blind-review
+steps belong to the legacy CLI workflow; they are not the current website interaction.
 
-- **BOM facilitator (reviewer 1).** R&D or quality engineer preparing a change-control review. Works
-  through a queue of a few hundred comparisons per project, several projects a year. Wants to clear the
-  obvious quickly and spend time where the engine is unsure.
-- **Independent reviewer (reviewer 2).** Quality reviewer who is only free a few hours a day and must
-  review *blind*: they cannot see reviewer 1's decisions until they have recorded their own.
-- **Problem owners and judges** watching a demo, who need to understand the picture in seconds.
+## Roles and access
 
-Used on a laptop or a desktop monitor in office light, mouse and keyboard, often for an hour at a time.
-Never on a phone. Sometimes offline, so nothing may depend on the network (fonts and icons ship with
-the app).
+| Role | Capabilities |
+| --- | --- |
+| Run owner | Review/edit/export/copy; rename and manage View/Edit sharing; enable closed testing. |
+| Editor | Review, approve, import/export, copy and manage action items on the shared run. |
+| Viewer | Browse results and source previews; no changes, approvals, copies or review exports. |
+| Application administrator | Manage users and shared terminology. Learning verification/evaluation/exports also require Edit access to the run. Administrator status does not reveal private runs. |
 
-## The job
+An author or run owner explicitly confirms self-approval of a normal review decision. Ground-truth
+verification requires a different administrator from its author; self-approval cannot create training truth.
 
-1. Load a folder of documents and see, at a glance, what the engine cleared and what needs a person.
-2. Work the queue: open a comparison, see both documents with the exact lines highlighted, read why the
-   engine classified it that way, decide, move to the next one without touching the mouse.
-3. Turn a confirmed pairing into a terminology relationship so the next SKU clears itself.
-4. Review blind as reviewer 2, resolve disagreements, finalise.
-5. Export the traceable workbook, the annotated BOM and the per-SKU certificate; compare runs after
-   corrected documents come back; read the business case.
+## Screen inventory
 
-## What must stay true
+Routes below follow the `#` in the browser URL. All run destinations require access to that run.
 
-- The engine's recommendation is always visible and never replaced by a decision.
-- Classification, severity and review state are meaning, carried by colour **and** words.
-- Reviewer identity, slot and blind mode are server-side; the interface reflects them, never chooses them.
-- Every count and every claim on screen comes from the run. Nothing is decorative data.
-- Keyboard-first review must keep working: `j`/`k`, `Enter`, `a`/`c`/`o`/`n`, `Esc`, `?`.
-- Routes, API calls and functionality are fixed; the redesign changes how things look and how clearly
-  they read, not what they do.
+| Route | Screen and job |
+| --- | --- |
+| `/` | All runs: search, ownership filters, pagination and new cross-checks. |
+| `/runs/:runId` | Overview: current review progress, original engine totals, exports and run management. |
+| `/runs/:runId/review` | Review queue: filters, current findings and comparison selection. |
+| `/runs/:runId/rows/:rowId` | Evidence: explanations, source previews, decisions/history and enabled ground-truth forms. |
+| `/runs/:runId/documents` | Documents: grouped source list, filters and extraction warnings. |
+| `/runs/:runId/documents/:docId` | Document: extracted items, source pages and deep links. |
+| `/runs/:runId/learning` | Closed testing: enrollment, drawing applicability, annotations and candidate reports. |
+| `/runs/:runId/mining` | Suggested matches: terminology worklist and approval eligibility. |
+| `/runs/:runId/diff` | Compare runs: new, resolved, still-open and missing comparisons. |
+| `/runs/:runId/business` | Business case: current estimate, timed effort and terminology projection. |
+| `/terminology` | Terminology: browse/search; administrators manage and import relationships. |
+| `/action-items` | Action items: named run selection, status and follow-up work. |
+| `/admin` | Manage users: administrator-only search, roles and revocations. |
+| `/profile` | Profile: account identity/role, run counts, theme and sign out. |
 
-## Voice
+Sign-in, missing-page, inaccessible-run, loading, empty and error states are part of the product.
+The primary task is desktop document review; narrow screens must preserve access and usable controls.
+Fonts and icons are bundled. Optional external authentication and AI require a network connection.
 
-Plain, specific, sentence case. Controls name their action ("Record decision", "Export workbook").
-Errors name the problem and the recovery. No exclamation marks, no "oops", no marketing words.
+## Product invariants
+
+- Keep original engine evidence/classification distinct from the current decision, approval and finding.
+- Display `MISSING` as **Unmapped**. No accepted counterpart does not establish a physical defect.
+- Component candidates, assemblies, pack/pair bases, explicit alternatives and uncertain drawing
+  applicability remain review questions until the relevant source evidence is confirmed.
+- Terminology represents approved one-to-one identity. Configuration, assembly membership, ambiguity
+  and conflicting specifications cannot be saved as synonyms.
+- Counts come from the run and current review snapshot. Estimates identify their assumptions.
+- Preserve filters during review navigation; source links open the correct retained document/page.
+- Keep training and evaluation identities separate. Verified candidate rules do not replace live results.
+
+## Delivery status and voice
+
+The app currently runs locally. Docker/Render files prepare a later deployment; no Render service is
+established by pushing this repository. Real documents, reviews and learning artifacts stay out of Git.
+
+Use short, specific, sentence-case labels: **Record decision**, **Download Excel**, **Try a demo**.
+Errors explain recovery. Avoid claiming a physical absence, proven accuracy or release readiness from
+matching scores, synthetic tests or an unresolved review queue.

@@ -32,9 +32,13 @@ validation. See [accounts, sharing and deployment](hosted-collaboration.md) for 
 - Workbook exports store formula-like values as literal text. CSV terminology exports escape such values
   for spreadsheet safety. Imports validate the run identity and values before applying changes.
 
+Both per-SKU Excel variants and portable bundles contain business/review content. Importing decisions
+checks the workbook run identity, stable row IDs and stale-write conflicts; changing a decision removes
+its approval. Terminology imports and independently verified learning datasets use separate workflows.
+
 ## Hosting and operations
 
-The Render configuration enables Secure cookies over HTTPS and uses one process/worker with a persistent
+Render deployment is pending. The supplied Render configuration enables Secure cookies over HTTPS and uses one process/worker with a persistent
 workspace. Local HTTP development uses non-Secure cookies. SQLite access is serialized within the
 process; multiple application instances require a shared database and document storage design.
 
