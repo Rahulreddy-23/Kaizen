@@ -42,10 +42,9 @@ export default function ProfilePage() {
       <Card>
         <CardHead title="Review session" />
         <dl className="profile-details">
-          <div><dt>Reviewer slot</dt><dd>Reviewer {session.slot}</dd></div>
           <div><dt>Review mode</dt><dd>{session.blind ? "Blind review" : "Standard review"}</dd></div>
         </dl>
-        <p className="profile-note">{session.blind ? "Other reviewers’ decisions are hidden during this session." : "Other reviewers’ decisions are visible when your access allows it."} To change your reviewer slot, sign out and choose a slot when you sign in.</p>
+        <p className="profile-note">Decisions and approvals are attributed to your account. {session.blind ? "Other reviewers’ decisions are hidden during this session." : "Run permissions determine which sources and reviews you can access."}</p>
       </Card>
       <Card>
         <CardHead title="Appearance" />
