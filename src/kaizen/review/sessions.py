@@ -19,6 +19,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from kaizen.security import session_lifetime
 from kaizen.storage.db import Database
 
 BLIND_REVIEW_KEY = "blind_review"
@@ -100,12 +101,22 @@ class SessionStore:
     def resolve(self, token: str | None) -> ReviewSession | None:
         if not token:
             return None
-        row = self.conn.execute("SELECT * FROM sessions WHERE token = ? AND ended_at = ''", (token,)).fetchone()
-        if row is None:
-            return None
-        with self.db.lock:
+        with self.db.transaction():
+            row = self.conn.execute("SELECT * FROM sessions WHERE token = ? AND ended_at = ''", (token,)).fetchone()
+            if row is None:
+                return None
+            lifetime = session_lifetime()
+            if lifetime:
+                try:
+                    created = datetime.fromisoformat(row['created_at'])
+                    expired = created.tzinfo is None or (datetime.now(timezone.utc) - created).total_seconds() >= lifetime
+                except ValueError:
+                    expired = True
+                if expired:
+                    self.conn.execute("UPDATE sessions SET ended_at = ? WHERE token = ?", (_now(), token))
+                    self.db.audit(row['reviewer'], 'session.expired', 'Confidential-pilot session lifetime reached')
+                    return None
             self.conn.execute("UPDATE sessions SET last_seen_at = ? WHERE token = ?", (_now(), token))
-            self.conn.commit()
         return ReviewSession(row["token"], row["reviewer"], int(row["slot"]), bool(row["blind"]), row["created_at"])
 
     def end(self, token: str | None) -> bool:

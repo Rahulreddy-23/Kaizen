@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from kaizen.api.app import create_app
 from kaizen.datasets.build import build_golden
 from kaizen.review.access import AccessStore
+from kaizen.review.sessions import UserStore
 from kaizen.workspace import Workspace
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -209,7 +210,8 @@ def _fresh(ws):
 
 def sign_in(client, email: str, slot: int, blind=None) -> dict:
     """Through the front door. The account is created once; 409 afterwards just means it already is."""
-    assert client.post("/api/auth/signup", json={"email": email, "password": PASSWORD}).status_code in (200, 409)
+    if not UserStore(client.ws.db).exists(email):
+        UserStore(client.ws.db).create(email, PASSWORD)
     access = AccessStore(client.ws.db)
     access.register(email)
     access.update(email, DHARMA, 'approved', email == DHARMA)

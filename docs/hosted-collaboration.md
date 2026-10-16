@@ -1,24 +1,41 @@
 # Accounts, sharing and deployment
 
 Kaizen currently runs locally. The Dockerfile and `render.yaml` prepare a future shared deployment;
-no Render service has been deployed. GitHub CI tests/builds the app and does not deploy it.
+no Render service has been deployed. The [Singapore pilot plan](testing-launch.md) targets a $27.50 monthly base before tax and extra usage. GitHub CI tests/builds the app and does not deploy it.
 
 ## Accounts and access
 
-Registrations accept `bd.com` by default (`KAIZEN_ALLOWED_DOMAINS` can change the allowed domains).
-Signup creates an approved regular profile; pending profiles become approved after valid sign-in.
-New users do not become administrators. Revoked accounts stay blocked and their sessions are ended.
-Administrators manage roles/revocation through **Manage users**; the last approved administrator is protected.
+Registration is invite-only and restricted to `@bd.com`. Local salted-scrypt accounts require no external
+identity service. A password never promotes pending or revoked membership. Existing approved accounts remain
+approved; administrators should review their existing membership before a shared deployment.
+
+1. Bootstrap the first administrator using `KAIZEN_ADMIN_EMAIL` and a private `KAIZEN_ADMIN_PASSWORD`.
+   Remove the bootstrap password after successful setup. Operator bootstrap is the only first-admin path.
+2. Open **Manage users → Invite a reviewer**, enter the intended BD address and create an invitation.
+3. Check the recipient’s identity and deliver the displayed code privately through a trusted BD channel.
+   The app does not send email. Codes appear once, expire after 72 hours, and are bound to that address.
+4. The recipient uses **Accept invitation** to choose a password. Registration consumes the code exactly once.
+   A failed password validation does not consume it. Only code hashes are stored; codes never enter the audit log.
+5. Revoke unused codes under **Pending invitations**. Reissuing invalidates older codes for the same address.
+   Codes from a revoked/demoted inviter are invalid. Manage account roles/revocations separately; the last
+   approved administrator is protected. Revoking an accepted invitation does not revoke its account.
+
+Invite-only access relies on trusted delivery; it is not automatic email ownership verification or BD SSO.
+Hosted/confidential sessions expire after eight hours. Hosting approval, retention and backup policy remain operator work.
 
 | Access | Run capabilities |
 | --- | --- |
-| Owner | Review, approve, import/export, copy and manage action items; rename/share and enable closed testing. |
+| Owner | Review, approve, import/export, copy and manage action items; rename/delete/restore, share and enable closed testing. |
 | Edit | Review, approve, import/export, copy and manage action items. |
 | View | Browse comparisons and source previews; no changes, approvals, copies or review exports. |
 
-Owners use **Share and rename** to grant approved profiles View/Edit access or revoke a grant.
-Application administrator status does not grant access to private runs. Terminology changes need an
-administrator; ground-truth verification/evaluation/exports also need Edit access to that run.
+Owners use **Share run** under Overview’s run settings to grant approved profiles View/Edit access or revoke a grant.
+Application administrator status does not grant access to private runs. Reviewers can explicitly approve new one-to-one terminology; administrators manage shared edits, imports and
+revocations. Ground-truth verification/evaluation/exports also need Edit access to that run.
+
+Owners can rename/delete from All runs or Overview. Deleted runs are hidden from active lists and all
+shared access. Restore from **All runs → Deleted runs** retains sources, review history and existing
+sharing; only the owner can see or restore deleted runs. Independent copies remain separate.
 
 A saved decision records the signed-in actor and revision. Approval is separate; an author or run owner
 explicitly confirms self-approval. Edits remove the old approval while retaining history. Independent
@@ -37,31 +54,43 @@ Sharing/approvals do not transfer. To preserve the original, make the copy first
 workbook, then import into the same copy. **Download independent copy** supplies source files, portable
 run JSON, history and an editable workbook; downloading alone does not register a new in-app run.
 
-## Optional shared password provider
+## Shared terminology and account choices
 
-Local salted-scrypt accounts are the default. Supabase can check passwords across installations;
-profiles/roles, Kaizen sessions, run grants, documents and reviews remain in each configured workspace.
-It does not synchronize them. Registration is still immediate after provider credentials are valid.
+**Terminology → Shared library** lists approved entries with the approving account, timestamp, scope,
+item anchors and version. Reviewers can explicitly approve an eligible evidence pair or a new relationship.
+This publishes the equivalence to the application’s approved users and adds it to the approver’s account.
+Ordinary review decisions do not automatically publish synonyms. Ambiguous matches, assemblies,
+configuration changes and held-out examples retain their existing eligibility restrictions.
 
-This integration has no confirmation/reset-email workflow. Its configured Supabase project must allow
-password signup without required confirmation emails. Existing unconfirmed accounts need operator help.
-Use the project's publishable key; legacy anon keys are accepted for compatibility. Kaizen rejects secret
-and service-role keys. See Supabase's [API-key guide](https://supabase.com/docs/guides/getting-started/api-keys)
-and [password-auth guide](https://supabase.com/docs/guides/auth/passwords).
+Use **Approved by** to browse a person’s list. **Add entire list** adds the active entries in the current
+search/scope/reviewer filters. Alternatively select any subset, then **Add selected to my account**.
+Selections are saved per account, apply on any device using the same workspace, and never follow future
+additions automatically. **My terminology** shows included rules; selected additions can be removed anytime.
+Packaged defaults remain included. On migration, authors retain their own existing active terms once.
 
-```bash
-.venv/bin/kaizen auth supabase "https://YOUR_PROJECT.supabase.co" "YOUR_PUBLISHABLE_KEY"
-.venv/bin/kaizen auth show
-# Return this workspace to local accounts when appropriate:
-.venv/bin/kaizen auth local
-```
+Uploads use that uploader’s selected versions plus packaged defaults. Copies retain their source run’s
+snapshot. Shared runs keep the uploader’s snapshot; a collaborator’s preferences never rewrite that run.
+Edits show an update notice, preserving selected versions until the user reviews and adds the new version.
+Administrator deactivation/deletion immediately excludes the rule from future runs for all accounts;
+existing evidence snapshots remain intact. Removing an adopted override of a packaged default returns
+to its packaged version. Shared usage counts only include runs accessible to the requesting account.
 
-`KAIZEN_SUPABASE_URL` and `KAIZEN_SUPABASE_KEY` override stored provider configuration; set both or neither.
-Restart `kaizen serve` after changing the provider configuration.
-Bootstrap the local administrator before enabling the provider and ensure its address exists there too.
-Provider accounts are not migrated from local password records. Forgotten provider passwords need an
-authorized administrator's supported provider workflow; Kaizen sends no reset email. For local accounts,
-`kaizen users reset <email>` clears the password account so it can register again; prior decisions retain identity.
+Administrators retain import/edit/deactivate/delete controls. A completed import also adopts those active
+entries for its importer; other accounts choose whether to use them. Approval attribution is server-derived
+from version history, never from an uploaded author field or a client-supplied account name.
+
+## Legacy external password provider
+
+Local accounts are sufficient for this app; no new Supabase credentials are needed. The existing optional
+provider adapter remains compatible for installations already using it. It checks passwords only: workspace
+membership, invitations, roles, files and account terminology remain local to that installation. A provider
+account alone cannot sign in to a new workspace. Return to local accounts with `kaizen auth local` only after
+ensuring the local administrator can sign in; remove any `KAIZEN_SUPABASE_URL` / `KAIZEN_SUPABASE_KEY`
+environment overrides and restart. Password records are not migrated between providers automatically.
+
+For a forgotten local password, the operator runs `kaizen users reset <email>`, then an administrator issues
+a new invitation. Prior decisions retain their recorded identity. Provider password recovery remains an
+operator task. No reset or confirmation email is sent by Kaizen.
 
 ## Future Render setup
 

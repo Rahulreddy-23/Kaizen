@@ -27,15 +27,13 @@ class AccessStore:
         return dict(row) if row else None
 
     def register(self, email: str) -> dict:
+        """Record membership without granting access. Only invitations or an admin grant it."""
         email = bd_email(email)
         with self.db.transaction():
-            changed = self.conn.execute(
-                "INSERT INTO profiles (email, status, is_admin, created_at) VALUES (?, 'approved', 0, ?) "
-                "ON CONFLICT(email) DO UPDATE SET status='approved', is_admin=0 WHERE profiles.status='pending'",
+            self.conn.execute(
+                "INSERT OR IGNORE INTO profiles (email, status, is_admin, created_at) VALUES (?, 'pending', 0, ?)",
                 (email, now()),
             )
-            if changed.rowcount:
-                self.db.audit(email, 'account.auto_approved', 'Account access enabled without administrator approval')
             return self.profile(email)
 
     def bootstrap(self, email: str, password: str | None = None) -> None:
@@ -80,7 +78,7 @@ class AccessStore:
         return self.profile(email)
 
     def permission(self, run_id: str, email: str) -> str | None:
-        row = self.conn.execute('SELECT owner FROM runs WHERE run_id = ?', (run_id,)).fetchone()
+        row = self.conn.execute("SELECT owner FROM runs WHERE run_id = ? AND deleted_at = ''", (run_id,)).fetchone()
         if not row:
             return None
         if row['owner'] == email:

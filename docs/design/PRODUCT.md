@@ -7,9 +7,10 @@ for implementation boundaries.
 
 ## Current workflow
 
-1. Register with an allowed BD address and sign in. Registration is immediate; it does not prove email ownership.
+1. Accept an administrator-issued invitation for your BD address, choose a password and sign in. Invitation delivery requires a trusted BD channel; it is not automatic email verification.
 2. Open **All runs → New cross-check**. Upload a project folder or individual PDF/XLSX/XLSM/CSV files,
-   review the selected-file list, or choose **Try a demo**. Word files are unsupported.
+   review the selected-file list and remove unwanted files, or choose **Try a demo**. Choosing again
+   replaces the selection; cancelling the picker keeps it. Word files are unsupported.
 3. Inspect **Overview** and **Documents**. Documents use actual SKU associations; shared sources appear
    once, with extraction warnings and source details available.
 4. Filter **Review queue**, open **Evidence**, inspect both source pages and save a decision.
@@ -20,6 +21,10 @@ for implementation boundaries.
 6. Track action items and compare corrective runs. Use **Closed testing** for separately verified
    ground truth and candidate evaluation, not as an automatic approval or live-model update.
 
+Owners can rename or delete from All runs or Overview. Deletion moves a run to **All runs → Deleted runs**,
+where only its owner can restore it. Documents, decisions and existing sharing are retained; deleted runs
+are inaccessible to everyone until restored. Independent copies are unaffected.
+
 The website uses one shared decision and explicit approval. Reviewer-slot selection and blind-review
 steps belong to the legacy CLI workflow; they are not the current website interaction.
 
@@ -27,10 +32,10 @@ steps belong to the legacy CLI workflow; they are not the current website intera
 
 | Role | Capabilities |
 | --- | --- |
-| Run owner | Review/edit/export/copy; rename and manage View/Edit sharing; enable closed testing. |
+| Run owner | Review/edit/export/copy; rename/delete/restore and manage View/Edit sharing; enable closed testing. |
 | Editor | Review, approve, import/export, copy and manage action items on the shared run. |
 | Viewer | Browse results and source previews; no changes, approvals, copies or review exports. |
-| Application administrator | Manage users and shared terminology. Learning verification/evaluation/exports also require Edit access to the run. Administrator status does not reveal private runs. |
+| Application administrator | Invite/manage users; import/edit/deactivate shared terminology. Approved reviewers can publish new equivalences and choose personal entries. Learning verification/evaluation/exports also require Edit access to the run. Administrator status does not reveal private runs. |
 
 An author or run owner explicitly confirms self-approval of a normal review decision. Ground-truth
 verification requires a different administrator from its author; self-approval cannot create training truth.
@@ -50,15 +55,27 @@ Routes below follow the `#` in the browser URL. All run destinations require acc
 | `/runs/:runId/learning` | Closed testing: enrollment, drawing applicability, annotations and candidate reports. |
 | `/runs/:runId/mining` | Suggested matches: terminology worklist and approval eligibility. |
 | `/runs/:runId/diff` | Compare runs: new, resolved, still-open and missing comparisons. |
-| `/runs/:runId/business` | Business case: current estimate, timed effort and terminology projection. |
-| `/terminology` | Terminology: browse/search; administrators manage and import relationships. |
+| `/terminology` | Terminology: reviewer attribution, reviewer filters, whole-list or partial account adoption, version updates; administrators manage/import shared entries. |
 | `/action-items` | Action items: named run selection, status and follow-up work. |
-| `/admin` | Manage users: administrator-only search, roles and revocations. |
+| `/admin` | Manage users: administrator-only invitations, search, roles and revocations. |
+| `/tutorial` | Public, topic-based walkthrough with a downloadable guide. |
+| `/privacy` | Public privacy and document-handling notice, including retention and operator access. |
 | `/profile` | Profile: account identity/role, run counts, theme and sign out. |
+
+The retired `/runs/:runId/business` address redirects to that run’s Overview.
 
 Sign-in, missing-page, inaccessible-run, loading, empty and error states are part of the product.
 The primary task is desktop document review; narrow screens must preserve access and usable controls.
-Fonts and icons are bundled. Optional external authentication and AI require a network connection.
+Fonts and icons are bundled. Hosted/confidential mode blocks external authentication and AI, uses eight-hour sessions, and keeps API responses out of browser caches. Local operator workflows can explicitly configure external providers outside confidential mode.
+
+## Terminology adoption
+
+Explicitly approving a one-to-one relationship publishes the session-derived approver and time, and
+adopts that version for its author. Other users choose whole filtered lists or selected entries; choices
+are saved per account. Packaged defaults remain included. Future uploads use the uploader’s choices;
+shared/copy/existing runs retain their recorded snapshots. No automatic following of reviewers or edits.
+New versions require review and adoption; administrator deactivation/deletion blocks future use globally.
+A normal comparison decision never automatically publishes a shared synonym.
 
 ## Product invariants
 

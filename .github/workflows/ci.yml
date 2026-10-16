@@ -81,3 +81,19 @@ jobs:
 
       - name: Type-check and build
         run: npm run build
+
+  container:
+    name: Hosted image - build and offline OCR smoke test
+    runs-on: ubuntu-latest
+    needs: [python, ui]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the deployment image
+        run: docker build -t kaizen-pilot:ci .
+      - name: Verify image using only synthetic content
+        run: >-
+          docker run --rm
+          --network none
+          -v "${{ github.workspace }}/scripts/smoke_container.py:/tmp/smoke_container.py:ro"
+          --entrypoint python kaizen-pilot:ci /tmp/smoke_container.py

@@ -9,6 +9,7 @@ from kaizen.api.app import create_app
 from kaizen.evaluation.learning import shadow_evaluate
 from kaizen.review.access import AccessStore
 from kaizen.review.auth import LocalAccounts
+from kaizen.review.invitations import InvitationStore
 from kaizen.review.learning import DrawingInput, LabelApproval
 from tests.unit.test_learning import AUTHOR, VERIFIER, body_for, row_for, verify
 from tests.unit.test_learning import learning_env as learning_fixture
@@ -31,7 +32,7 @@ def clients(learning_env):
     for email in (AUTHOR, VERIFIER, VIEWER, OUTSIDER):
         client = TestClient(app)
         if email != VERIFIER:
-            client.post('/api/auth/signup', json={'email': email, 'password': PW})
+            client.post('/api/auth/signup', json={'email': email, 'password': PW, 'invitation': InvitationStore(ws.db).create(email, VERIFIER)['code']})
             access.update(email, VERIFIER, 'approved', False)
         assert client.post('/api/auth/signin', json={'email': email, 'password': PW}).status_code == 200
         out[email] = client

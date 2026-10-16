@@ -31,6 +31,7 @@ from kaizen.matching.assignment import ASSIGNMENT_VERSION
 from kaizen.matching.ladder import MatchLadder
 from kaizen.matching.normalize import NORMALIZER_VERSION
 from kaizen.models import AuditEvent, CoverageFinding, DiscrepancyType, DocType, InputFile, Run, RunMetadata, Thresholds
+from kaizen.security import confidential_mode
 from kaizen.terminology.store import RelationshipStore
 
 SUPPORTED_SUFFIXES = {".pdf", ".xlsx", ".xlsm", ".csv"}
@@ -142,7 +143,7 @@ def _infer_unreadable_label_refs(documents: list, audit: list[AuditEvent]) -> No
 def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds = Thresholds(), provider: AdjudicationProvider | None = None, *, structured: bool = False, assembly_rules: list | None = None, learning_matchers: list | None = None, attribute_overrides: dict | None = None) -> Run:
     root, documents, inputs = ing.root, list(ing.documents), list(ing.inputs)
     warnings, audit = list(ing.warnings), list(ing.audit)
-    provider = provider or get_provider()
+    provider = NullProvider("External AI is blocked in confidential mode") if confidential_mode() else provider or get_provider()
     extra = [] if isinstance(provider, NullProvider) else [AiAdjudicationMatcher(provider)]
     groups = group_by_sku(documents)
     docs_by_id = {d.id: d for d in documents}

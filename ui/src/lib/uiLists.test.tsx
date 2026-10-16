@@ -3,7 +3,6 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { usePagedList } from "./pagination";
 import { groupDocuments } from "./documentGroups";
-import { businessValueError } from "./businessValidation";
 import type { DocumentSummary, SkuGroup } from "../types";
 afterEach(cleanup);
 
@@ -39,9 +38,4 @@ describe("source document grouping",()=>{
     const result=groupDocuments([doc("bom","BOM","700KIT"),doc("label","LABEL","700"),doc("drawing","DRAWING","DWG700")],groups,"700KIT");
     expect(result.flatMap(group=>group.docs).map(d=>d.id)).toContain("label");
   });
-});
-
-describe("business assumptions",()=>{
-  it.each([["reviewers","0"],["reviewers","1.5"],["hourly_rate",""],["hourly_rate","Infinity"],["baseline_minutes_per_sku","-3"],["target_reduction_pct","101"]])("rejects invalid %s before sending the calculation",(key,value)=>expect(businessValueError(key,value)).toBeTruthy());
-  it.each([["hourly_rate","0"],["projects_per_year","0"],["reviewers","1"],["target_reduction_pct","100"]])("preserves valid boundary %s",(key,value)=>expect(businessValueError(key,value)).toBeNull());
 });

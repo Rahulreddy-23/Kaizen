@@ -392,3 +392,85 @@ def test_reviewer_finding_on_a_clean_row_is_counted_filtered_and_prioritized(env
     assert results[0]['engine']['requires_validation'] is False
     filtered = client.get(f'{base}/results', params={'unresolved': True, 'discrepancy': 'REVIEWER_FINDING', 'severity': 'BLOCKER'}).json()
     assert filtered['total'] == 1 and filtered['rows'][0]['row_id'] == clean.row_id
+
+
+def test_deleted_runs_are_hidden_even_after_cache_was_primed_and_can_be_restored(env):
+    from kaizen.review.action_items import ActionItemStore
+    ws, client, run, source = env
+    rid = run.metadata.run_id
+    row = next(row for row in run.results if row.discrepancies)
+    action = ActionItemStore(ws.db).create_from_result(run, row, EMAIL)
+    assert client.get(f'/api/runs/{rid}').status_code == 200
+    assert client.patch(f'/api/runs/{rid}', json={'name': 'Renamed run'}).status_code == 200
+    before = (source / 'bom.pdf').read_bytes()
+    assert client.delete(f'/api/runs/{rid}').json()['deleted'] is True
+    assert client.get('/api/runs').json() == []
+    assert client.get('/api/action-items').json() == []
+    for suffix in ('', '/results', '/documents', '/export.xlsx', '/learning'):
+        assert client.get(f'/api/runs/{rid}{suffix}').status_code == 404
+    assert ws.runs.get(rid) is None
+    record = client.get('/api/runs?deleted=true').json()[0]
+    assert record['run_id'] == rid and record['name'] == 'Renamed run' and record['deleted_by'] == EMAIL
+    assert record['permission'] == 'owner' and record['deleted_at']
+    assert (source / 'bom.pdf').read_bytes() == before
+    assert Path(record['json_path']).is_file()
+    assert client.post(f'/api/runs/{rid}/restore').json()['restored'] is True
+    assert client.get('/api/runs?deleted=true').json() == []
+    assert client.get(f'/api/runs/{rid}').json()['name'] == 'Renamed run'
+    assert any(item['id'] == action.id for item in client.get('/api/action-items').json())
+    events = [row['action'] for row in ws.db.conn.execute("SELECT action FROM audit WHERE actor=?", (EMAIL,))]
+    assert 'run.deleted' in events and 'run.restored' in events
+
+
+@pytest.mark.parametrize('permission', ['view', 'edit', None])
+def test_only_owner_can_rename_delete_restore_or_list_deleted_run(env, permission):
+    ws, client, run, _ = env
+    rid = run.metadata.run_id
+    # The current actor is an administrator, which must not bypass private run ownership.
+    ws.db.conn.execute('UPDATE runs SET owner=? WHERE run_id=?', ('owner@bd.com', rid))
+    ws.db.conn.commit()
+    if permission:
+        AccessStore(ws.db).share(rid, EMAIL, permission, 'owner@bd.com')
+    expected = 403 if permission else 404
+    assert client.patch(f'/api/runs/{rid}', json={'name': 'Unauthorized'}).status_code == expected
+    assert client.delete(f'/api/runs/{rid}').status_code == expected
+    ws.db.conn.execute("UPDATE runs SET deleted_at='2026-01-01',deleted_by='owner@bd.com' WHERE run_id=?", (rid,))
+    ws.db.conn.commit()
+    assert client.get('/api/runs?deleted=true').json() == []
+    assert client.post(f'/api/runs/{rid}/restore').status_code == 404
+    assert client.get(f'/api/runs/{rid}').status_code == 404
+
+
+def test_deleting_original_keeps_independent_copy_and_its_documents(env):
+    ws, client, run, _ = env
+    rid = run.metadata.run_id
+    copied = client.post(f'/api/runs/{rid}/copy').json()['run_id']
+    copy_documents = client.get(f'/api/runs/{copied}/documents').json()
+    assert client.delete(f'/api/runs/{rid}').status_code == 200
+    assert [entry['run_id'] for entry in client.get('/api/runs').json()] == [copied]
+    assert client.get(f'/api/runs/{copied}').status_code == 200
+    assert client.get(f'/api/runs/{copied}/documents').json() == copy_documents
+    for doc in copy_documents:
+        assert Path(doc['file']).is_file()
+    assert client.post(f'/api/runs/{rid}/restore').status_code == 200
+    assert len(client.get('/api/runs').json()) == 2
+
+
+def test_restore_retains_existing_sharing_and_deleted_metadata_survives_restart(env):
+    ws, client, run, _ = env
+    rid = run.metadata.run_id
+    access = AccessStore(ws.db)
+    access.register('shared@bd.com')
+    access.update('shared@bd.com', EMAIL, 'approved', False)
+    access.share(rid, 'shared@bd.com', 'edit', EMAIL)
+    assert client.delete(f'/api/runs/{rid}').status_code == 200
+    assert access.permission(rid, 'shared@bd.com') is None
+    other = Workspace(ws.path)
+    try:
+        assert other.runs.get(rid) is None
+        assert other.runs.get(rid, include_deleted=True)['deleted_by'] == EMAIL
+        assert other.runs.list() == [] and len(other.runs.list(deleted=True)) == 1
+    finally:
+        other.db.close()
+    assert client.post(f'/api/runs/{rid}/restore').status_code == 200
+    assert access.permission(rid, 'shared@bd.com') == 'edit'

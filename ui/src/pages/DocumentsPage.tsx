@@ -135,7 +135,7 @@ export default function DocumentsPage() {
                               <DocTypeBadge value={d.doc_type} />
                             </td>
                             <td className="min-w-[15rem]">
-                              <Link className="mono font-medium" to={to} onClick={(e) => e.stopPropagation()}>
+                              <Link className="document-name font-medium" to={to} onClick={(e) => e.stopPropagation()}>
                                 {d.file_name}
                               </Link>
                               <details className="mt-1 text-xs text-ink-3 max-w-[24rem]" onClick={event => event.stopPropagation()}><summary className="cursor-pointer">Source details</summary><dl className="mt-2 space-y-1"><div><dt className="inline font-medium">Parser: </dt><dd className="inline">{d.parser} v{d.parser_version}</dd></div><div><dt className="inline font-medium">File: </dt><dd className="inline break-all">{d.file}</dd></div><div><dt className="inline font-medium">SHA-256: </dt><dd className="inline mono break-all" title={d.sha256}>{shortSha(d.sha256)}</dd></div></dl></details>

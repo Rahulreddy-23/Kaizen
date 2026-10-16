@@ -34,13 +34,16 @@ from kaizen.api.payloads import (
     ChangeNote,
     Credentials,
     DecisionInput,
+    InvitationInput,
     MiningInput,
+    Registration,
     RelationshipInput,
     RelationshipUpdate,
     RowRelationship,
     RunName,
     RunPath,
     RunShare,
+    TerminologySelection,
     UserUpdate,
 )
 from kaizen.evaluation.learning import shadow_evaluate
@@ -56,12 +59,15 @@ from kaizen.review.auth import AuthError, LocalAccounts, SupabaseAccounts, accou
 from kaizen.review.business import BusinessAssumptions, business_case
 from kaizen.review.collaborative import CollaborativeReviewStore
 from kaizen.review.copies import copy_run, portable_payload, snapshot
+from kaizen.review.invitations import InvitationStore
 from kaizen.review.learning import DrawingInput, GroundTruthInput, LabelApproval, LearningStore
 from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_suggestion, relationship_eligible, terminology_worklist
 from kaizen.review.progress import review_snapshot
 from kaizen.review.rundiff import diff_runs
 from kaizen.review.sessions import ReviewSession, SessionStore
 from kaizen.review.store import ReviewStore
+from kaizen.security import confidential_mode, private_headers, session_lifetime
+from kaizen.terminology.catalog import TerminologyCatalog
 from kaizen.terminology.exchange import export_xlsx
 from kaizen.terminology.source_import import import_source, inspect_source
 from kaizen.workspace import Workspace
@@ -124,11 +130,11 @@ class RunCache:
         self._runs: dict[str, Run] = {}
 
     def get(self, run_id: str) -> Run:
-        if run_id in self._runs:
-            return self._runs[run_id]
         rec = self.ws.runs.get(run_id)
         if rec is None:
             raise HTTPException(404, f"run {run_id} not found")
+        if run_id in self._runs:
+            return self._runs[run_id]
         try:
             run = load_run(rec["json_path"])
         except FileNotFoundError:
@@ -188,8 +194,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception):
         reference = uuid.uuid4().hex[:12]
-        logger.error("Request %s failed: %s %s", reference, request.method, request.url.path, exc_info=exc)
-        return JSONResponse(status_code=500, content={"detail": f"The server could not complete this request. Error reference: {reference}. See the Kaizen server log for details."})
+        if confidential_mode():
+            # Exception text, URLs and query strings can contain confidential source text.
+            logger.error("Request %s failed (%s)", reference, type(exc).__name__)
+        else:
+            logger.error("Request %s failed: %s %s", reference, request.method, request.url.path, exc_info=exc)
+        return JSONResponse(status_code=500, content={"detail": f"The server could not complete this request. Error reference: {reference}. See the Kaizen server log for details."}, headers=private_headers())
 
     cache = RunCache(ws)
     review = CollaborativeReviewStore(ws.db)
@@ -208,8 +218,11 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 ws.db.conn.execute("UPDATE learning_jobs SET state='running',updated_at=? WHERE run_id=?", (datetime.now(timezone.utc).isoformat(), run_id))
             try:
                 shadow_evaluate(ws, cache.get(run_id), actor)
-            except Exception:
-                logger.exception('Automatic learning failed for run %s', run_id)
+            except Exception as exc:
+                if confidential_mode():
+                    logger.error('Automatic learning failed (%s)', type(exc).__name__)
+                else:
+                    logger.exception('Automatic learning failed for run %s', run_id)
                 with learning_lock:
                     with ws.db.transaction():
                         ws.db.conn.execute("UPDATE learning_jobs SET state='failed',error=? WHERE run_id=?", ('Candidate rebuild failed. An administrator can retry from Closed testing.', run_id))
@@ -254,6 +267,10 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     # Where email + password are checked: this workspace, or Supabase (see kaizen.review.auth). Only the
     # credentials move; sessions, slots, blind mode and decisions always stay in the workspace.
     accounts = accounts or accounts_for(ws.db)
+    if confidential_mode() and accounts.name != 'local':
+        raise ValueError('Confidential mode requires local accounts. Remove external account-provider configuration before starting.')
+    invitations = InvitationStore(ws.db)
+    catalog = TerminologyCatalog(ws.repository)
     if os.environ.get("KAIZEN_ADMIN_EMAIL"):
         if accounts.name != 'local':
             raise ValueError('Initial administrator bootstrap requires local accounts. Bootstrap before enabling Supabase.')
@@ -284,12 +301,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if session is not None and session.blind:
             raise HTTPException(403, BLIND_REFUSAL)
 
-    def run_path(path: Path, actor: str, name: str = "") -> dict[str, Any]:
+    def process_path(path: Path, actor: str, name: str = "") -> dict[str, Any]:
         if not path.is_dir():
             raise HTTPException(400, f"folder not found: {path}")
         if len(name.strip()) > 120:
             raise HTTPException(400, "Run name must contain at most 120 characters.")
-        run = run_folder(path.resolve(), ws.repository.store(), Thresholds())
+        run = run_folder(path.resolve(), catalog.store(actor), Thresholds())
         if not any(doc.items or (doc.doc_type is DocType.DRAWING and (doc.sku or doc.header.get('drawing_number'))) for doc in run.documents):
             warnings = run.warnings + [warning for doc in run.documents for warning in doc.warnings]
             raise HTTPException(400, "No usable BOM, label, drawing or PCO data could be extracted. " + " ".join(warnings[:3]))
@@ -305,12 +322,23 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise
         return _summary(run, review) | run_info(run.metadata.run_id, actor)
 
+    processing_lock = threading.Lock()
+
+    def run_path(path: Path, actor: str, name: str = "") -> dict[str, Any]:
+        # A single-instance OCR pilot must not start multiple memory-heavy uploads together.
+        if not processing_lock.acquire(blocking=False):
+            raise HTTPException(429, 'Another cross-check is processing. Wait for it to finish, then try your upload again.')
+        try:
+            return process_path(path, actor, name)
+        finally:
+            processing_lock.release()
+
     def require_run(run_id: str, actor: str, edit: bool = False, owner: bool = False):
         permission = access.permission(run_id, actor)
         if not permission:
             raise HTTPException(404, 'Run not found or not shared with you.')
         if owner and permission != 'owner':
-            raise HTTPException(403, 'Only the run owner can manage sharing or rename it.')
+            raise HTTPException(403, 'Only the run owner can manage sharing, rename or delete it.')
         if edit and permission == 'view':
             raise HTTPException(403, 'This run is shared with view-only access.')
         return permission
@@ -333,15 +361,20 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 raise HTTPException(403, 'Application administrator access required.')
         if path == '/api/runs/from-path' and os.environ.get('KAIZEN_HOSTED') == '1':
             raise HTTPException(403, 'Upload documents in the hosted app.')
-        if path.startswith('/api/terminology') and request.method not in ('GET', 'HEAD') and not admin:
+        if path.startswith('/api/terminology') and request.method not in ('GET', 'HEAD') and not admin and not (path == '/api/terminology/selections' or (path == '/api/terminology' and request.method == 'POST')):
             raise HTTPException(403, 'Only application administrators can change shared terminology.')
         rid = request.path_params.get('run_id')
         if rid:
+            if path == f'/api/runs/{rid}/restore' and request.method == 'POST':
+                record = ws.runs.get(rid, include_deleted=True)
+                if not record or record['owner'] != actor:
+                    raise HTTPException(404, 'Deleted run not found.')
+                return
             edit = request.method not in ('GET', 'HEAD') or any(x in path for x in ('export.xlsx', 'certificate.pdf', 'annotated-bom', 'download.zip', '/learning/export', '/learning/observations'))
-            require_run(rid, actor, edit=edit, owner=path.endswith('/sharing') or (request.method == 'PATCH' and path == f'/api/runs/{rid}'))
+            require_run(rid, actor, edit=edit, owner=path.endswith('/sharing') or (request.method in ('PATCH', 'DELETE') and path == f'/api/runs/{rid}'))
             if path.endswith('/diff') and request.query_params.get('against'):
                 require_run(request.query_params['against'], actor)
-            if any(x in path for x in ('/relationships/from-row', '/mining/approve', '/mining/reject')) and not admin:
+            if '/mining/reject' in path and not admin:
                 raise HTTPException(403, 'Only application administrators can change shared terminology.')
             if '/learning/' in path and any(x in path for x in ('/approve', '/shadow', '/export', '/observations')) and not admin:
                 raise HTTPException(403, 'Application administrator access required for verified learning datasets.')
@@ -363,6 +396,25 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.get('/api/profiles')
     def profiles():
         return [dict(r) for r in ws.db.conn.execute("SELECT email FROM profiles WHERE status='approved' ORDER BY email")]
+
+    @app.get('/api/admin/invitations')
+    def list_invitations():
+        return invitations.list()
+
+    @app.post('/api/admin/invitations')
+    def invite_user(payload: InvitationInput, session=Depends(_identified)):
+        try:
+            return invitations.create(payload.email, session.reviewer, payload.expires_hours)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete('/api/admin/invitations/{invitation_id}')
+    def revoke_invitation(invitation_id: str, session=Depends(_identified)):
+        try:
+            invitations.revoke(invitation_id, session.reviewer)
+        except KeyError:
+            raise HTTPException(404, 'Invitation not found.')
+        return {'revoked': True}
 
     @app.get('/api/admin/users')
     def admin_users():
@@ -416,6 +468,28 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise HTTPException(400, str(e))
         return _summary(run, review) | run_info(run.metadata.run_id, session.reviewer)
 
+    @app.delete('/api/runs/{run_id}')
+    def delete_run(run_id: str, session=Depends(_identified)):
+        # Retain source evidence, decisions and sharing for owner-controlled recovery. AccessStore
+        # excludes deleted runs, so every document, export and review route becomes inaccessible.
+        with ws.db.transaction():
+            ws.db.conn.execute('UPDATE runs SET deleted_at=?,deleted_by=? WHERE run_id=?',
+                               (datetime.now(timezone.utc).isoformat(), session.reviewer, run_id))
+            ws.db.audit(session.reviewer, 'run.deleted', run_id)
+        cache._runs.pop(run_id, None)
+        return {'run_id': run_id, 'deleted': True}
+
+    @app.post('/api/runs/{run_id}/restore')
+    def restore_run(run_id: str, session=Depends(_identified)):
+        with ws.db.transaction():
+            record = ws.runs.get(run_id, include_deleted=True)
+            if not record or record['owner'] != session.reviewer:
+                raise HTTPException(404, 'Deleted run not found.')
+            if record['deleted_at']:
+                ws.db.conn.execute("UPDATE runs SET deleted_at='',deleted_by='' WHERE run_id=?", (run_id,))
+                ws.db.audit(session.reviewer, 'run.restored', run_id)
+        return {'run_id': run_id, 'restored': True}
+
     @app.get('/api/runs/{run_id}/download.zip')
     def download_copy(run_id: str, session=Depends(_identified)):
         temporary = tempfile.TemporaryDirectory()
@@ -449,33 +523,36 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             s = sessions.open(reviewer, 1, False)
         except (ValueError, TypeError) as e:
             raise HTTPException(400, str(e))
-        response.set_cookie(SESSION_COOKIE, s.token, httponly=True, secure=os.environ.get("KAIZEN_SECURE_COOKIES") == "1", samesite="lax", path="/")
+        response.set_cookie(SESSION_COOKIE, s.token, httponly=True, secure=os.environ.get("KAIZEN_SECURE_COOKIES") == "1" or os.environ.get("KAIZEN_HOSTED") == "1", samesite="lax", path="/", max_age=session_lifetime() or None)
         return s.to_dict("required") | {"is_admin": bool(access.profile(reviewer)["is_admin"])}
 
     @app.post("/api/auth/signup")
-    def signup(payload: Credentials):
-        """Register a BD account with immediate access; administrator approval is not required."""
-        payload = payload.model_dump()
-        email = _bd_email(payload.get("email", ""))
+    def signup(payload: Registration):
+        """Only an invitation can create a new account; consumption and local signup are atomic."""
+        email = _bd_email(payload.email)
         try:
-            accounts.sign_up(email, str(payload.get("password", "")))
+            with ws.db.transaction():
+                invitation = invitations.validate(email, payload.invitation)
+                accounts.sign_up(email, payload.password)
+                invitations.consume(invitation)
         except AuthError as e:
             raise HTTPException(e.status, e.message)
-        profile = access.register(email)
-        return {"ok": True, "email": email, "status": profile['status']}
+        except ValueError as e:
+            raise HTTPException(403, str(e))
+        return {"ok": True, "email": email, "status": 'approved'}
 
     @app.post("/api/auth/signin")
     def signin(response: FastResponse, payload: Credentials):
-        """Verify the password and enable new or pending accounts before opening a session."""
+        """A valid password never promotes pending or revoked membership."""
         payload = payload.model_dump()
         email = _bd_email(payload.get("email", ""))
         try:
             accounts.sign_in(email, str(payload.get("password", "")))
         except AuthError as e:
             raise HTTPException(e.status, e.message)
-        profile = access.register(email)
-        if profile['status'] != 'approved':
-            raise HTTPException(403, 'Your account access has been revoked. Contact an administrator.')
+        profile = access.profile(email)
+        if not profile or profile['status'] != 'approved':
+            raise HTTPException(403, 'Your account does not have access. Contact an administrator for an invitation or access review.')
         return _start_session(response, email, payload)
 
     # ---- runs ---------------------------------------------------------------------------------
@@ -486,7 +563,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     @app.get("/api/sessions/current")
     def current_session(session: ReviewSession | None = Depends(_open_session)):
-        return {"session": (session.to_dict("required") | {"is_admin": bool(access.profile(session.reviewer)["is_admin"])}) if session else None, "blind_review_policy": "required", "accounts": accounts.name}
+        return {"session": (session.to_dict("required") | {"is_admin": bool(access.profile(session.reviewer)["is_admin"])}) if session else None, "blind_review_policy": "required", "accounts": accounts.name, "registration": "invite_only"}
 
     @app.delete("/api/sessions/current")
     def end_session(response: FastResponse, kaizen_session: str | None = Cookie(default=None)):
@@ -500,12 +577,16 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             restart_required = _source_fingerprint() != source_fingerprint
         except OSError:
             restart_required = True
-        return {"status": "ok", "version": __version__, "api_contract": API_CONTRACT, "restart_required": restart_required, "hosted": os.environ.get("KAIZEN_HOSTED") == "1"}
+        return {"status": "ok", "version": __version__, "api_contract": API_CONTRACT, "restart_required": restart_required, "hosted": os.environ.get("KAIZEN_HOSTED") == "1", "confidential": confidential_mode()}
 
     @app.get("/api/runs")
-    def list_runs(session=Depends(_identified)):
+    def list_runs(deleted: bool = False, session=Depends(_identified)):
         out = []
-        for record in ws.runs.list():
+        for record in ws.runs.list(deleted=deleted):
+            if deleted:
+                if record['owner'] == session.reviewer:
+                    out.append(record | {'permission': 'owner'})
+                continue
             if not access.permission(record['run_id'], session.reviewer):
                 continue
             try:
@@ -841,6 +922,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise HTTPException(400, str(e))
         ws.db.audit(session.reviewer, "relationship.learned", f"{rel.id} from {run_id} {r.row_id}")
         ws.db.conn.commit()
+        catalog.approve(rel, session.reviewer)
         return rel.model_dump(mode="json")
 
     @app.get("/api/runs/{run_id}/terminology-worklist")
@@ -869,7 +951,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         payload = payload.model_dump()
         s = _suggestion(run_id, payload["a_key"], payload["b_key"])
         try:
-            return approve_suggestion(ws.repository, s, session.reviewer, payload.get("scope", "global"), payload.get("anchor", False), payload.get("notes", "")).model_dump(mode="json")
+            return catalog.approve(approve_suggestion(ws.repository, s, session.reviewer, payload.get("scope", "global"), payload.get("anchor", False), payload.get("notes", "")), session.reviewer).model_dump(mode="json")
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -1007,13 +1089,19 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             await file.close()
 
     # ---- terminology --------------------------------------------------------------------------
-    def _rel(r, usage):
-        return r.model_dump(mode="json") | {"usage": usage.get(r.id, 0)}
-
     @app.get("/api/terminology")
-    def list_terminology(search: str | None = None, scope: str | None = None, all: bool = False):
-        usage = ws.repository.usage_counts()
-        return [_rel(r, usage) for r in ws.repository.list(active_only=not all, scope=scope, search=search)]
+    def list_terminology(search: str | None = None, scope: str | None = None, all: bool = False, session=Depends(_identified)):
+        matching = {r.id for r in ws.repository.list(active_only=not all, scope=scope, search=search)}
+        return [r for r in catalog.list(session.reviewer) if r['id'] in matching]
+
+    @app.put('/api/terminology/selections')
+    def select_terminology(payload: TerminologySelection, session=Depends(_identified)):
+        try:
+            return catalog.select(session.reviewer, [e.model_dump() for e in payload.entries], payload.selected)
+        except KeyError:
+            raise HTTPException(404, 'Relationship not found. Refresh the list.')
+        except ValueError as e:
+            raise HTTPException(409, str(e))
 
     @app.get("/api/terminology/export.xlsx")
     def terminology_export():
@@ -1042,6 +1130,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         finally:
             tmp.unlink(missing_ok=True)
             await file.close()
+        if result.applied:
+            with ws.db.transaction():
+                for entry in result.rows:
+                    rel = ws.repository.get(entry['id'])
+                    if rel and rel.active:
+                        catalog.approve(rel, session.reviewer)
         return result.to_dict()
 
     @app.post("/api/terminology/inspect")
@@ -1067,21 +1161,22 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             rel = ws.repository.create(canonical=payload["canonical"], aliases=payload.get("aliases", []), scope=payload.get("scope", "global"), doc_types=payload.get("doc_types", []), item_anchors=payload.get("item_anchors", []), provenance=payload.get("provenance", "manual"), created_by=session.reviewer, notes=payload.get("notes", ""))
         except ValueError as e:
             raise HTTPException(400, str(e))
+        catalog.approve(rel, session.reviewer)
         return rel.model_dump(mode="json")
 
     @app.get("/api/terminology/{rel_id}")
-    def get_relationship(rel_id: str):
+    def get_relationship(rel_id: str, session=Depends(_identified)):
         rel = ws.repository.get(rel_id)
         if rel is None:
             raise HTTPException(404, "relationship not found")
-        return _rel(rel, ws.repository.usage_counts())
+        return next(r for r in catalog.list(session.reviewer) if r["id"] == rel_id)
 
     @app.put("/api/terminology/{rel_id}")
     def update_relationship(rel_id: str, payload: RelationshipUpdate, session=Depends(_identified)):
         payload = payload.model_dump(exclude_unset=True)
         fields = {k: payload[k] for k in ("canonical", "aliases", "scope", "doc_types", "item_anchors", "notes") if k in payload}
         try:
-            return ws.repository.update(rel_id, session.reviewer, payload.get("note", ""), **fields).model_dump(mode="json")
+            return catalog.approve(ws.repository.update(rel_id, session.reviewer, payload.get("note", ""), **fields), session.reviewer).model_dump(mode="json")
         except KeyError:
             raise HTTPException(404, "relationship not found")
         except ValueError as e:
@@ -1097,7 +1192,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.post("/api/terminology/{rel_id}/activate")
     def activate_relationship(rel_id: str, payload: ChangeNote = Body(default=ChangeNote()), session=Depends(_identified)):
         try:
-            return ws.repository.activate(rel_id, session.reviewer, payload.note).model_dump(mode="json")
+            return catalog.approve(ws.repository.activate(rel_id, session.reviewer, payload.note), session.reviewer).model_dump(mode="json")
         except KeyError:
             raise HTTPException(404, "relationship not found")
 
@@ -1117,6 +1212,23 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     def audit(limit: int = Query(200, ge=1, le=1000), session: ReviewSession | None = Depends(_identified)):
         _refuse_if_blind(session)
         return [dict(r) for r in ws.db.conn.execute("SELECT * FROM audit ORDER BY seq DESC LIMIT ?", (limit,))]
+
+    @app.middleware("http")
+    async def protect_private_responses(request: Request, call_next):
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            if not confidential_mode():
+                raise
+            # Handle before Starlette re-raises to uvicorn, which would otherwise log a traceback.
+            response = await unexpected_error(request, exc)
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Content-Security-Policy'] = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        if request.url.path.startswith('/api/'):
+            response.headers.update(private_headers())
+        return response
 
     if ui_dir and ui_dir.exists():
 

@@ -29,7 +29,7 @@ export default function EvidencePage() {
   const { runId = "", rowId = "" } = useParams();
   const [sp] = useSearchParams();
   const nav = useNavigate();
-  const { viewerParams, session } = useReviewer();
+  const { viewerParams } = useReviewer();
   const detail = useAsync(() => api.getRow(runId, rowId, viewerParams), [runId, rowId, viewerParams.viewer, viewerParams.blind]);
   const nb = useNeighbors(runId, rowId, sp, viewerParams);
 
@@ -184,7 +184,7 @@ export default function EvidencePage() {
         <aside id="review-decision" className="review-tools space-y-5">
           <DecisionPanel key={`${runId}:${rowId}`} runId={runId} rowId={rowId} detail={d} onChanged={detail.reload} />
           <div className="space-y-5">
-            {d.permission !== "view" && session?.is_admin && <SaveRelationshipPanel runId={runId} detail={d} onCreated={detail.reload} />}
+            {d.permission !== "view" && <SaveRelationshipPanel runId={runId} detail={d} onCreated={detail.reload} />}
             {d.permission !== "view" && <ActionItemPanel runId={runId} detail={d} onCreated={detail.reload} />}
           </div>
         </aside>

@@ -5,14 +5,16 @@
 Compare JDE bills of materials with product labels, drawings, change orders and label revisions.
 Every recommendation includes an explanation and source evidence; reviewers record the final decision.
 
-**Deployment:** runs locally today. Docker and Render configuration are prepared; Render deployment is the next step. GitHub CI does not deploy the app.
+**Deployment:** local preview is available; the Singapore Render pilot is prepared for limited testing. See [launch setup and budget](docs/testing-launch.md). A GitHub push alone does not deploy the app.
+
+Read the [user tutorial](docs/user-guide.md) and [privacy/document-handling notice](docs/privacy.md). Both are also available in the website before sign-in.
 
 ## Capabilities
 
 - Five cross-checks: BOM–Label, BOM–Drawing, Label–Drawing, PCO–BOM and Old–New label, plus missing-document coverage.
 - SKU-grouped documents, searchable source/discrepancy lists, paginated review queues and source-page references.
-- BD accounts, private runs, View/Edit sharing, independent copies, decisions and explicit approvals.
-- Versioned terminology and independently verified closed-testing feedback. Uncertain component matches, assemblies, quantity bases and drawing applicability remain review-required.
+- Invite-only BD accounts, private runs, rename/delete/restore, View/Edit sharing, independent copies, decisions and explicit approvals.
+- Shared reviewer-approved terminology, with named approvals and optional account selections; independently verified closed-testing feedback. Uncertain component matches, assemblies, quantity bases and drawing applicability remain review-required.
 - Per-SKU Excel downloads (**Summary** or **Complete details**), decision imports, annotated BOM PDFs, certificates, action items and run comparisons.
 
 ## Quick start
@@ -40,11 +42,21 @@ npm --prefix ui run build
 
 </details>
 
-Open **http://127.0.0.1:8765**. Register with an `@bd.com` address and sign in immediately; administrator approval is not required.
+Open **http://127.0.0.1:8765**. New workspaces need an initial administrator: set `KAIZEN_ADMIN_EMAIL`
+and `KAIZEN_ADMIN_PASSWORD` privately before the first server start, then remove the bootstrap password
+after setup. Existing approved accounts keep their access. No Supabase project is needed.
+
+Administrators use **Manage users → Invite a reviewer**. Share the one-use code privately with the intended
+BD recipient; it expires after 72 hours. The recipient chooses **Accept invitation**, enters that BD address
+and code, and creates a password. A BD address alone cannot register.
 
 1. On **All runs**, choose **New cross-check** and upload a folder or individual files. Choose **Try a demo** for synthetic examples.
 2. Open **Documents** to inspect extraction, then **Review queue** to check comparisons against source evidence.
 3. Save decisions and approve reviewed results. On **Overview**, use **Download Excel** for a summary or complete details, with each SKU on its own worksheet. Both support decision imports. View-only users cannot change or export runs.
+
+In **Terminology**, filter the **Shared library** by **Approved by**, then add the entire list or select
+individual entries. **My terminology** shows what your future uploads use. Approval adds the entry to its
+author’s account; other users opt in. Edits require deliberate version updates; past runs retain their snapshots.
 
 ## Inputs and storage
 
@@ -82,9 +94,11 @@ npm --prefix ui run build
 ```
 
 On Windows, use `.\.venv\Scripts\kaizen.exe` and `.\.venv\Scripts\pytest.exe` for the corresponding commands.
-CI runs Python lint/tests on 3.12 and 3.13, the synthetic accuracy gate, UI tests and the production build.
+CI runs Python lint/tests on 3.12 and 3.13, the synthetic accuracy gate, UI tests, the production build
+and an offline OCR smoke test inside the deployment image.
 
-Matching and OCR run locally by default. Optional external AI only adds labelled suggestions.
+Matching and OCR run locally by default. Hosted/confidential mode blocks external AI and password providers.
+Outside confidential mode, optional external AI only adds labelled suggestions.
 Synthetic accuracy does not establish real-data accuracy; drawing images, placement and handwritten changes still need human review. See [limitations](docs/known-limitations.md).
 
 ## Guides

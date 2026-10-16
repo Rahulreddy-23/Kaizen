@@ -49,7 +49,10 @@ function columns(t: DocType): Col[] {
               <span className={i.category === "PHYSICAL_COMPONENT" ? "font-medium text-ink" : "text-ink-3"} title={i.category}>
                 {words(i.category)}
               </span>
-              {i.category_reason && <div className="text-xs text-ink-3">{i.category_reason}</div>}
+              {i.category_reason && <details className="category-explanation" onClick={event => event.stopPropagation()}>
+                <summary>Why this category</summary>
+                <p>{i.category_reason}</p>
+              </details>}
             </>
           ),
         },
@@ -156,7 +159,7 @@ export default function DocumentPage() {
         title={
           <>
             <DocTypeBadge value={d.doc_type} />
-            <span className="mono text-xl">{d.file_name}</span>
+            <span className="document-title">{d.file_name}</span>
           </>
         }
         description="Select an extracted line to see its location in the source document."

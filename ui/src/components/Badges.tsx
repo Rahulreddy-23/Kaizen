@@ -32,9 +32,9 @@ const DOT: Record<Tone, string> = {
 };
 
 export function Badge({ tone = "neutral", dot = true, size = "sm", title, children, className = "" }: { tone?: Tone; dot?: boolean; size?: "sm" | "md"; title?: string; children: ReactNode; className?: string }) {
-  const sz = size === "md" ? "h-7 px-2.5 text-sm" : "h-[22px] px-2 text-xs";
+  const sz = size === "md" ? "min-h-7 px-3 py-1 text-sm" : "min-h-6 px-2 py-0.5 text-xs";
   return (
-    <span title={title} className={`inline-flex items-center gap-1.5 rounded-full font-medium whitespace-nowrap ${sz} ${TONE[tone]} ${className}`}>
+    <span title={title} className={`badge inline-flex items-center gap-1.5 rounded-full font-medium ${sz} ${TONE[tone]} ${className}`}>
       {dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${DOT[tone]}`} aria-hidden />}
       {children}
     </span>
@@ -65,8 +65,8 @@ const SEV_LABEL: Record<Severity, string> = { BLOCKER: "Blocker", MAJOR: "Major"
 export function SeverityBadge({ value, size = "sm" }: { value: string | null | undefined; size?: "sm" | "md" }) {
   if (!value) return <span className="text-ink-4">—</span>;
   const cls = SEV[value as Severity] ?? "bg-surface-3 text-ink";
-  const sz = size === "md" ? "h-7 px-2.5 text-sm" : "h-[22px] px-2 text-xs";
-  return <span className={`inline-flex items-center rounded-md font-medium whitespace-nowrap ${sz} ${cls}`}>{SEV_LABEL[value as Severity] ?? value}</span>;
+  const sz = size === "md" ? "min-h-7 px-2.5 py-1 text-sm" : "min-h-6 px-2 py-0.5 text-xs";
+  return <span className={`badge inline-flex items-center rounded-md font-medium ${sz} ${cls}`}>{SEV_LABEL[value as Severity] ?? value}</span>;
 }
 
 const STATE_TONE: Record<ReviewState, Tone> = {
@@ -99,7 +99,7 @@ export function StateBadge({ value }: { value: string | null | undefined }) {
 
 export function DocTypeBadge({ value }: { value: string | null | undefined }) {
   if (!value) return null;
-  return <span className="inline-flex items-center h-[22px] px-2 rounded-md bg-brand-fill text-brand-fill-ink text-2xs font-semibold tracking-wider">{value}</span>;
+  return <span className="doc-type-badge inline-flex items-center min-h-6 px-2 py-0.5 rounded-md bg-brand-fill text-brand-fill-ink text-xs font-semibold">{value}</span>;
 }
 
 export function RoleTag({ value }: { value: string }) {

@@ -125,7 +125,7 @@ export default function MiningPage() {
 
 /** The business-case projection as a to-do list: approve these, in this order, and this many rows clear. */
 function WorklistSection({ runId, wl, onDone }: { runId: string; wl: Worklist; onDone: () => void }) {
-  const { name, session } = useReviewer();
+  const { name } = useReviewer();
   const accessRun = useAsync(() => api.getRun(runId), [runId]);
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -245,9 +245,9 @@ function WorklistSection({ runId, wl, onDone }: { runId: string; wl: Worklist; o
                           size="sm"
                          
                           loading={busy === it.pair_key}
-                          disabled={busy !== null || !name || !session?.is_admin || accessRun.data?.permission === "view"}
+                          disabled={busy !== null || !name || accessRun.data?.permission === "view"}
                           onClick={() => approve(it)}
-                          title="Creates a global relationship, versioned and attributed to you"
+                          title="Approves a shared relationship and adds this version to your account"
                         >
                           Approve
                         </Button>
@@ -292,7 +292,7 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
     try {
       const rel = await api.approveMining(runId, { a_key: s.a_key, b_key: s.b_key, by: name, scope, anchor, notes: notes.trim() || undefined });
       setCreated(rel);
-      toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: `Scope ${rel.scope}. The next run will use it.` });
+      toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: `Scope ${rel.scope}. Your next run will use it. Other reviewers can choose it from Terminology.` });
     } catch (e) {
       setErr(errorMessage(e));
     } finally {
@@ -382,7 +382,7 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
               <Link className="mono" to={`/terminology?id=${enc(created.id)}`}>
                 {created.id}
               </Link>{" "}
-              with scope <span className="mono">{created.scope}</span>. The next run will use it.
+              with scope <span className="mono">{created.scope}</span>. Your next run will use it. Other reviewers can choose it from Terminology.
             </Notice>
           ) : rejected ? (
             <Notice>Rejected. This pair will not be suggested again.</Notice>
@@ -416,7 +416,7 @@ function SuggestionCard({ runId, s, onDone }: { runId: string; s: MiningSuggesti
                 <Field label="Notes" hint="Why this pairing is right." htmlFor={`${uid}-notes`}>
                   <input id={`${uid}-notes`} className="input w-full" value={notes} onChange={(e) => setNotes(e.target.value)} />
                 </Field>
-                <Button variant="primary" className="w-full" icon={<CheckCircle size={16} />} loading={busy === "approve"} disabled={busy !== null || !name || !session?.is_admin || accessRun.data?.permission === "view"} onClick={approve}>
+                <Button variant="primary" className="w-full" icon={<CheckCircle size={16} />} loading={busy === "approve"} disabled={busy !== null || !name || accessRun.data?.permission === "view"} onClick={approve}>
                   Approve pairing
                 </Button>
               </div>

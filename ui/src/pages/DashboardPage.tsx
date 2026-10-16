@@ -1,6 +1,7 @@
 import { ArrowRight, Certificate, CheckCircle, GitDiff, ShieldWarning, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { RunActions } from "../components/RunActions";
 import { RunSharing } from "../components/RunSharing";
 import { ExcelExport } from "../components/ExcelExport";
 import { api } from "../api";
@@ -17,6 +18,7 @@ import { CHECK_TYPES, CLASSIFICATIONS, DOC_TYPES, REVIEW_STATES, type VerifyOutc
 const CHECK_LABEL: Record<string, string> = { BOM_LABEL: "BOM to label", BOM_DRAWING: "BOM to drawing", LABEL_DRAWING: "Label to drawing", PCO_BOM: "PCO to BOM", LABEL_REVISION: "Label revision" };
 
 export default function DashboardPage() {
+  const nav = useNavigate();
   const { runId = "" } = useParams();
   const toast = useToast();
   const run = useAsync(() => api.getRun(runId), [runId]);
@@ -93,7 +95,7 @@ export default function DashboardPage() {
         actions={<><div className="overview-review-action">
           <LinkButton variant="primary" to={queue({ nv: "1" })} iconRight={<ArrowRight size={16} />}>Review queue <span className="queue-count">{flagged}</span></LinkButton>
           <span>{flagged ? "Awaiting review or approval" : "No pending reviews"}</span>
-        </div>{r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}</>}
+        </div>{r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
       />
       <details className="run-management">
         <summary>Run settings and exports</summary>

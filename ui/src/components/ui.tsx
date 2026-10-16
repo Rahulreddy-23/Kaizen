@@ -171,7 +171,7 @@ export function EmptyState({ icon, title, description, action, className = "" }:
 
 // ---- overlay ---------------------------------------------------------------------------------
 
-export function Dialog({ open, onClose, title, description, children, footer, width = "md", closeLabel = "Close" }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode; width?: "sm" | "md" | "lg"; closeLabel?: string }) {
+export function Dialog({ open, onClose, title, description, children, footer, width = "md", closeLabel = "Close", className = "" }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode; width?: "sm" | "md" | "lg"; closeLabel?: string; className?: string }) {
   const panel = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -206,16 +206,16 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
   const w = width === "sm" ? "max-w-md" : width === "lg" ? "max-w-3xl" : "max-w-xl";
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 scrim enter-fade" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} className={`w-full ${w} max-h-[calc(100vh-2rem)] overflow-y-auto card shadow-pop enter-pop`}>
-        <div className="flex items-start gap-3 px-5 pt-4 pb-3">
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} className={`w-full ${w} max-h-[calc(100vh-2rem)] overflow-y-auto card shadow-pop enter-pop ${className}`}>
+        <div className="dialog-header flex items-start gap-3 px-5 pt-4 pb-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold">{title}</h2>
             {description && <p className="text-sm text-ink-3 mt-0.5">{description}</p>}
           </div>
           <Button variant="ghost" size="sm" iconOnly aria-label={closeLabel} onClick={onClose} icon={<X size={16} />} />
         </div>
-        {children && <div className="px-5 pb-4 text-sm space-y-3">{children}</div>}
-        {footer && <div className="flex justify-end gap-2 px-5 py-3 border-t border-line bg-surface-2/60 rounded-b-lg">{footer}</div>}
+        {children && <div className="dialog-body px-5 pb-4 text-sm space-y-3">{children}</div>}
+        {footer && <div className="dialog-footer flex justify-end gap-2 px-5 py-3 border-t border-line bg-surface-2/60 rounded-b-lg">{footer}</div>}
       </div>
     </div>,
     document.body,

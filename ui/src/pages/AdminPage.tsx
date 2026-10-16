@@ -1,3 +1,4 @@
+import { AccountInvitations } from "../components/AccountInvitations";
 import { useState } from "react";
 import { api } from "../api";
 import { useReviewer } from "../lib/reviewer";
@@ -26,7 +27,8 @@ export default function AdminPage() {
   }
   if (!session?.is_admin) return <div><PageHeader title="Manage users" /><Card className="p-5 space-y-4"><p className="text-sm text-ink-2">Administrator access is required to manage accounts.</p><LinkButton to="/">Back to runs</LinkButton></Card></div>;
   return <div>
-    <PageHeader title="Manage users" description="Manage registered accounts, access and administrator roles." />
+    <PageHeader title="Manage users" description="Invite reviewers, manage access and assign administrator roles." />
+    <AccountInvitations />
     {(error || users.error) && <ErrorBox error={error || users.error || ""} />}
     <Card>
       <div className="p-5 border-b border-line flex flex-wrap items-end gap-3">

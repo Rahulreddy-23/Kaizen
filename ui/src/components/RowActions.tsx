@@ -13,7 +13,7 @@ import { Button, Card, CardHead, Field } from "./ui";
 
 /** "Save as relationship": turns a reviewer's judgement about this pair into an explicit, versioned rule. */
 export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: string; detail: RowDetail; onCreated: () => void }) {
-  const { name, session } = useReviewer();
+  const { name } = useReviewer();
   const toast = useToast();
   const a = detail.evidence.a;
   const b = detail.evidence.b;
@@ -53,7 +53,7 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
       .
     </div>
   );
-  if (!a || !b || !identityPair || !session?.is_admin || detail.permission === "view") {
+  if (!a || !b || !identityPair || detail.permission === "view") {
     return existing ? (
       <Card>
         <CardHead title="Terminology" icon={<BookmarkSimple size={18} />} />
@@ -86,7 +86,7 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
 
   return (
     <Card>
-      <CardHead title="Terminology" icon={<BookmarkSimple size={18} />} description="Save these terms as equivalent for future runs." />
+      <CardHead title="Terminology" icon={<BookmarkSimple size={18} />} description="Approve a one-to-one equivalence, publish your attribution and add it to your account. Other reviewers choose whether to use it." />
       <div className="p-5 space-y-3">
         {existingLine}
         {created ? (
@@ -101,7 +101,7 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
                 , anchored to <span className="mono">{created.item_anchors.join(", ")}</span>
               </>
             )}
-            ). Saved for future runs.
+            ). Added to your account and the shared library.
           </Notice>
         ) : !open ? (
           <div className="space-y-2">
@@ -137,7 +137,7 @@ export function SaveRelationshipPanel({ runId, detail, onCreated }: { runId: str
             {!name && <div className="text-sm text-bad">Sign in first: relationships record who created them.</div>}
             <div className="flex gap-2">
               <Button variant="primary" loading={busy} disabled={!name || !canonical.trim() || !alias.trim()} onClick={submit}>
-                Save relationship
+                Approve and add to my account
               </Button>
               <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
                 Cancel

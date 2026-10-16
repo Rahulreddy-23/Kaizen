@@ -5,8 +5,14 @@ validation. See [accounts, sharing and deployment](hosted-collaboration.md) for 
 
 ## Identity and access
 
-- Registration accepts configured email domains (`bd.com` by default) and creates a regular account.
-  Administrator approval is not required. Registration does not prove ownership of the email address.
+- New registration requires an administrator-issued, email-bound invitation for an `@bd.com` address.
+  Invitations are random 256-bit codes, stored as SHA-256 hashes, shown once, expiring within 72 hours
+  by default (API range 1–168 hours), revocable and consumed atomically with local account creation.
+  Failed signup does not consume a valid code. Reissuing invalidates older codes; losing the inviter’s
+  administrator access invalidates their outstanding codes. Invitation metadata never returns hashes.
+- Invite-only access depends on an administrator checking identity and delivering the code privately.
+  It does not establish automatic email ownership verification or BD SSO. Existing approved accounts
+  are retained; a valid password never promotes missing, pending or revoked membership.
 - Local passwords use salted scrypt. The optional external password provider is configured explicitly;
   account roles, sessions, run grants and documents remain in the Kaizen workspace.
 - Each run has an owner and explicit View/Edit grants. Application administrators do not automatically
@@ -15,17 +21,20 @@ validation. See [accounts, sharing and deployment](hosted-collaboration.md) for 
 - Mutations use the authenticated identity, same-origin checks and run permissions. Review updates use
   revisions to reject stale writes. Changing a decision invalidates its approval; self-approval is
   separately confirmed and recorded.
-- Sessions do not expire automatically. Sign out to end a session. A wider deployment needs an approved
-  identity-verification and session-lifetime policy.
+- Confidential/hosted sessions expire after eight hours on both the server and cookie. Sign out to end a session sooner. Legacy local mode retains its existing session behavior.
+
+- Shared terminology publishes the explicitly approved equivalence and attribution to approved users.
+  Each account must adopt other reviewers’ additions. Selections are version-pinned and server-scoped to
+  the authenticated account. Changes do not silently update other accounts; deactivation/deletion blocks
+  future use across accounts. Existing runs retain evidence snapshots. Do not put private document content
+  in publicly shared terminology notes unless its application-wide visibility is intended.
 
 ## Storage and processing
 
 - Documents, rendered previews, accounts and reviews belong in the workspace. Real BD sources,
   credentials, SQLite databases/sidecars and generated outputs are excluded from Git and Docker context.
   The versioned golden documents are synthetic fixtures used for reproducible tests and demonstrations.
-- Parsing and deterministic matching run locally by default. Optional external AI suggestions require
-  explicit configuration and transmit description strings and SKU/item identity. They do not approve
-  pairings or modify review decisions.
+- Hosted/confidential mode enforces local OCR/matching, blocks external AI providers even when configured, and refuses external password providers. In non-confidential local operator mode, optional AI requires explicit configuration and can transmit description/SKU strings.
 - Uploads validate paths and sizes. Hosted mode disables arbitrary server-path imports. Source hashes
   and terminology snapshots identify a run's inputs. Audit history includes reviewer-entered business
   content, so exports and backups require the same handling as source documents.
@@ -38,7 +47,7 @@ its approval. Terminology imports and independently verified learning datasets u
 
 ## Hosting and operations
 
-Render deployment is pending. The supplied Render configuration enables Secure cookies over HTTPS and uses one process/worker with a persistent
+Render deployment is pending; see [the Singapore pilot plan](testing-launch.md). API responses use no-store headers, response hardening blocks framing, and the hosted launcher suppresses query-bearing access logs. Confidential-mode errors log error types and reference IDs without exception text/tracebacks. The supplied Render configuration enables Secure cookies over HTTPS and uses one process/worker with a persistent
 workspace. Local HTTP development uses non-Secure cookies. SQLite access is serialized within the
 process; multiple application instances require a shared database and document storage design.
 

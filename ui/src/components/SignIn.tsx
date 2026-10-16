@@ -4,6 +4,7 @@
 // forgotten password is handled by an administrator: with local accounts they clear it (`kaizen users
 // reset`) and the reviewer signs up again; with Supabase accounts they set a new one in Supabase.
 import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useReviewer } from "../lib/reviewer";
 import { ThemeToggle } from "./ThemeToggle";
@@ -41,6 +42,7 @@ export function SignIn() {
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [invitation, setInvitation] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export function SignIn() {
   const wrongDomain = address.length > 0 && !looksBd;
   const tooShort = mode === "signup" && password.length > 0 && password.length < MIN_PASSWORD;
   const mismatch = mode === "signup" && confirm.length > 0 && password !== confirm;
-  const ready = mode === "signin" ? looksBd && password.length > 0 : looksBd && password.length >= MIN_PASSWORD && password === confirm;
+  const ready = mode === "signin" ? looksBd && password.length > 0 : looksBd && password.length >= MIN_PASSWORD && password === confirm && invitation.trim().length > 0;
 
   function switchTo(next: Mode) {
     setMode(next);
@@ -69,7 +71,8 @@ export function SignIn() {
     setNotice(null);
     try {
       if (mode === "signup") {
-        await signUp(address, password);
+        await signUp(address, password, invitation.trim());
+        setInvitation("");
         setMode("signin");
         setPassword("");
         setConfirm("");
@@ -100,11 +103,11 @@ export function SignIn() {
           </div>
         </div>
 
-        <h1 className="text-2xl mb-1">{mode === "signin" ? "Sign in" : "Create your account"}</h1>
+        <h1 className="text-2xl mb-1">{mode === "signin" ? "Sign in" : "Accept your invitation"}</h1>
         <p className="text-sm text-ink-3 mb-5">
           {mode === "signin"
             ? "Use your BD account to access Kaizen."
-            : `Use your BD email address. Pick a password of at least ${MIN_PASSWORD} characters.`}
+            : `Use the BD address on your invitation and choose a password of at least ${MIN_PASSWORD} characters.`}
         </p>
 
         <Field label="BD email address" htmlFor="reviewer-email" className="mb-4" error={wrongDomain ? BAD_DOMAIN : undefined}>
@@ -121,6 +124,10 @@ export function SignIn() {
             placeholder="name@bd.com"
           />
         </Field>
+
+        {mode === "signup" && <Field label="Invitation code" htmlFor="invitation-code" className="mb-4" hint="Ask an administrator to send your code privately. Codes expire after 72 hours.">
+          <input id="invitation-code" className="input w-full" disabled={busy} value={invitation} onChange={e => setInvitation(e.target.value)} autoComplete="off" spellCheck={false} />
+        </Field>}
 
         <Field label="Password" htmlFor="reviewer-password" className="mb-4" error={tooShort ? `At least ${MIN_PASSWORD} characters` : undefined}>
           <PasswordInput disabled={busy} error={tooShort} id="reviewer-password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} />
@@ -150,9 +157,9 @@ export function SignIn() {
         <div className="mt-4 text-xs text-ink-3 text-center">
           {mode === "signin" ? (
             <>
-              No account yet?{" "}
+              Have an invitation?{" "}
               <button type="button" disabled={busy} className="underline hover:text-ink" onClick={() => switchTo("signup")}>
-                Create account
+                Accept invitation
               </button>
             </>
           ) : (
@@ -166,9 +173,10 @@ export function SignIn() {
         </div>
         {mode === "signin" && (
           <p className="mt-3 text-2xs text-ink-3 text-center leading-relaxed">
-            Forgot your password? Contact your administrator.
+            Access is invite-only. For an invitation or password help, contact your administrator.
           </p>
         )}
+        <nav aria-label="Help and privacy" className="mt-5 pt-4 border-t border-line flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs"><Link to="/tutorial">Read the tutorial</Link><Link to="/privacy">Privacy and documents</Link></nav>
       </form>
     </div>
   );

@@ -38,20 +38,26 @@ it before rendering. Use semantic tokens instead of literal component colours. T
 for ordinary text and 3:1 for large text/focus indicators; check actual rendered combinations when changed.
 These targets are not a claim that every future combination has been measured.
 
-Geist is the body font; Geist Mono is for identifiers, quantities, filenames and extracted source text.
-Page headings are 28px on desktop and 24px below 768px. Body copy is typically 14px, compact tables and
-controls 13px, labels 12px. Narrow-screen inputs use 16px text. Use tabular numbers for aligned counts.
+Source Sans 3 is the interface font, bundled as a variable font with swap loading. Geist Mono is
+reserved for identifiers, codes and raw extracted text; document names use the interface font.
+Page headings are 28px on desktop and 24px below 768px, with restrained tracking. Body copy is 15px,
+tables and controls 14px, labels and supporting text 13px. Narrow-screen inputs use 16px text.
+Badges reset heading tracking and keep short labels on one line; long explanatory badges explicitly
+allow wrapping. Use tabular numbers for aligned counts. Comparison rows separate item codes,
+descriptions and source references. Document category explanations expand on demand within their row.
 
 Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corners. Standard buttons are
-36px high, small buttons 30px and large buttons 42px. Spacing uses the shared 8/12/16/24/32/48px scale.
+36px high, small buttons 32px and large buttons 42px. Spacing uses the shared 8/12/16/24/32/48px scale.
 
 ## Shell and responsive behavior
 
 - Desktop sidebar: 240px; top bar: 60px. Main content is capped at 1500px, with 32px desktop side padding,
   20px below 1024px and 16px below 768px.
 - Workspace contains **All runs**, **Action items** and **Terminology**. **Runs** lists accessible runs;
-  each expands to Overview, Review queue, Documents, Closed testing and an Analysis disclosure.
-  **Administration** is visible to administrators. Profile is available from the avatar and sidebar.
+  each expands to one flat list: Overview, Review queue, Documents, Closed testing, Suggested matches
+  and Compare runs. Business case and the Analysis subsection have been removed.
+  **Administration** is visible to administrators. The header has one avatar button: its menu offers Profile, Light/Dark mode and Sign out.
+  Profile is also available from the sidebar.
 - Sidebar sections are remembered per account. The active run expands to reveal its destination.
   Desktop supports a compact rail; below 1024px navigation becomes a labelled drawer.
 - The drawer has a backdrop, locks background scrolling, contains keyboard focus, closes with Escape,
@@ -65,11 +71,12 @@ Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corner
 
 | Surface | Implemented behavior |
 | --- | --- |
-| All runs | Totals, ownership filters and search; 25 entries per client-side page. |
+| All runs | Totals, ownership filters, Deleted runs and search; 25 entries per client-side page. Owners have Rename/Delete controls; deleted runs offer Restore. Destructive actions require a confirmation that names the run. |
 | Review queue | 100 comparisons per page; basic filters plus More filters; current review state and engine evidence stay distinct. |
-| Terminology, action items, users | Search/filter controls where relevant; 25 entries per client-side page. |
+| Terminology | Shared library/My terminology, named approval/time/version, reviewer/scope/search filters, explicit checkbox subsets or Add entire list. Current account usage and available version updates stay visible. Packaged defaults are included; shared management remains administrator-only. 25 entries per page. |
+| Action items, users | Search/filter controls where relevant; 25 entries per client-side page. Manage users includes invitation creation, a one-time code field and pending invitation revocation. |
 | Documents | Actual SKU membership; shared/unassigned sources represented once; six columns, source details and warning disclosures. |
-| Upload | Selected paths/sizes in a bounded list; skipped unsupported files reported; pending controls prevent duplicate submission. |
+| Upload | Explicit folder/file buttons; selected names, folder paths and sizes in a visible bounded list with individual removal and Clear all. Cancelling a picker retains the selection. Skipped unsupported files are reported; pending controls prevent duplicate submission. The dialog body scrolls while its actions stay visible. |
 | Evidence | Review tools beside source evidence from 1280px; layouts stack when space is limited. Ground truth occupies full width below the workspace. |
 | Ground truth | Source lists side by side from 768px and stacked below; searchable checkbox choices, removable selected chips, counts and Clear selection. |
 
@@ -114,3 +121,14 @@ relevant list page boundaries. Verify source links and saved form state with syn
 The last UI pass used the in-app browser and an emulated narrow viewport. It does not certify physical
 mobile devices, Safari/Firefox, every dataset or public-release readiness. Keep validation artifacts
 local under `out/`; do not commit real BD screenshots, source documents or review databases.
+
+## Invitations
+
+The signed-out form offers Sign in and Accept invitation. Registration requires the invited BD address,
+code and matching passwords. Administrator invitation creation explains trusted private delivery and
+expiry; the one-time read-only code supports copy/manual selection and hiding. No email-sent success
+message is shown. Revoking a pending code does not change an already created account’s access.
+
+## Help and privacy
+
+Tutorial and Privacy are accessible from the sidebar footer and sign-in screen. The tutorial uses topic navigation on desktop, a topic selector on narrow screens, ordered task instructions, previous/next links and an all-topics view. Privacy shows the complete notice. Both offer Markdown downloads and use the same bundled typography and theme as the app. No customer screenshots or source documents are included.

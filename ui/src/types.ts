@@ -70,6 +70,8 @@ export interface Health {
 }
 
 export interface RunListItem {
+  deleted_at?: string;
+  deleted_by?: string;
   unavailable?: boolean;
   name: string;
   owner: string;
@@ -417,6 +419,16 @@ export interface DocumentItems {
   items: DocumentItem[];
 }
 
+export interface Invitation {
+  id: string;
+  email: string;
+  invited_by: string;
+  created_at: string;
+  expires_at: string;
+  consumed_at: string;
+  revoked_at: string;
+}
+
 export interface Relationship {
   id: string;
   canonical: string;
@@ -432,6 +444,12 @@ export interface Relationship {
   notes: string;
   version: number;
   usage?: number;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  is_default?: boolean;
+  selected_version?: number | null;
+  enabled_version?: number | null;
+  enabled_definition?: Relationship | null;
 }
 export interface RelationshipHistory {
   version: number;
@@ -515,56 +533,6 @@ export interface VerifyOutcome {
   resolved: string[];
   still_open: string[];
   not_covered: string[];
-}
-
-export interface PerSku {
-  rows: number;
-  needs_validation: number;
-  auto_cleared: number;
-  estimated_minutes: number;
-}
-export interface BusinessCase {
-  skus: number;
-  rows: number;
-  auto_cleared: number;
-  needs_validation: number;
-  estimated_minutes_per_sku: number;
-  minutes_saved_per_sku: number;
-  reduction_pct: number;
-  hours_saved_per_project: number;
-  annual_savings: number;
-  meets_target: boolean;
-  baseline_minutes_per_sku: number;
-  hourly_rate: number;
-  skus_per_project: number;
-  projects_per_year: number;
-  reviewers: number;
-  assumptions: string[];
-  per_sku: Record<string, PerSku>;
-  // Projection (not in the contract; present in newer API builds): strong fuzzy pairings a reviewer typically
-  // confirms once and saves as relationships, after which the next run auto-clears them.
-  confirmable_rows?: number;
-  needs_validation_after_confirmation?: number;
-  estimated_minutes_per_sku_after_confirmation?: number;
-  reduction_pct_after_confirmation?: number;
-  hours_saved_per_project_after_confirmation?: number;
-  annual_savings_after_confirmation?: number;
-  meets_target_after_confirmation?: boolean;
-  /** "measured" when enough timed decisions exist, otherwise "assumed" (the brief's figure). */
-  effort_basis?: "measured" | "assumed";
-  timed_decisions?: number;
-  measured_minutes_per_validation_row?: number | null;
-  minutes_per_validation_row_used?: number;
-}
-export interface BusinessParams {
-  baseline_minutes_per_sku?: number;
-  hourly_rate?: number;
-  skus_per_project?: number;
-  projects_per_year?: number;
-  reviewers?: number;
-  minutes_per_validation_row?: number;
-  minutes_per_cleared_row?: number;
-  target_reduction_pct?: number;
 }
 
 // ---- run-to-run diff

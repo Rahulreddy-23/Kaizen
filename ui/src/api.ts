@@ -2,11 +2,10 @@
 // works from the Vite dev server (proxy) and when served by the backend at "/".
 import type {
   Profile,
+  Invitation,
   RunShare,
   ActionItem,
   ActionStatus,
-  BusinessCase,
-  BusinessParams,
   Classification,
   DecisionKind,
   DecisionResponse,
@@ -149,11 +148,17 @@ export const api = {
   health: () => request<Health>("/api/health"),
 
   profiles: () => request<{email: string}[]>("/api/profiles"),
+  invitations: () => request<Invitation[]>("/api/admin/invitations"),
+  invite: (email: string) => request<Invitation & {code: string}>("/api/admin/invitations", json("POST", {email})),
+  revokeInvitation: (id: string) => request<{revoked: boolean}>(`/api/admin/invitations/${enc(id)}`, {method: "DELETE"}),
   users: () => request<Profile[]>("/api/admin/users"),
   updateUser: (email: string, body: Partial<Profile>) => request<Profile>(`/api/admin/users/${enc(email)}`, json("PATCH", body)),
   shares: (runId: string) => request<RunShare[]>(`/api/runs/${enc(runId)}/sharing`),
   share: (runId: string, email: string, permission: "view" | "edit" | null) => request<RunShare[]>(`/api/runs/${enc(runId)}/sharing`, json("PUT", {email, permission})),
   renameRun: (runId: string, name: string) => request<unknown>(`/api/runs/${enc(runId)}`, json("PATCH", {name})),
+  deleteRun: (runId: string) => request<{deleted: boolean}>(`/api/runs/${enc(runId)}`, {method: "DELETE"}),
+  restoreRun: (runId: string) => request<{restored: boolean}>(`/api/runs/${enc(runId)}/restore`, {method: "POST"}),
+  listDeletedRuns: () => request<RunListItem[]>("/api/runs?deleted=true"),
   copyRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}/copy`, {method: "POST"}),
   downloadUrl: (runId: string) => `/api/runs/${enc(runId)}/download.zip`,
   // ---- runs
@@ -188,7 +193,7 @@ export const api = {
   // Sign-up creates the account; sign-in exchanges the password for a session. The password is only
   // ever sent, never stored or echoed here — the session lives in an HttpOnly cookie this code cannot read.
   currentSession: () => request<CurrentSession>("/api/sessions/current"),
-  signUp: (email: string, password: string) => request<{ ok: boolean; email: string }>("/api/auth/signup", json("POST", { email, password })),
+  signUp: (email: string, password: string, invitation: string) => request<{ ok: boolean; email: string }>("/api/auth/signup", json("POST", { email, password, invitation })),
   signIn: (email: string, password: string) => request<ReviewSession>("/api/auth/signin", json("POST", { email, password })),
   signOut: () => request<{ ended: boolean }>("/api/sessions/current", { method: "DELETE" }),
   relationshipFromRow: (runId: string, body: FromRowBody) => request<Relationship>(`/api/runs/${enc(runId)}/relationships/from-row`, json("POST", body)),
@@ -215,20 +220,20 @@ export const api = {
   rejectMining: (runId: string, body: { a_key: string; b_key: string; by: string; note?: string }) =>
     request<{ rejected: string }>(`/api/runs/${enc(runId)}/mining/reject`, json("POST", body)),
 
-  // ---- action items, verify & close, business case
+  // ---- action items, verify & close
   createActionItem: (runId: string, body: { row_id: string; reviewer: string; owner?: string }) =>
     request<ActionItem>(`/api/runs/${enc(runId)}/action-items`, json("POST", body)),
   listActionItems: (q: { status?: string; run_id?: string }) => request<ActionItem[]>(`/api/action-items${qs(q)}`),
   patchActionItem: (id: string, body: { status?: ActionStatus; owner?: string; by: string; note?: string }) =>
     request<ActionItem>(`/api/action-items/${enc(id)}`, json("PATCH", body)),
   verifyAndClose: (runId: string, against?: string) => request<VerifyOutcome>(`/api/runs/${enc(runId)}/verify-and-close${against ? `?against=${enc(against)}` : ""}`, { method: "POST" }),
-  businessCase: (runId: string, p: BusinessParams) => request<BusinessCase>(`/api/runs/${enc(runId)}/business-case${qs(p as Params)}`),
 
   // ---- exports
   exportUrl: (runId: string, detail: "summary" | "complete" = "summary") => `/api/runs/${enc(runId)}/export.xlsx?detail=${detail}`,
 
   // ---- terminology
   terminology: {
+    select: (entries: {id: string; version: number}[], selected: boolean) => request<{changed: number}>("/api/terminology/selections", json("PUT", {entries, selected})),
     list: (q: { search?: string; scope?: string; all?: boolean }) => request<Relationship[]>(`/api/terminology${qs(q)}`),
     get: (id: string) => request<Relationship>(`/api/terminology/${enc(id)}`),
     create: (body: RelationshipCreateBody) => request<Relationship>("/api/terminology", json("POST", body)),

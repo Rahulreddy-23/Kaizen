@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from kaizen.api.app import create_app
 from kaizen.review.access import AccessStore
+from kaizen.review.invitations import InvitationStore
 from kaizen.review.sessions import MAX_FAILED, MIN_PASSWORD, UserStore, hash_password, verify_password
 from kaizen.workspace import Workspace
 
@@ -25,7 +26,18 @@ def client(tmp_path, monkeypatch):
 
 
 def signup(client, email=BD, password=PW):
-    return client.post("/api/auth/signup", json={"email": email, "password": password})
+    ws = client.ws
+    access = AccessStore(ws.db)
+    access.bootstrap('invite-admin@bd.com', PW)
+    if not hasattr(client, 'invites'):
+        client.invites = {}
+    normalized = email.strip().lower()
+    try:
+        code = InvitationStore(ws.db).create(normalized, 'invite-admin@bd.com')['code']
+        client.invites[normalized] = code
+    except ValueError:
+        code = client.invites.get(normalized, '')
+    return client.post("/api/auth/signup", json={"email": email, "password": password, "invitation": code})
 
 
 def signin(client, email=BD, password=PW, slot=1, **extra):
@@ -62,7 +74,7 @@ def test_a_short_password_is_refused(client):
 def test_an_address_cannot_be_registered_twice(client):
     assert signup(client).status_code == 200
     again = signup(client, BD, "a-different-password")
-    assert again.status_code == 409
+    assert again.status_code == 403
     assert signin(client, BD, PW).status_code == 200, "the original password still works"
 
 
@@ -80,7 +92,7 @@ def test_sign_up_then_sign_in_opens_a_session(client):
 
 
 @pytest.mark.parametrize("existing_profile", [False, True])
-def test_existing_account_can_sign_in_without_approval(client, existing_profile):
+def test_password_alone_does_not_approve_an_existing_account(client, existing_profile):
     UserStore(client.ws.db).create(BD, PW)
     if existing_profile:
         client.ws.db.conn.execute("INSERT INTO profiles (email,status,is_admin,created_at) VALUES (?,'pending',0,'before-update')", (BD,))
@@ -88,10 +100,9 @@ def test_existing_account_can_sign_in_without_approval(client, existing_profile)
     assert signin(client, password="wrong-password").status_code == 401
     profile = AccessStore(client.ws.db).profile(BD)
     assert profile is None or profile['status'] == 'pending'
-    assert signin(client).status_code == 200
-    profile = AccessStore(client.ws.db).profile(BD)
-    assert profile['status'] == 'approved' and not profile['is_admin']
-    assert client.get('/api/admin/users').status_code == 403
+    assert signin(client).status_code == 403
+    assert AccessStore(client.ws.db).profile(BD) is None or AccessStore(client.ws.db).profile(BD)['status'] == 'pending'
+    assert client.get('/api/admin/users').status_code == 401
 
 
 def test_revoked_account_cannot_restore_its_own_access(client):

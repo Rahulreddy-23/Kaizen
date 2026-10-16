@@ -9,6 +9,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from kaizen.security import confidential_mode
+
 PROMPT_VERSION = "adjudicate-v1"
 _PROMPT = (
     "You compare two component descriptions from medical-device engineering documents (a BOM line and a label "
@@ -92,6 +94,8 @@ class AnthropicProvider:
 
 def get_provider() -> AdjudicationProvider:
     """Provider selection is explicit and fails closed: anything unset or misconfigured is the NullProvider."""
+    if confidential_mode():
+        return NullProvider("External AI is blocked in confidential mode")
     choice = (os.environ.get("KAIZEN_AI_PROVIDER") or "null").lower()
     if choice == "anthropic":
         if not os.environ.get("ANTHROPIC_API_KEY"):

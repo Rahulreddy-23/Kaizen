@@ -12,9 +12,9 @@ Request models live in [payloads.py](../src/kaizen/api/payloads.py) and
 
 ## Authentication and errors
 
-Signup creates an approved regular profile for an allowed domain (`bd.com` by default). Pending profiles
-are approved after valid sign-in; revoked profiles remain blocked. This verifies a password account, not
-email ownership. Local passwords use salted scrypt; an explicitly configured provider can check them
+Signup requires an unexpired, unrevoked, one-use invitation matching the `@bd.com` address. The invitation
+creates an approved regular profile. Signing in never promotes missing, pending or revoked profiles.
+Invitation delivery requires a trusted channel; it is not automatic email ownership verification. Local passwords use salted scrypt; an explicitly configured provider can check them
 instead. See [accounts/provider setup](hosted-collaboration.md).
 
 The HttpOnly `kaizen_session` cookie supplies the actor. Current HTTP sessions use `slot: 1`, `blind: false`;
@@ -35,34 +35,39 @@ own. Hosted configuration enables Secure cookies; mutations with a supplied cros
 
 | Method | Path | Input / result |
 | --- | --- | --- |
-| POST | `/api/auth/signup` | `{email, password}`; registers a regular account. Allowed domain and minimum ten-character password are checked. |
+| POST | `/api/auth/signup` | `{email, password, invitation}`; consumes a valid email-bound invitation and registers a regular account. BD domain and minimum ten-character password are checked. Invalid invitations return 403. |
 | POST | `/api/auth/signin` | `{email, password}`; session with reviewer, role and cookie. |
 | POST | `/api/sessions` | Legacy creation is not a sign-in bypass; authenticated calls are refused with 403. |
-| GET | `/api/sessions/current` | `{session: {...} or null, blind_review_policy, accounts}`; account provider is local or supabase. |
+| GET | `/api/sessions/current` | `{session: {...} or null, blind_review_policy, accounts, registration: "invite_only"}`; account provider is local or supabase. |
 | DELETE | `/api/sessions/current` | Ends the current session and clears its cookie. |
 | GET | `/api/health` | Public `{status, version, api_contract, restart_required, hosted}`. |
 
 There are no confirmation/reset-email endpoints. Provider password recovery needs authorized operator
 help. Local account reset uses the CLI; prior decisions retain their recorded email identity.
-`KAIZEN_ALLOWED_DOMAINS` controls domains; `KAIZEN_SUPABASE_URL` and `KAIZEN_SUPABASE_KEY` override
+The allowed domain is `bd.com`; `KAIZEN_SUPABASE_URL` and `KAIZEN_SUPABASE_KEY` override
 stored provider selection and must be set together. Only publishable/legacy anon provider keys are accepted.
 
 ## Permissions, accounts and sharing
 
 Except authentication/current-session/health handling, API access requires a valid approved session.
-Run owners manage sharing and rename; owners/editors mutate, copy and download review exports. Viewers
+Run owners manage sharing, rename, delete and restore; owners/editors mutate, copy and download review exports. Viewers
 can browse results and source previews. Administrator status does not reveal private runs.
-Terminology writes and audit/user administration require an application administrator. Learning
+Approved reviewers create/adopt terminology. Shared updates/imports/deactivation/deletion and audit/user administration require an administrator. Learning
 verification, candidate evaluation and dataset exports additionally require Edit access to the run.
 
 | Method | Path | Input / result |
 | --- | --- | --- |
 | GET | `/api/profiles` | Approved profile email choices. |
+| GET | `/api/admin/invitations` | Administrator-only metadata; never returns codes/hashes. |
+| POST | `/api/admin/invitations` | Administrator `{email, expires_hours?: 72}` (1–168); returns one-time `code` and metadata. Reissuing revokes prior outstanding codes. |
+| DELETE | `/api/admin/invitations/{id}` | Administrator revokes an unused code. Account access is managed separately. |
 | GET | `/api/admin/users` | Administrator-only profile list. |
 | PATCH | `/api/admin/users/{email}` | `{status?, is_admin?}`; manages roles/revocation, protecting the last approved administrator. |
 | GET | `/api/runs/{run_id}/sharing` | Owner-only share list. |
 | PUT | `/api/runs/{run_id}/sharing` | Owner `{email, permission: "view" or "edit" or null}`; null revokes the share. |
 | PATCH | `/api/runs/{run_id}` | Owner `{name}`; trimmed 1–120 characters. |
+| DELETE | `/api/runs/{run_id}` | Owner moves the run to Deleted runs; retains documents, reviews and sharing for recovery. All normal run routes become inaccessible. |
+| POST | `/api/runs/{run_id}/restore` | Only the original owner restores a deleted run, including its prior sharing. |
 | POST | `/api/runs/{run_id}/copy` | Private independent run owned by the actor. Sharing/approvals do not transfer. |
 | GET | `/api/runs/{run_id}/download.zip` | Sources, portable run JSON, history and editable workbook. Downloading alone does not register a new run. |
 
@@ -70,7 +75,7 @@ verification, candidate evaluation and dataset exports additionally require Edit
 
 | Method | Path | Input / result |
 | --- | --- | --- |
-| GET | `/api/runs` | Accessible run records with names, ownership, permissions, original summary and current review progress. Missing saved runs are marked unavailable. |
+| GET | `/api/runs` | Accessible run records with names, ownership, permissions, original summary and current review progress. Missing saved runs are marked unavailable. `deleted=true` instead lists only the actor’s deleted runs with `deleted_at`/`deleted_by` and stored summaries. |
 | POST | `/api/runs/from-path` | `{path, name?}`; administrator-only and disabled in hosted mode. |
 | POST | `/api/runs/upload` | Multipart `files[]`, optional `name`; relative filenames preserve folder structure. PDF/XLSX/XLSM/CSV, safe paths and total size are validated. |
 | POST | `/api/demo/load` | Loads the synthetic fixture run. |
@@ -125,10 +130,10 @@ Component/assembly candidates remain Potential with source evidence; missing spe
 | POST | `/api/runs/{run_id}/decisions` | `{row_id, decision, comment?, override_classification?, expected_revision}`; records the shared decision and clears prior approval. |
 | POST | `/api/runs/{run_id}/finalize` | `{row_id, final_decision, expected_revision, confirm_self_approval?, note?}`; approves the saved current decision. |
 | POST | `/api/runs/{run_id}/bulk-accept` | `{}`; accepts eligible clean rows, not approval of the whole run. |
-| POST | `/api/runs/{run_id}/relationships/from-row` | Administrator with Edit access: `{row_id, scope?, anchor?, canonical?, aliases?, doc_types?, notes?}`. |
+| POST | `/api/runs/{run_id}/relationships/from-row` | Reviewer with Edit access: `{row_id, scope?, anchor?, canonical?, aliases?, doc_types?, notes?}`; explicitly approves and adopts that identity relationship. |
 | GET | `/api/runs/{run_id}/terminology-worklist` | Ranked identity suggestions, projected rows cleared and top-five/top-ten totals. |
 | GET | `/api/runs/{run_id}/mining` | Optional `min_skus=2`; repeated suggestions with evidence/confirmations/contradictions. |
-| POST | `/api/runs/{run_id}/mining/approve` | Administrator with Edit access: `{a_key, b_key, scope?, anchor?, notes?}`; versioned relationship. |
+| POST | `/api/runs/{run_id}/mining/approve` | Reviewer with Edit access: `{a_key, b_key, scope?, anchor?, notes?}`; versioned relationship. |
 | POST | `/api/runs/{run_id}/mining/reject` | Administrator with Edit access: `{a_key, b_key, note?}`. |
 
 Decision kinds: `ACCEPT`, `OVERRIDE`, `CONFIRM_DISCREPANCY`, `NEEDS_MORE_INFORMATION`. An override needs
@@ -210,11 +215,12 @@ invalid cells and unknown rows. Changed decisions invalidate approvals and eligi
 
 | Method | Path | Input / result |
 | --- | --- | --- |
-| GET | `/api/terminology` | Optional `search`, `scope`, `all`; relationships with usage. |
+| GET | `/api/terminology` | Optional `search`, `scope`, `all`; relationships with `approved_by`, `approved_at`, `is_default`, `selected_version`, `enabled_version`, older `enabled_definition` when applicable, and usage scoped to accessible runs. |
 | GET | `/api/terminology/export.xlsx` | Kaizen-format terminology workbook. |
 | POST | `/api/terminology/inspect` | Administrator multipart `file`, optional `sheet`, `header_row`; columns, samples, proposed mapping and SHA-256. |
 | POST | `/api/terminology/import` | Administrator multipart `file`, optional sheet/header/column_map/default_scope/dry_run/expected_version. |
-| POST | `/api/terminology` | Administrator `{canonical, aliases[], scope, doc_types[], item_anchors[], provenance?, notes?}`. |
+| POST | `/api/terminology` | Approved reviewer `{canonical, aliases[], scope, doc_types[], item_anchors[], provenance?, notes?}`. |
+| PUT | `/api/terminology/selections` | `{entries: [{id, version}], selected: true/false}` (1–5000); changes only the authenticated account. Atomic batch, duplicate IDs/stale/inactive additions return 409; missing entries 404. |
 | GET | `/api/terminology/{rel_id}` | Relationship detail. |
 | PUT | `/api/terminology/{rel_id}` | Administrator canonical/aliases/scope/doc_types/item_anchors/notes and version-history note. |
 | POST | `/api/terminology/{rel_id}/deactivate` | Administrator; deactivates and versions history. |
@@ -229,3 +235,9 @@ Active and Notes. Uploaded author fields never override the authenticated actor.
 blocks the entire import. Repeating identical no-ID rows preserves existing rules/inactive status.
 Formula cells require values-only exports; unreadable protected workbooks produce an actionable 400.
 See [authorized import instructions](relationship-import.md) for column mapping, previews and provenance.
+
+Terminology creation and explicit evidence/suggestion approval adopt that version for the actor. Successful
+imports adopt active imported entries for the importer. Other accounts explicitly select entries. Uploads
+use packaged defaults plus that uploader’s pinned selections; edits require re-adoption, deactivation and
+deletion exclude future use globally. Existing runs/copies retain snapshots. Authors’ existing active terms
+are adopted once on migration; removing them remains effective after restart.

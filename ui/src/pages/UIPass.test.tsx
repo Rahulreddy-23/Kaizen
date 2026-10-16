@@ -16,6 +16,17 @@ afterEach(()=>{cleanup();vi.restoreAllMocks();});
 beforeEach(()=>vi.clearAllMocks());
 
 describe("document source controls",()=>{
+ it("expands a category explanation without selecting the source row",async()=>{
+  vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:"doc",doc_type:"BOM",file_name:"bom.xlsx",pages:0,header:{},warnings:[],items:[{id:"item",doc_id:"doc",doc_type:"BOM",file:"bom.xlsx",file_name:"bom.xlsx",sha256:"abc",page:null,bbox:null,locator:"row 1",raw_text:"Cap",sheet:"BOM",item_number:"CAP001",description:"Cap",quantity:"1",uom:"EA",oper_seq:"1",category:"PHYSICAL_COMPONENT",category_reason:"A physical component with positive quantity.",confidence:1,attributes:{},sub_quantity:null,is_active:true}]});
+  render(<MemoryRouter initialEntries={["/runs/run/documents/doc"]}><Routes><Route path="/runs/:runId/documents/:docId" element={<DocumentPage />} /></Routes></MemoryRouter>);
+  const explanation=await screen.findByText("Why this category");
+  const details=explanation.closest("details")!;
+  expect(details.open).toBe(false);
+  fireEvent.click(explanation);
+  expect(details.open).toBe(true);
+  expect(screen.getByRole("button",{name:"View extracted line 1"}).getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByText("A physical component with positive quantity.")).toBeTruthy();
+ });
  it.each([["999",3],["-8",1],["Infinity",1],["2.8",2]])("clamps page=%s to an actual source page",async(query,page)=>{
   vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:"doc",doc_type:"BOM",file_name:"bom.pdf",pages:3,header:{},warnings:[],items:[]});
   vi.mocked(api.pageImageUrl).mockImplementation((_run,_doc,p)=>`/pages/${p}`);
@@ -34,12 +45,12 @@ describe("document source controls",()=>{
  });
 });
 
-it("keeps ordinary reviewers out of administrator-only terminology forms",async()=>{
+it("allows reviewers to approve terms while keeping shared edits and imports administrator-only",async()=>{
  vi.mocked(api.terminology.list).mockResolvedValue([{id:"REL-001",canonical:"Cap",aliases:["End cap"],scope:"global",doc_types:[],item_anchors:[],active:true,version:1,provenance:"manual",created_by:"admin@bd.com",created_at:"2026-01-01",updated_at:"2026-01-01",notes:"Verified wording"}]);
  vi.mocked(api.terminology.get).mockResolvedValue({id:"REL-001",canonical:"Cap",aliases:["End cap"],scope:"global",doc_types:[],item_anchors:[],active:true,version:1,provenance:"manual",created_by:"admin@bd.com",created_at:"2026-01-01",updated_at:"2026-01-01",notes:"Verified wording"});
  vi.mocked(api.terminology.history).mockResolvedValue([]);
  render(<MemoryRouter><TerminologyPage /></MemoryRouter>);
- expect((screen.getByRole("button",{name:"New relationship"}) as HTMLButtonElement).disabled).toBe(true);
+ expect((screen.getByRole("button",{name:"Approve relationship"}) as HTMLButtonElement).disabled).toBe(false);
  expect(screen.queryByLabelText("File to import")).toBeNull();
  fireEvent.click(await screen.findByRole("button",{name:/Open relationship REL-001/}));
  await screen.findByText("Verified wording");

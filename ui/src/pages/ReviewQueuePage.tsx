@@ -150,7 +150,7 @@ export default function ReviewQueuePage() {
       />
 
       <div className="space-y-4">
-        <Card className="px-4 py-3">
+        <Card className="queue-filter-panel">
           <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
             {sel("sku", "SKU", (run.data?.groups ?? []).map((g) => g.sku))}
             {sel("check", "Check", CHECK_TYPES, (c) => CHECK_LABEL[c] ?? c)}
@@ -185,7 +185,7 @@ export default function ReviewQueuePage() {
             {sp.get("engine_classification") && <Button size="sm" variant="ghost" onClick={() => set("engine_classification", "")} icon={<X size={14} />}>Engine: {sp.get("engine_classification")}</Button>}
             {sp.get("unresolved") === "1" && <Button size="sm" variant="ghost" onClick={() => set("unresolved", "")} icon={<X size={14} />}>Unresolved findings</Button>}
             {viewerParams.blind && (
-              <Badge tone="info" dot={false} className="ml-auto">
+              <Badge tone="info" dot={false} className="ml-auto badge-wrap">
                 <EyeSlash size={14} /> Blind: reviewer 1 decisions hidden until you decide
               </Badge>
             )}
@@ -313,9 +313,9 @@ export default function ReviewQueuePage() {
 function Side({ s }: { s: SideSummary | null }) {
   if (!s) return <span className="text-ink-4">No counterpart</span>;
   return (
-    <div>
+    <div className="comparison-side">
       <div className="text-sm">
-        {s.item_number && <span className="mono text-ink-2 mr-1.5">{s.item_number}</span>}
+        {s.item_number && <span className="comparison-item-number mono text-ink-2">{s.item_number}</span>}
         <span className="text-ink">{s.description}</span>
         {s.quantity !== null && <span className="text-ink-3 num"> × {fmtQty(s.quantity)}</span>}
       </div>

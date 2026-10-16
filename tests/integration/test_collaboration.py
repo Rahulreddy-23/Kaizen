@@ -12,6 +12,7 @@ from kaizen.datasets.build import build_golden
 from kaizen.pipeline import run_folder
 from kaizen.review.access import AccessStore
 from kaizen.review.auth import LocalAccounts
+from kaizen.review.invitations import InvitationStore
 from kaizen.workspace import Workspace
 
 ADMIN = 'admin@bd.com'
@@ -39,7 +40,7 @@ def env(tmp_path, sample):
     for email in (ADMIN, EDITOR, VIEWER, OUTSIDER):
         c = TestClient(app)
         if email != ADMIN:
-            assert c.post('/api/auth/signup', json={'email': email, 'password': PW}).status_code == 200
+            assert c.post('/api/auth/signup', json={'email': email, 'password': PW, 'invitation': InvitationStore(ws.db).create(email, ADMIN)['code']}).status_code == 200
             access.update(email, ADMIN, 'approved', False)
         assert c.post('/api/auth/signin', json={'email': email, 'password': PW}).status_code == 200
         clients[email] = c
@@ -53,10 +54,10 @@ def env(tmp_path, sample):
     ws.db.close()
 
 
-def test_registration_allows_immediate_sign_in_without_admin_access(env):
+def test_invited_registration_has_no_admin_access(env):
     ws, access, clients, rid, row = env
     c = TestClient(clients[ADMIN].app)
-    assert c.post('/api/auth/signup', json={'email':'new-user@bd.com', 'password': PW}).json()['status'] == 'approved'
+    assert c.post('/api/auth/signup', json={'email':'new-user@bd.com', 'password': PW, 'invitation': InvitationStore(ws.db).create('new-user@bd.com', ADMIN)['code']}).json()['status'] == 'approved'
     assert c.get('/api/runs').status_code == 401
     assert c.post('/api/auth/signin', json={'email':'new-user@bd.com', 'password': PW, 'slot':2}).json()['blind'] is False
     assert c.get('/api/admin/users').status_code == 403

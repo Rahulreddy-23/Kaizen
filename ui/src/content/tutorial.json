@@ -1,0 +1,315 @@
+{
+  "title": "How to use Kaizen",
+  "description": "A practical guide from your first upload to an approved review.",
+  "sections": [
+    {
+      "id": "start",
+      "label": "Start here",
+      "intro": "Start with a synthetic demo to learn the workflow before reviewing project documents.",
+      "steps": [
+        {
+          "title": "Open a practice run",
+          "body": "Go to All runs, choose New cross-check, then Try a demo. The app creates a separate run using synthetic sample documents."
+        },
+        {
+          "title": "Check the sources",
+          "body": "Open Documents to inspect the files and extraction, then open Review queue and choose a comparison to see its source evidence."
+        },
+        {
+          "title": "Save a review",
+          "body": "Choose a decision, add a comment and Save decision. Approval is a separate action. Use the following topics when you are ready to upload your own project."
+        }
+      ],
+      "paragraphs": [],
+      "note": "A run is one saved set of documents, automated comparisons and review history. Engine recommendations still need human judgment.",
+      "action": {
+        "label": "Open all runs",
+        "to": "/"
+      },
+      "audience": ""
+    },
+    {
+      "id": "access",
+      "label": "Sign in and invitations",
+      "intro": "Existing users sign in with their BD address and password. New users need an invitation.",
+      "steps": [
+        {
+          "title": "Get an invitation",
+          "body": "Ask an application administrator for a code issued to your exact BD email address. Administrators share codes privately through a trusted BD channel."
+        },
+        {
+          "title": "Accept the invitation",
+          "body": "On the sign-in screen, choose Accept invitation. Enter the invited address and code, then choose and confirm a password of at least ten characters."
+        },
+        {
+          "title": "Sign in",
+          "body": "After creating the account, use Sign in. Codes normally expire after 72 hours and can be used only once. An expired or revoked code needs a new invitation."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Already approved? Use your existing password; a new invitation is not needed. For password recovery, contact the administrator.",
+      "action": null,
+      "audience": ""
+    },
+    {
+      "id": "upload",
+      "label": "Upload a project",
+      "intro": "Keep related BOMs, labels, drawings and PCOs together in a project folder, using SKU subfolders where possible.",
+      "steps": [
+        {
+          "title": "Start a cross-check",
+          "body": "In All runs, choose New cross-check. Enter a recognizable run name, such as the product and review date."
+        },
+        {
+          "title": "Choose the documents",
+          "body": "Choose folder preserves SKU subfolders. Choose files accepts individual documents. To include several top-level folders together, put them under one project folder before choosing it."
+        },
+        {
+          "title": "Review your selection",
+          "body": "Check the file names, paths, sizes and total. Remove unwanted files or use Clear all. Choosing again replaces the selection; cancelling the picker keeps it."
+        },
+        {
+          "title": "Start the run",
+          "body": "Choose Start cross-check and wait for the results. A new upload creates a new run, so you can compare later corrections with the original."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Supported files: PDF, XLSX, XLSM and CSV, up to 250 MB per run. Word files are unsupported. For initial testing, use clean source PDFs or readable spreadsheets.",
+      "action": {
+        "label": "Start from all runs",
+        "to": "/"
+      },
+      "audience": ""
+    },
+    {
+      "id": "documents",
+      "label": "Check extracted documents",
+      "intro": "Confirm that the app read the intended files before relying on any finding.",
+      "steps": [
+        {
+          "title": "Check coverage",
+          "body": "In the run Overview, inspect SKU and document counts and any coverage warnings. Missing source documents can prevent a comparison from being performed."
+        },
+        {
+          "title": "Open Documents",
+          "body": "Inspect the SKU groups and shared documents. Open a file to see its extracted content, warnings and source details."
+        },
+        {
+          "title": "Compare extraction with the source",
+          "body": "For PDFs, select an extracted line to locate it on the retained source page. For spreadsheets, use the recorded sheet and row information. Expand Why this category when a line’s role needs explanation."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Unreadable text, an incorrect SKU association or a missing drawing page can explain a bad comparison. Record unresolved evidence rather than approving a guess.",
+      "action": null,
+      "audience": ""
+    },
+    {
+      "id": "review",
+      "label": "Review and approve findings",
+      "intro": "Open Review queue in a run, narrow the list, then inspect each finding against its evidence.",
+      "steps": [
+        {
+          "title": "Find the relevant comparisons",
+          "body": "Filter by SKU, check type, classification or discrepancy; search descriptions or item numbers. Longer lists have pagination."
+        },
+        {
+          "title": "Inspect Evidence",
+          "body": "Open a comparison. Read the explanation and inspect both source documents, their page references, quantities, units and specifications."
+        },
+        {
+          "title": "Choose and save a decision",
+          "body": "Accept keeps the engine recommendation. Override changes its classification; to clear a flagged mismatch as a valid match, choose an Exact or Equivalent override. Confirm discrepancy records an observed issue. Needs more information keeps uncertainty visible. Add your reason and Save decision."
+        },
+        {
+          "title": "Approve the saved decision",
+          "body": "Review the saved values, then choose Approve decision. If you are approving your own work, complete the explicit confirmation and use Confirm self-approval. Changes made later remove the old approval but keep its history."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Potential means review is needed. Unmapped means no counterpart was accepted; it does not prove a physical component is absent. Saving a decision is different from approving it.",
+      "action": null,
+      "audience": ""
+    },
+    {
+      "id": "terminology",
+      "label": "Choose shared terminology",
+      "intro": "Reuse confirmed one-to-one wordings while controlling the terminology your future uploads use.",
+      "steps": [
+        {
+          "title": "Approve an equivalence",
+          "body": "Use an eligible comparison’s Save as relationship tools, or Terminology → Approve relationship. Confirm that both wordings identify the same component and choose the appropriate scope and item anchors."
+        },
+        {
+          "title": "See who approved it",
+          "body": "The Shared library shows the approving account, approval date and version. Your explicit approval adds that version to your account."
+        },
+        {
+          "title": "Choose another reviewer’s entries",
+          "body": "Filter Approved by to the reviewer you want. Add entire list adds the active entries in the current filters. For a subset, tick the entries and choose Add selected to my account."
+        },
+        {
+          "title": "Manage your choices",
+          "body": "Open My terminology to see included entries. Select additions and Remove selected from my account when no longer wanted. New versions show an update notice; review them before adding. Lists do not automatically follow future additions."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Publishing terminology makes those terms and notes visible to all approved application users. Publish only what is approved for that audience. Packaged defaults remain included; existing runs keep their snapshots. Assemblies and configuration relationships are not synonyms.",
+      "action": {
+        "label": "Open terminology",
+        "to": "/terminology"
+      },
+      "audience": ""
+    },
+    {
+      "id": "excel",
+      "label": "Download and import Excel",
+      "intro": "Use Excel for a review handoff or offline decisions, then import changes into the same run.",
+      "steps": [
+        {
+          "title": "Choose a download",
+          "body": "On Overview, use Download Excel → Summary for totals and attention rows, or Complete details for every comparison and supporting audit sheets. Both include SKU worksheets and editable decision/comment columns."
+        },
+        {
+          "title": "Review offline",
+          "body": "Edit the provided decision and comment fields. Keep the workbook’s run and row identifiers intact; source and engine evidence are not editable through decision import."
+        },
+        {
+          "title": "Preview the import",
+          "body": "Open that run’s Review queue → Import from Excel. Preview the changes and resolve stale-value conflicts before applying. Changed decisions need approval again."
+        }
+      ],
+      "paragraphs": [],
+      "note": "To work independently, first Make a copy in the app, then download and import that copy’s workbook. A workbook belongs to its originating run. Exports contain document and review content; share them through approved channels.",
+      "action": null,
+      "audience": ""
+    },
+    {
+      "id": "manage",
+      "label": "Share and manage runs",
+      "intro": "Runs start private to their owner. Owners control who can view or change them.",
+      "steps": [
+        {
+          "title": "Share with an approved user",
+          "body": "On Overview, expand Run settings and exports → Share run. Choose an approved account and either Can view or Can edit and approve. Update or remove its grant when needed."
+        },
+        {
+          "title": "Rename or delete",
+          "body": "Owners can Rename or Delete from Overview or All runs. Read the named confirmation before deleting."
+        },
+        {
+          "title": "Restore or make a copy",
+          "body": "Deletion moves a run to All runs → Deleted runs. Only its owner can restore it, including its previous sharing. Make a copy creates an independent private run; approvals and sharing do not transfer."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Delete is recoverable: source files and review history remain stored. For permanent removal, contact the application operator. View-only users cannot change decisions, approve results or download review exports.",
+      "action": {
+        "label": "Open all runs",
+        "to": "/"
+      },
+      "audience": ""
+    },
+    {
+      "id": "follow-up",
+      "label": "Follow up and compare runs",
+      "intro": "Keep a traceable follow-up when corrected documents arrive.",
+      "steps": [
+        {
+          "title": "Record an action item",
+          "body": "Create an action item from an unresolved comparison, assign an owner and track its status on Action items."
+        },
+        {
+          "title": "Upload corrected sources",
+          "body": "Create a new run with the corrected project files. Keep the original run as evidence of the earlier review."
+        },
+        {
+          "title": "Compare results",
+          "body": "Open Compare runs under the new run and select the earlier run by name. Inspect new, still-open, changed and resolved findings. Use Verify and close for the relevant action items after checking the supporting evidence."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Gone means the comparison disappeared; it is not proof that an issue was fixed. Compare document coverage and source evidence before closing follow-up work.",
+      "action": {
+        "label": "Open action items",
+        "to": "/action-items"
+      },
+      "audience": ""
+    },
+    {
+      "id": "closed-testing",
+      "label": "Understand closed testing",
+      "intro": "Closed testing is an optional validation workflow for curated feedback, separate from normal review.",
+      "steps": [
+        {
+          "title": "Enable only when needed",
+          "body": "The run owner enables closed testing. Editors can annotate correct pairings, attributes, drawing applicability and unresolved evidence."
+        },
+        {
+          "title": "Get independent verification",
+          "body": "A different administrator verifies an annotation before it enters the verified dataset. Normal self-approval does not create independently verified ground truth."
+        },
+        {
+          "title": "Inspect the candidate report",
+          "body": "Verified feedback can rebuild and evaluate a local candidate. Training and held-out evaluation identities stay separate; the report does not automatically replace the live matching rules."
+        }
+      ],
+      "paragraphs": [],
+      "note": "For an ordinary document review, use the Review queue. Closed testing is not required to finish a review and is not an automatic release of a new model.",
+      "action": null,
+      "audience": ""
+    },
+    {
+      "id": "profile",
+      "label": "Profile and appearance",
+      "intro": "Use the avatar in the top-right corner for account options.",
+      "steps": [
+        {
+          "title": "Open Profile",
+          "body": "Choose the avatar → Profile to see your account, role and run links."
+        },
+        {
+          "title": "Change appearance",
+          "body": "Choose Switch to dark mode or Switch to light mode in the avatar menu, or change the theme on Profile. The browser remembers your preference."
+        },
+        {
+          "title": "Sign out",
+          "body": "Use the avatar menu or Profile → Sign out, particularly on a shared computer."
+        }
+      ],
+      "paragraphs": [],
+      "note": "",
+      "action": {
+        "label": "Open profile",
+        "to": "/profile"
+      },
+      "audience": ""
+    },
+    {
+      "id": "invite",
+      "label": "Invite reviewers",
+      "intro": "Only application administrators can invite new accounts or manage account roles.",
+      "steps": [
+        {
+          "title": "Issue a code",
+          "body": "Open Manage users → Invite a reviewer and enter the intended BD address. Choose Create invitation."
+        },
+        {
+          "title": "Deliver it privately",
+          "body": "Copy the one-time code before leaving or hiding it. Verify the recipient and deliver the code privately through a trusted BD channel. The app does not automatically email codes."
+        },
+        {
+          "title": "Revoke or reissue",
+          "body": "Open Pending invitations to revoke an unused code. Reissuing for the same address invalidates older outstanding codes. To revoke an existing account, use its account controls instead."
+        }
+      ],
+      "paragraphs": [],
+      "note": "An existing account cannot receive a new signup invitation. Removing a run share, revoking an invitation and revoking account access are separate actions.",
+      "action": {
+        "label": "Open manage users",
+        "to": "/admin"
+      },
+      "audience": "Administrators"
+    }
+  ]
+}

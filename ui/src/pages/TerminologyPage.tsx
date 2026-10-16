@@ -70,20 +70,40 @@ export default function TerminologyPage() {
   const list = useAsync(() => api.terminology.list({ search: applied || undefined, all: true }), [applied]);
   const selectedId = sp.get("id");
   const [creating, setCreating] = useState(false);
+  const [reviewer, setReviewer] = useState("");
+  const [mine, setMine] = useState(false);
+  const [checked, setChecked] = useState<string[]>([]);
+  const [choosing, setChoosing] = useState(false);
+  const [choiceError, setChoiceError] = useState<string | null>(null);
+  const reviewers = [...new Set((list.data ?? []).map(r => r.approved_by).filter((x): x is string => !!x))].sort();
 
   const visible = useMemo(() => {
-    const all = list.data ?? [];
+    const all = (list.data ?? []).filter(r => (!reviewer || r.approved_by === reviewer) && (!mine || !!r.enabled_version));
     return showInactive ? all : all.filter((x) => x.active);
-  }, [list.data, showInactive]);
+  }, [list.data, showInactive, reviewer, mine]);
   const rows = useMemo(() => {
     if (scopeFilter === "global") return visible.filter((x) => x.scope === "global");
     if (scopeFilter) return visible.filter((x) => x.scope.startsWith(`${scopeFilter}:`));
     return visible;
   }, [visible, scopeFilter]);
-  const pagination = usePagedList(rows, `${applied}:${scopeFilter}:${showInactive}`);
+  const pagination = usePagedList(rows, `${applied}:${scopeFilter}:${showInactive}:${reviewer}:${mine}`);
   const scopeCount = (f: ScopeFilter) =>
     f === "" ? visible.length : f === "global" ? visible.filter((x) => x.scope === "global").length : visible.filter((x) => x.scope.startsWith(`${f}:`)).length;
   const inactive = (list.data ?? []).filter((x) => !x.active).length;
+
+  useEffect(() => { setChecked([]); }, [applied, scopeFilter, showInactive, reviewer, mine]);
+  const available = rows.filter(r => r.active && !r.is_default);
+  const selectable = rows.filter(r => !r.is_default && (r.active || r.selected_version));
+  async function choose(entries: Relationship[], selected: boolean) {
+    if (choosing || !entries.length) return;
+    setChoosing(true); setChoiceError(null);
+    try {
+      await api.terminology.select(entries.map(r => ({id: r.id, version: r.version})), selected);
+      setChecked([]); list.reload();
+      toast({tone: "ok", title: selected ? "Added to your terminology" : "Removed from your terminology", description: "Applies to your future runs. Existing runs keep their recorded versions."});
+    } catch (e) { setChoiceError(errorMessage(e)); }
+    finally { setChoosing(false); }
+  }
 
   const openRel = (id: string | null) => {
     const n = new URLSearchParams(sp);
@@ -99,11 +119,11 @@ export default function TerminologyPage() {
     <div>
       <PageHeader
         title="Terminology"
-        description="Manage terms that should be treated as equivalent in future runs."
+        description="Discover reviewer-approved terms and choose what your future runs use."
         actions={
           <>
-            <Button variant="primary" icon={<Plus size={16} />} disabled={!canManage} title={canManage ? undefined : "Administrators manage shared terminology"} onClick={() => setCreating(true)}>
-              New relationship
+            <Button variant="primary" icon={<Plus size={16} />} disabled={!session} onClick={() => setCreating(true)}>
+              Approve relationship
             </Button>
           </>
         }
@@ -111,9 +131,14 @@ export default function TerminologyPage() {
 
       <div className="space-y-5 stagger">
         <Notice>
-          {canManage ? "Changes apply to future runs. Previous versions are kept in the history." : "You can browse shared terminology. Administrators create, import and edit relationships."}
+          Packaged defaults are included for everyone. Reviewer-approved additions are optional: add an entire list or choose individual entries. Your choices affect future runs only.
         </Notice>
 
+        <div className="flex flex-wrap items-end gap-4">
+          <div role="group" aria-label="Terminology collection" className="flex gap-2"><Toggle on={!mine} onClick={() => setMine(false)}>Shared library</Toggle><Toggle on={mine} onClick={() => setMine(true)}>My terminology</Toggle></div>
+          <Field label="Approved by" htmlFor="terminology-reviewer" className="min-w-0 max-w-full"><select id="terminology-reviewer" className="input w-full max-w-full" value={reviewer} onChange={e => setReviewer(e.target.value)}><option value="">All reviewers</option>{reviewers.map(email => <option key={email} value={email}>{email}</option>)}</select></Field>
+        </div>
+        {choiceError && <ErrorBox error={choiceError} />}
         <div className="flex flex-col xl:flex-row gap-5 items-start">
           <Card className="w-full min-w-0 flex-1">
             <CardHead
@@ -170,6 +195,12 @@ export default function TerminologyPage() {
               </Toggle>
             </div>
 
+            <div className="px-4 py-3 border-b border-line flex flex-wrap items-center gap-2" aria-label="Terminology selection actions">
+              <Button size="sm" disabled={choosing || !selectable.length || list.loading} onClick={() => setChecked(selectable.map(r => r.id))}>Select this list ({selectable.length})</Button>
+              <Button size="sm" variant="primary" loading={choosing} disabled={choosing || !available.some(r => checked.includes(r.id)) || list.loading} onClick={() => void choose(available.filter(r => checked.includes(r.id)), true)}>Add selected to my account</Button>
+              <Button size="sm" disabled={choosing || !available.length || list.loading} onClick={() => void choose(available, true)}>Add entire list</Button>
+              {checked.length > 0 && <><Button size="sm" disabled={choosing || list.loading || !rows.some(r => checked.includes(r.id) && r.selected_version)} onClick={() => void choose(rows.filter(r => checked.includes(r.id) && !!r.selected_version), false)}>Remove selected from my account</Button><Button size="sm" variant="ghost" disabled={choosing} onClick={() => setChecked([])}>Clear selection</Button><span className="text-xs text-ink-3" role="status">{checked.length} selected</span></>}
+            </div>
             {list.error && (
               <div className="p-4">
                 <ErrorBox error={list.error} onRetry={list.reload} />
@@ -186,8 +217,8 @@ export default function TerminologyPage() {
                     : "Clear the search or widen the scope filter to see the rest, or create a relationship for the wording you were looking for."
                 }
                 action={
-                  <Button variant="primary" icon={<Plus size={16} />} disabled={!canManage} title={canManage ? undefined : "Administrators manage shared terminology"} onClick={() => setCreating(true)}>
-                    New relationship
+                  <Button variant="primary" icon={<Plus size={16} />} disabled={!session} onClick={() => setCreating(true)}>
+                    Approve relationship
                   </Button>
                 }
               />
@@ -197,20 +228,19 @@ export default function TerminologyPage() {
                 <table className="tbl">
                   <thead>
                     <tr>
+                      <th><span className="sr-only">Select</span></th>
                       <th>Id</th>
                       <th>Canonical and aliases</th>
                       <th>Scope</th>
                       <th>Applies to</th>
-                      <th>Provenance</th>
-                      <th>Created</th>
-                      <th className="text-right">Version</th>
-                      <th>Status</th>
-                      <th className="text-right">Used by</th>
+                      <th>Approved by</th>
+                      <th>Your account</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pagination.rows.map((r) => (
                       <tr key={r.id} className={`clickable ${r.id === selectedId ? "selected" : ""}`} onClick={() => openRel(r.id)}>
+                        <td onClick={e => e.stopPropagation()}><label className="inline-flex items-center justify-center w-8 h-8"><input className="w-4 h-4 accent-accent-500" type="checkbox" aria-label={`Select ${r.canonical} (${r.id})`} checked={checked.includes(r.id)} disabled={choosing || (!r.active && !r.selected_version) || !!r.is_default} onChange={e => setChecked(current => e.target.checked ? [...current, r.id] : current.filter(id => id !== r.id))} /></label></td>
                         <td className="mono whitespace-nowrap"><button type="button" className="text-brand-600 underline underline-offset-2" aria-label={`Open relationship ${r.id}: ${r.canonical}`} onClick={e => { e.stopPropagation(); openRel(r.id); }}>{r.id}</button></td>
                         <td className="min-w-[16rem]">
                           <div className={`font-medium ${r.active ? "text-ink" : "text-ink-3"}`}>{r.canonical}</div>
@@ -245,18 +275,14 @@ export default function TerminologyPage() {
                             </div>
                           )}
                         </td>
-                        <td className="text-ink-2">{PROVENANCE_LABEL[r.provenance] ?? sentence(r.provenance)}</td>
-                        <td className="whitespace-nowrap text-ink-2">
-                          {r.created_by}
-                          <div className="text-xs text-ink-3">{fmtDate(r.created_at)}</div>
+                        <td className="min-w-[12rem] text-ink-2">
+                          <span className="break-words">{r.approved_by || (r.is_default ? "Packaged default" : r.created_by)}</span>
+                          <div className="text-xs text-ink-3">{r.approved_at ? fmtDate(r.approved_at) : "Included with Kaizen"} · v{r.version}</div>
+                          <div className="text-xs text-ink-3">{PROVENANCE_LABEL[r.provenance] ?? sentence(r.provenance)}</div>
                         </td>
-                        <td className="text-right num">{r.version}</td>
-                        <td>
-                          <Badge tone={r.active ? "ok" : "neutral"}>{r.active ? "Active" : "Inactive"}</Badge>
-                        </td>
-                        <td className="text-right whitespace-nowrap">
-                          <span className="num font-medium">{r.usage ?? 0}</span>
-                          <div className="text-xs text-ink-3">comparison{r.usage === 1 ? "" : "s"}</div>
+                        <td className="min-w-[10rem]">
+                          <Badge tone={!r.active ? "neutral" : r.enabled_version ? "ok" : "neutral"}>{!r.active ? "Inactive" : r.is_default ? "Included default" : r.enabled_version ? `Using v${r.enabled_version}` : "Not added"}</Badge>
+                          {r.active && r.enabled_version && r.enabled_version !== r.version && <div className="mt-1 space-y-1"><p className="text-xs text-warn">v{r.version} available · review before adding</p>{r.enabled_definition && <p className="text-xs text-ink-2">Your v{r.enabled_version}: {r.enabled_definition.canonical} = {r.enabled_definition.aliases.join(" / ")} · <Scope scope={r.enabled_definition.scope} /></p>}</div>}
                         </td>
                       </tr>
                     ))}
@@ -277,14 +303,14 @@ export default function TerminologyPage() {
         {canManage && <TerminologyImport onImported={list.reload} />}
       </div>
 
-      {creating && canManage && (
+      {creating && session && (
         <CreateDialog
           onClose={() => setCreating(false)}
           onCreated={(rel) => {
             setCreating(false);
             list.reload();
             openRel(rel.id);
-            toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: "Saved for future runs." });
+            toast({ tone: "ok", title: `Relationship ${rel.id} created`, description: "Approved in the shared library and added to your account." });
           }}
         />
       )}
@@ -371,6 +397,8 @@ function RelationshipPanel({ id, onClose, onChanged }: { id: string; onClose: ()
             <dl className="kv mt-3">
               <dt>Provenance</dt>
               <dd>{PROVENANCE_LABEL[r.provenance] ?? sentence(r.provenance)}</dd>
+              <dt>Approved by</dt>
+              <dd>{r.approved_by || "Packaged default"}{r.approved_at ? ` · ${fmtDate(r.approved_at)}` : ""}</dd>
               <dt>Created</dt>
               <dd>
                 {r.created_by} · {fmtDate(r.created_at)}
@@ -389,7 +417,7 @@ function RelationshipPanel({ id, onClose, onChanged }: { id: string; onClose: ()
           {canManage && <div className="space-y-3">
             <div>
               <h3 className="text-sm font-semibold text-ink">Edit</h3>
-              <p className="hint mt-0.5">Changes apply to future runs. Previous versions remain in the history.</p>
+              <p className="hint mt-0.5">Your account uses the new version. Other accounts choose whether to update. Previous versions remain in the history.</p>
             </div>
             <Field label="Canonical term" htmlFor={`${uid}-canonical`}>
               <input id={`${uid}-canonical`} className="input w-full" value={form.canonical} onChange={(e) => setForm({ ...form, canonical: e.target.value })} />
@@ -545,8 +573,8 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
     <Dialog
       open
       onClose={() => { if (!busy) onClose(); }}
-      title="New relationship"
-      description="Enter the preferred term and its equivalent terms."
+      title="Approve a relationship"
+      description="Confirm a one-to-one equivalence. Your approval and account are recorded in the shared library; other reviewers can choose to use it."
       width="lg"
       footer={
         <>
@@ -554,7 +582,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
             Cancel
           </Button>
           <Button variant="primary" icon={<Plus size={16} />} loading={busy} disabled={busy || !name || !form.canonical.trim() || lines(form.aliases).length === 0} onClick={submit}>
-            Create relationship
+            Approve and add to my account
           </Button>
         </>
       }
