@@ -33,6 +33,14 @@ WIDTHS = {"Check": 18, "Component": 38, "Classification": 16, "Current Classific
           "Source A Description": 36, "Source B Description": 36, "Source A File": 26, "Source B File": 26, "Source A Quantity": 10, "Source B Quantity": 10,
           "Explanation": 65, "Discrepancy Detail": 60, "Recommended Action": 50, "Source A Raw Text": 45, "Source B Raw Text": 45,
           "Source A Attributes": 45, "Source B Attributes": 45, "Approval Note": 40}
+BODY_FONT = Font(name="Calibri", size=11, color="000000")
+BOLD_FONT = Font(name="Calibri", size=11, bold=True, color="000000")
+HEADER_FILL = PatternFill("solid", fgColor="F2F2F2")
+EMPTY_FILL = PatternFill()
+HEADER_BORDER = Border(bottom=Side(style="thin", color="BFBFBF"))
+EMPTY_BORDER = Border()
+BODY_ALIGNMENT = Alignment(vertical="top", wrap_text=True)
+HEADER_ALIGNMENT = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 
 def _sheet_name(sku: str, used: set[str]) -> str:
@@ -57,10 +65,10 @@ def _current(row: CheckResult, review: "ReviewBundle | None") -> dict:
 def _header(ws, row, columns):
     for col, label in enumerate(columns, 1):
         cell = ws.cell(row, col, COLUMN_LABELS.get(label, label))
-        cell.fill = PatternFill("solid", fgColor="F2F2F2")
-        cell.font = Font(name="Calibri", size=11, bold=True, color="000000")
-        cell.border = Border(bottom=Side(style="thin", color="BFBFBF"))
-        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        cell.fill = HEADER_FILL
+        cell.font = BOLD_FONT
+        cell.border = HEADER_BORDER
+        cell.alignment = HEADER_ALIGNMENT
     ws.row_dimensions[row].height = 28
 
 
@@ -125,10 +133,10 @@ def _overview(ws, run, sku, rows, current, detail):
     for check, items in grouped.items():
         line += 1
         for col, value in enumerate([CHECK_LABELS.get(check, check), *counts(items)], 1):
-            ws.cell(line, col, value)
+            ws.cell(line, col, value).font = BODY_FONT
     line += 1
     for col, value in enumerate(["Total", *counts([r for r in rows if r.role != "exempt"])], 1):
-        ws.cell(line, col, value).font = Font(name="Calibri", size=11, bold=True)
+        ws.cell(line, col, value).font = BOLD_FONT
     # Missing document sets can have no comparison rows at all. Keep their
     # coverage warning visible even when the attention table is empty.
     for finding in run.coverage:
@@ -136,8 +144,10 @@ def _overview(ws, run, sku, rows, current, detail):
             continue
         line += 1
         ws.cell(line, 1, finding.status.replace("_", " ").capitalize()).alignment = Alignment(vertical="top", wrap_text=True)
+        ws.cell(line, 1).font = BODY_FONT
         ws.merge_cells(start_row=line, start_column=2, end_row=line, end_column=7)
         ws.cell(line, 2, finding.detail).alignment = Alignment(vertical="top", wrap_text=True)
+        ws.cell(line, 2).font = BODY_FONT
         ws.row_dimensions[line].height = min(409, max(30, math.ceil(len(finding.detail) / 140) * 14 + 2))
     return line + 2
 
@@ -185,8 +195,8 @@ def sku_workbook(run: Run, detail: Literal["summary", "complete"], review: "Revi
             for col, label in enumerate(columns, 1):
                 value = values.get(label)
                 cell = ws.cell(index, col, value)
-                cell.font = Font(name="Calibri", size=11, color="000000")
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
+                cell.font = BODY_FONT
+                cell.alignment = BODY_ALIGNMENT
                 if isinstance(value, (int, float)):
                     cell.number_format = "0.0%" if label in ("Score", "Candidate Score", "Source A Confidence", "Source B Confidence") else "#,##0" if float(value).is_integer() else "#,##0.####"
                 if value is not None and not ws.column_dimensions[get_column_letter(col)].hidden:
@@ -205,12 +215,9 @@ def sku_workbook(run: Run, detail: Literal["summary", "complete"], review: "Revi
                 validation.add(f"{column}{header + 1}:{column}{last}")
         else:
             ws.cell(header + 1, 1, "No rows need attention." if any(r.role != "exempt" for r in rows) and detail == "summary" else "No comparisons available for this SKU.")
+            ws.cell(header + 1, 1).font = BODY_FONT
         ws.freeze_panes = f"C{header + 1}"
         ws.sheet_view.zoomScale = 100
-        for cells in ws:
-            for cell in cells:
-                if cell.value is not None:
-                    cell.font = Font(name="Calibri", size=11, bold=cell.font.bold, color="000000")
         ws.sheet_properties.pageSetUpPr.fitToPage = detail == "summary"
         ws.page_setup.orientation, ws.page_setup.paperSize = "landscape", ws.PAPERSIZE_A3
         ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = (1 if detail == "summary" else 0), 0
@@ -219,9 +226,9 @@ def sku_workbook(run: Run, detail: Literal["summary", "complete"], review: "Revi
     return wb
 
 
-def plain_workbook(wb: Workbook) -> None:
+def plain_workbook(sheets) -> None:
     """Give supporting audit sheets the same ordinary table formatting."""
-    for ws in wb:
+    for ws in sheets:
         ws.sheet_view.showGridLines = True
         ws.sheet_view.zoomScale = 100
         ws.sheet_properties.tabColor = None
@@ -230,6 +237,6 @@ def plain_workbook(wb: Workbook) -> None:
                 if cell.value is None:
                     continue
                 is_header = cell.fill.fgColor.type == "rgb" and cell.fill.fgColor.rgb[-6:] in ("1F3864", "F2F2F2")
-                cell.fill = PatternFill("solid", fgColor="F2F2F2") if is_header else PatternFill()
-                cell.border = Border(bottom=Side(style="thin", color="BFBFBF")) if is_header else Border()
-                cell.font = Font(name="Calibri", size=11, bold=is_header or cell.font.bold, color="000000")
+                cell.fill = HEADER_FILL if is_header else EMPTY_FILL
+                cell.border = HEADER_BORDER if is_header else EMPTY_BORDER
+                cell.font = BOLD_FONT if is_header or cell.font.bold else BODY_FONT

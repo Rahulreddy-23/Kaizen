@@ -1,7 +1,8 @@
 # Accounts, sharing and deployment
 
-Kaizen currently runs locally. The Dockerfile and `render.yaml` prepare a future shared deployment;
-no Render service has been deployed. The [Singapore pilot plan](testing-launch.md) targets a $27.50 monthly base before tax and extra usage. GitHub CI tests/builds the app and does not deploy it.
+Kaizen supports local use and an invite-only Render pilot in Singapore. The Dockerfile and
+`render.yaml` define the hosted configuration. The [pilot plan](testing-launch.md) targets a $27.50
+monthly base before tax and extra usage. GitHub CI validates the app and deployment image; Render controls deployment.
 
 ## Accounts and access
 

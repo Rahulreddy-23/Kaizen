@@ -5,7 +5,7 @@
 Compare JDE bills of materials with product labels, drawings, change orders and label revisions.
 Every recommendation includes an explanation and source evidence; reviewers record the final decision.
 
-**Deployment:** local preview is available; the Singapore Render pilot is prepared for limited testing. See [launch setup and budget](docs/testing-launch.md). A GitHub push alone does not deploy the app.
+**Deployment:** the Singapore Render pilot is provisioned for invite-only testing; local preview remains available. See [launch checks and budget](docs/testing-launch.md). Releases require passing CI and hosted acceptance checks.
 
 Read the [user tutorial](docs/user-guide.md) and [privacy/document-handling notice](docs/privacy.md). Both are also available in the website before sign-in.
 

@@ -47,7 +47,7 @@ its approval. Terminology imports and independently verified learning datasets u
 
 ## Hosting and operations
 
-Render deployment is pending; see [the Singapore pilot plan](testing-launch.md). API responses use no-store headers, response hardening blocks framing, and the hosted launcher suppresses query-bearing access logs. Confidential-mode errors log error types and reference IDs without exception text/tracebacks. The supplied Render configuration enables Secure cookies over HTTPS and uses one process/worker with a persistent
+The Singapore Render pilot has been provisioned; see [the Singapore pilot plan](testing-launch.md). API responses use no-store headers, response hardening blocks framing, and the hosted launcher suppresses query-bearing access logs. Confidential-mode errors log error types and reference IDs without exception text/tracebacks. The supplied Render configuration enables Secure cookies over HTTPS and uses one process/worker with a persistent
 workspace. Local HTTP development uses non-Secure cookies. SQLite access is serialized within the
 process; multiple application instances require a shared database and document storage design.
 

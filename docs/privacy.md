@@ -6,9 +6,9 @@ How this limited-testing application handles accounts, documents and review data
 
 Kaizen compares documents and records human review decisions for invited testers.
 
-This notice describes the application’s implemented behavior and the proposed Render pilot. It is not evidence that BD has approved a particular hosting contract, data classification or processing region. Confirm those requirements with the application operator before uploading confidential material.
+This notice describes the application’s implemented behavior and the Render pilot. It is not evidence that BD has approved a particular hosting contract, data classification or processing region. Confirm those requirements with the application operator before uploading confidential material.
 
-The pilot is intended to use a single service in Singapore, with a private persistent workspace. Hosting status and the final service address are confirmed separately; a local preview does not upload documents to Render.
+The pilot uses a single service in Singapore, with a private persistent workspace. Hosting status and the final service address are confirmed separately; a local preview does not upload documents to Render.
 
 ## What is stored
 
@@ -50,7 +50,7 @@ Approve only terminology and notes that may be shared with that audience. Other 
 
 ## Hosting and security controls
 
-The proposed Render pilot uses HTTPS and a persistent disk encrypted at rest by the provider.
+The Render pilot uses HTTPS and a persistent disk encrypted at rest by the provider.
 
 The hosted configuration uses Secure, HttpOnly cookies, same-origin mutation checks and invitation-only registration. Confidential mode restricts an authentication session to eight hours, prevents browser caching of API responses and suppresses detailed exceptions and query-bearing access logs from application hosting logs.
 

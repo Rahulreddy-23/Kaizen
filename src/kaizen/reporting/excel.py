@@ -111,7 +111,7 @@ def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str,
             from kaizen.reporting.sku_excel import plain_workbook
 
             _write_header(history, 1, ['Row ID', 'Event', 'User', 'When', 'Decision', 'Classification', 'Comment', 'Self-approved'])
-            plain_workbook(wb)
+            plain_workbook([history])
         save_workbook(wb, result)
     return result
 
@@ -178,6 +178,7 @@ def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = No
         from kaizen.reporting.sku_excel import plain_workbook, sku_workbook
 
         wb = sku_workbook(run, detail, review)
+        sku_sheet_count = len(wb.worksheets)
         if detail == "complete":
             _action_items_sheet(wb.create_sheet("Action_Items"), run, review)
             _coverage_sheet(wb.create_sheet("Coverage"), run)
@@ -193,7 +194,8 @@ def write_report(run: Run, path: Path | str, metrics: dict[str, Any] | None = No
         metadata.cell(2, 1, "Export layout")
         metadata.cell(2, 2, "sku")
         metadata.sheet_state = "hidden"
-        plain_workbook(wb)
+        # SKU sheets already have their final formatting. Only normalize newly added audit sheets.
+        plain_workbook(wb.worksheets[sku_sheet_count:])
         save_workbook(wb, path)
         return path
     wb = Workbook()

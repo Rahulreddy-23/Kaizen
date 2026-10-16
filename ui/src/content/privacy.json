@@ -8,8 +8,8 @@
       "intro": "Kaizen compares documents and records human review decisions for invited testers.",
       "steps": [],
       "paragraphs": [
-        "This notice describes the application’s implemented behavior and the proposed Render pilot. It is not evidence that BD has approved a particular hosting contract, data classification or processing region. Confirm those requirements with the application operator before uploading confidential material.",
-        "The pilot is intended to use a single service in Singapore, with a private persistent workspace. Hosting status and the final service address are confirmed separately; a local preview does not upload documents to Render."
+        "This notice describes the application’s implemented behavior and the Render pilot. It is not evidence that BD has approved a particular hosting contract, data classification or processing region. Confirm those requirements with the application operator before uploading confidential material.",
+        "The pilot uses a single service in Singapore, with a private persistent workspace. Hosting status and the final service address are confirmed separately; a local preview does not upload documents to Render."
       ],
       "note": "",
       "action": null,
@@ -73,7 +73,7 @@
     {
       "id": "hosting",
       "label": "Hosting and security controls",
-      "intro": "The proposed Render pilot uses HTTPS and a persistent disk encrypted at rest by the provider.",
+      "intro": "The Render pilot uses HTTPS and a persistent disk encrypted at rest by the provider.",
       "steps": [],
       "paragraphs": [
         "The hosted configuration uses Secure, HttpOnly cookies, same-origin mutation checks and invitation-only registration. Confidential mode restricts an authentication session to eight hours, prevents browser caching of API responses and suppresses detailed exceptions and query-bearing access logs from application hosting logs.",

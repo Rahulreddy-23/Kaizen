@@ -21,7 +21,7 @@ Tax, currency conversion and excess bandwidth/build usage can raise the actual i
 The Hobby workspace includes 5 GB outbound bandwidth; review billed usage during the pilot.
 Use Render’s supplied HTTPS domain and manual private invitation delivery for the initial group.
 
-## Configuration prepared in this repository
+## Pilot configuration
 
 - `render.yaml`: Singapore, `1c-2g`, one 10 GB disk, health check and deploys after CI passes.
 - `Dockerfile`: bundled UI, Tesseract and RapidOCR; local documents, workspaces, databases and secrets excluded.
@@ -83,4 +83,4 @@ remain operator tasks. Publishing terminology intentionally exposes its terms/no
 - **Sunday 18 October:** complete approved-document checks with a small named group; verify backups and access boundaries.
 - **Monday 19 October:** invite the limited testing group only after the hosted checks pass; share the tutorial and support contact.
 
-This is a launch plan, not a scheduled automation or a claim that the service has already been deployed.
+Infrastructure was provisioned on 16 October 2026. This checklist does not establish that every acceptance check or BD approval is complete; it is not a scheduled automation.
