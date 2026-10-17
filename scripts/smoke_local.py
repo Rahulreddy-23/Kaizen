@@ -7,7 +7,6 @@ import pymupdf
 from kaizen.datasets.pdf_label import LabelSpec, render_label_pdf
 from kaizen.ingest.drawing_pdf import parse_drawing_pdf
 from kaizen.ingest.label_pdf import parse_label_pdf
-from kaizen.ingest.ocr import available_engines
 
 
 def main():
@@ -32,10 +31,11 @@ def main():
         assert drawing.sku == 'DWG7654321', 'Drawing number was not recovered'
         assert {i.description for i in drawing.items} == {'SURGICAL TAPE', 'MASK'}, 'Drawing callouts were not recovered'
         for doc in (label, drawing):
+            assert doc.header.get('ocr_engine') == 'rapidocr-onnxruntime', 'Bundled OCR did not run; check kaizen doctor and docs/pdf-ocr.md for missing runtime libraries'
             assert not doc.header['unreadable_pages'], 'An unreadable page was reported'
             assert all(i.evidence.page == 1 and i.evidence.bbox and i.evidence.extraction_method == 'ocr' for i in doc.items), 'Source evidence was not retained'
     print('PASS: scanned label REF, 2 quantities, drawing identity, 2 callouts and page evidence.')
-    print('Default offline OCR: ' + available_engines()[0])
+    print('Verified offline OCR: rapidocr-onnxruntime')
 
 
 if __name__ == '__main__':
