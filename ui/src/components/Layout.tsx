@@ -98,8 +98,8 @@ export function Layout() {
     const timer = window.setInterval(refresh, 30000);
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, [health.reload]);
-  const runs = useAsync(() => session ? api.listRuns() : Promise.resolve([]), [loc.pathname, session?.reviewer]);
-  useDataRefresh(runs.reload);
+  const runs = useAsync(() => session ? api.listRuns() : Promise.resolve([]), [session?.reviewer]);
+  useDataRefresh(runs.refresh);
   useEffect(() => {
     if (session && runs.data && lastRun && !runs.data.some(run => run.run_id === lastRun)) {
       setLastRun(null);

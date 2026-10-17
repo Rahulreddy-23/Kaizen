@@ -56,7 +56,7 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
   const box = selected && item?.page === page ? item.bbox : null;
   // Keep the rendered image stable throughout a pinch; reading scale is separate.
   const dpi = 300;
-  const image = doc?.pages ? api.pageImageUrl(runId,doc.id,page,null,dpi) : null;
+  const image = doc?.pages ? api.pageImageUrl(runId,doc.id,page,null,dpi,kind === "BOM" ? "png" : "jpeg") : null;
   const locate = () => {if (target) onView({documentId:target.doc_id,page:target.page ?? 1,locate:view.locate + 1});};
   return <section id={`reader-${kind}`} className="quick-reader-pane" aria-label={`${NAME[kind]} source preview`} hidden={hidden}>
     <header className="quick-pane-title"><div><h3>{NAME[kind]}</h3>{documents.length === 1 && <p title={doc?.file_name}>{doc?.file_name}</p>}</div>{selected && cell && <Status status={cell.status} />}<Button size="sm" variant="ghost" iconOnly icon={<ArrowsOut size={15}/>} aria-label={`Focus ${NAME[kind]}`} title={`Focus ${NAME[kind]}`} onClick={onFocus}/></header>
@@ -92,13 +92,20 @@ export function QuickDocumentWorkspace({runId, sku, documents, selected, preferr
   const [views,setViews] = useState<Record<QuickKind,PaneView>>({BOM:initialView("BOM"),LABEL:initialView("LABEL"),DRAWING:initialView("DRAWING")});
   const [narrow,setNarrow] = useState(false);
   const grid = useRef<HTMLDivElement>(null);
+  // Refreshing a decision replaces row objects. Re-locate only when the actual
+  // source target changes; preserve the reader's manual page/pan otherwise.
+  const targetKey = JSON.stringify(KINDS.map(k => {
+    const item = selected?.cells[k]?.items.find(i => i.id === preferred[k]) ?? selected?.cells[k]?.items[0];
+    return [selected?.id, k, item?.id, item?.doc_id, item?.page, item?.bbox];
+  }));
   useEffect(()=>{
     if (!selected) return;
     setViews(old=>Object.fromEntries(KINDS.map(k=>{
       const item=selected.cells[k]?.items.find(i=>i.id === preferred[k]) ?? selected.cells[k]?.items[0];
       return [k,item ? {...old[k],documentId:item.doc_id,page:item.page ?? 1,locate:old[k].locate+1} : old[k]];
     })) as Record<QuickKind,PaneView>);
-  },[selected,preferred]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[targetKey,preferred]);
   useEffect(()=>{
     const el=grid.current; if (!el || typeof ResizeObserver === "undefined") return;
     const update=()=>setNarrow(el.clientWidth < 700);

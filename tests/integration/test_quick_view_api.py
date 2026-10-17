@@ -56,6 +56,67 @@ def test_endpoint_pages_evidence_and_filters(env):
     assert "no-store" in response.headers["cache-control"]
 
 
+def test_lightweight_change_check_is_stable_for_reads_and_changes_after_edits(env):
+    ws, client, run = env
+    assert TestClient(create_app(ws)).get('/api/changes').status_code == 401
+    first = client.get('/api/changes')
+    assert first.status_code == 200 and 'no-store' in first.headers['cache-control']
+    token = first.json()['revision']
+    assert len(token) == 64 and client.get('/api/changes').json()['revision'] == token
+    base = f'/api/runs/{run.metadata.run_id}'
+    assert client.patch(base, json={'name': 'Renamed for change test'}).status_code == 200
+    edited = client.get('/api/changes').json()['revision']
+    assert edited != token and client.get('/api/changes').json()['revision'] == edited
+    with ws.db.transaction():
+        ws.db.conn.execute("INSERT INTO learning_jobs (run_id,generation,state,requested_by,updated_at) VALUES (?,1,'queued','test','now')", (run.metadata.run_id,))
+    queued = client.get('/api/changes').json()['revision']
+    assert queued != edited
+    with ws.db.transaction():
+        ws.db.conn.execute("UPDATE learning_jobs SET state='complete',completed_generation=1 WHERE run_id=?", (run.metadata.run_id,))
+    assert client.get('/api/changes').json()['revision'] != queued
+
+
+def test_private_page_cache_reuses_render_but_rechecks_access_and_source(env, monkeypatch):
+    ws, client, run = env
+    doc = run.documents[0]
+    url = f'/api/runs/{run.metadata.run_id}/documents/{doc.id}/pages/1'
+    original = pymupdf.Page.get_pixmap
+    renders = []
+
+    def measured(page, *args, **kwargs):
+        renders.append(1)
+        return original(page, *args, **kwargs)
+
+    monkeypatch.setattr(pymupdf.Page, 'get_pixmap', measured)
+    one = client.get(url, params={'dpi':150, 'format':'jpeg'})
+    two = client.get(url, params={'dpi':150, 'format':'jpeg'})
+    assert one.status_code == two.status_code == 200
+    assert one.content == two.content and len(renders) == 1
+    assert one.headers['content-type'] == 'image/jpeg' and 'no-store' in one.headers['cache-control']
+    assert client.get(url, params={'dpi':150}).headers['content-type'] == 'image/png'
+    assert len(renders) == 2
+    assert TestClient(create_app(ws)).get(url).status_code == 401
+    assert client.get(url, params={'format':'unsafe'}).status_code == 422
+    from pathlib import Path
+    # A changed source must never receive a previous bitmap under the same URL.
+    path = Path(doc.path)
+    before = path.stat()
+    import os
+    os.utime(path, ns=(before.st_atime_ns,before.st_mtime_ns + 1_000_000))
+    assert client.get(url, params={'dpi':150,'format':'jpeg'}).status_code == 200
+    assert len(renders) == 3
+    other = TestClient(create_app(ws))
+    UserStore(ws.db).create('cached-viewer@bd.com','other-test-password')
+    access = AccessStore(ws.db)
+    access.register('cached-viewer@bd.com')
+    access.update('cached-viewer@bd.com','owner@bd.com','approved',False)
+    other.post('/api/auth/signin',json={'email':'cached-viewer@bd.com','password':'other-test-password'})
+    access.share(run.metadata.run_id,'cached-viewer@bd.com','view','owner@bd.com')
+    assert other.get(url, params={'dpi':150,'format':'jpeg'}).status_code == 200
+    access.share(run.metadata.run_id,'cached-viewer@bd.com',None,'owner@bd.com')
+    assert other.get(url, params={'dpi':150,'format':'jpeg'}).status_code == 404
+
+
 def test_only_signed_in_users_with_run_access_can_read_quick_view(env):
     ws, owner, run = env
     base = f"/api/runs/{run.metadata.run_id}/quick-view"

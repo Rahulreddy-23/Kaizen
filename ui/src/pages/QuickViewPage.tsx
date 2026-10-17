@@ -37,7 +37,7 @@ export default function QuickViewPage() {
   const data = useAsync(() => api.quickView(runId, {sku, view, status: view === "text" ? "all" : status, search, offset}), [runId, sku, view, status, search, offset]);
   const [cached, setCached] = useState<{runId:string; sku:string; value:QuickView} | null>(null);
   useEffect(() => {if (data.data) setCached({runId,sku,value:data.data});}, [data.data,runId,sku]);
-  useDataRefresh(data.reload, runId);
+  useDataRefresh(data.refresh, runId);
   useEffect(() => {setExpanded(false);}, [runId, sku]);
   useEffect(() => {setSelected(null); setFocusItems({});}, [runId, sku, view, status, search, offset]);
   // A refreshed decision must replace the selected row's old status and evidence.
@@ -57,8 +57,8 @@ export default function QuickViewPage() {
   };
   // Retain controls while filters load, but never carry source data into another
   // SKU/run. Old rows are disabled/hidden until the new response is available.
-  const result = data.data ?? (cached?.runId === runId && cached.sku === sku ? cached.value : null);
-  const groups = result?.groups ?? (cached?.runId === runId ? cached.value.groups : []);
+  const result = data.data ?? (!data.error && cached?.runId === runId && cached.sku === sku ? cached.value : null);
+  const groups = result?.groups ?? (!data.error && cached?.runId === runId ? cached.value.groups : []);
   const activeSku = result?.sku || sku;
   const warnings = result?.documents.reduce((n,d) => n + d.warnings.length, 0) ?? 0;
   const selectedIndex = result?.rows.findIndex(row => row.id === selected?.id) ?? -1;

@@ -53,7 +53,7 @@ export default function LearningPage() {
   const {session, name} = useReviewer();
   const summary = useAsync(() => api.learning.summary(runId), [runId]);
   const run = useAsync(() => api.getRun(runId), [runId]);
-  useDataRefresh(summary.reload, runId);
+  useDataRefresh(summary.refresh, runId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function perform(fn: () => Promise<unknown>) {

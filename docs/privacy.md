@@ -54,6 +54,8 @@ The Render pilot uses HTTPS and a persistent disk encrypted at rest by the provi
 
 The hosted configuration uses Secure, HttpOnly cookies, same-origin mutation checks and invitation-only registration. Confidential mode restricts an authentication session to eight hours, prevents browser caching of API responses and suppresses detailed exceptions and query-bearing access logs from application hosting logs.
 
+Rendered source pages may be reused in a bounded, process-local memory cache (up to 64 MiB). Page requests always recheck account/run access and source availability. The cache is not persisted or sent to an external service; entries expire through eviction or a server restart. A visible browser tab checks an opaque change token every five seconds to update saved review data without repeatedly downloading unchanged results.
+
 Source documents and workspace databases are excluded from the Git repository and Docker build context. Packaged synthetic demonstration documents may be included; they are separate from BD source documents.
 
 Render and its infrastructure subprocessors process hosting data. Provider-managed encryption is not customer-exclusive encryption, and this notice does not promise zero unauthorized access or zero security incidents. Keep hosting access restricted and use MFA on operator accounts.
