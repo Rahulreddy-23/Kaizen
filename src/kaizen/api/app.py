@@ -48,9 +48,11 @@ from kaizen.api.payloads import (
     UserUpdate,
 )
 from kaizen.api.quick_view import build_quick_view, filter_quick_view
+from kaizen.api.run_progress import Progress, stream_run
 from kaizen.evaluation.learning import shadow_evaluate
+from kaizen.ingest.detect import detect_doc_type
 from kaizen.models import Classification, DocType, Run, Thresholds
-from kaizen.pipeline import SUPPORTED_SUFFIXES, load_run, run_folder, save_run
+from kaizen.pipeline import SUPPORTED_SUFFIXES, discover_files, load_run, run_folder, save_run
 from kaizen.reporting.annotated_bom import write_annotated_bom
 from kaizen.reporting.certificate import write_certificate, write_run_certificate
 from kaizen.reporting.excel import ReviewBundle, export_with_review
@@ -77,7 +79,7 @@ from kaizen.workspace import Workspace
 SESSION_COOKIE = "kaizen_session"
 SIGN_IN_HINT = "Sign in first: POST /api/auth/signin with your approved BD email and password."
 BLIND_REFUSAL = "Not available while you are reviewing blind: it would reveal reviewer 1's decisions. End your blind session or ask reviewer 1."
-API_CONTRACT = 3
+API_CONTRACT = 4
 MAX_UPLOAD_BYTES = 250 * 1024 * 1024
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 logger = logging.getLogger(__name__)
@@ -101,6 +103,41 @@ def _source_fingerprint() -> str:
         digest.update(path.relative_to(root).as_posix().encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+UPLOAD_SET = (DocType.BOM, DocType.LABEL, DocType.DRAWING)
+
+
+def upload_folder_problems(root: Path, *, files: list[Path] | None = None) -> list[str]:
+    """Each uploaded folder must hold exactly one BOM, one label and one drawing. File and folder names are
+    free-form, so types come from content detection, the same detection the pipeline uses to parse them."""
+    folders: dict[Path, list[Path]] = {}
+    for f in (discover_files(root) if files is None else files):
+        folders.setdefault(f.parent, []).append(f)
+    problems = []
+    for folder, files in sorted(folders.items()):
+        name = folder.relative_to(root).as_posix() if folder != root else folder.name
+        if len(files) != len(UPLOAD_SET):
+            problems.append(f"Folder '{name}' has {len(files)} document{'s' if len(files) != 1 else ''}; it needs exactly 3: a BOM, a label and a drawing.")
+            continue
+        types = [detect_doc_type(f) for f in files]
+        if sorted(t.value for t in types if t) != sorted(t.value for t in UPLOAD_SET):
+            found = ", ".join(f"{f.name} ({t.value if t else 'not recognised'})" for f, t in zip(files, types))
+            problems.append(f"Folder '{name}' needs one BOM, one label and one drawing; found {found}.")
+    return problems
+
+
+def document_sets(root: Path) -> list[Path]:
+    """The folders to run separately, under the same rule as uploads: every folder holding documents must be
+    exactly one BOM, one label and one drawing, and each becomes its own run. Anything else is refused."""
+    if not root.is_dir():
+        raise HTTPException(400, f"Enter a folder path; '{root}' is not a folder on this machine.")
+    folders = sorted({f.parent for f in discover_files(root)})
+    if not folders:
+        raise HTTPException(400, f"No PDF, XLSX, XLSM or CSV documents found in '{root}'.")
+    if problems := upload_folder_problems(root):
+        raise HTTPException(400, " ".join(problems))
+    return folders
 
 # ---- sign-in -----------------------------------------------------------------------------------
 def _bd_email(raw: str) -> str:
@@ -317,12 +354,14 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if session is not None and session.blind:
             raise HTTPException(403, BLIND_REFUSAL)
 
-    def process_path(path: Path, actor: str, name: str = "") -> dict[str, Any]:
+    def process_path(path: Path, actor: str, name: str = "", *, files: list[Path] | None = None, progress: Progress | None = None) -> dict[str, Any]:
         if not path.is_dir():
             raise HTTPException(400, f"folder not found: {path}")
         if len(name.strip()) > 120:
             raise HTTPException(400, "Run name must contain at most 120 characters.")
-        run = run_folder(path.resolve(), catalog.store(actor), Thresholds())
+        run = run_folder(path.resolve(), catalog.store(actor), Thresholds(), files=files, progress=progress)
+        if files is not None and sorted(d.doc_type.value for d in run.documents) != sorted(t.value for t in UPLOAD_SET):
+            raise HTTPException(400, "Could not read all three documents. Each run needs a readable BOM, label and PDF drawing. " + " ".join(run.warnings[:3]))
         if not any(doc.items or (doc.doc_type is DocType.DRAWING and (doc.sku or doc.header.get('drawing_number'))) for doc in run.documents):
             warnings = run.warnings + [warning for doc in run.documents for warning in doc.warnings]
             raise HTTPException(400, "No usable BOM, label, drawing or PCO data could be extracted. " + " ".join(warnings[:3]))
@@ -337,16 +376,19 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             cache._runs.pop(run.metadata.run_id, None)
             shutil.rmtree(ws.runs_dir / run.metadata.run_id, ignore_errors=True)
             raise
-        return _summary(run, review) | run_info(run.metadata.run_id, actor)
+        result = _summary(run, review) | run_info(run.metadata.run_id, actor)
+        if progress:
+            progress(100, "Complete")
+        return result
 
     processing_lock = threading.Lock()
 
-    def run_path(path: Path, actor: str, name: str = "") -> dict[str, Any]:
+    def run_path(path: Path, actor: str, name: str = "", *, files: list[Path] | None = None, progress: Progress | None = None) -> dict[str, Any]:
         # A single-instance OCR pilot must not start multiple memory-heavy uploads together.
         if not processing_lock.acquire(blocking=False):
             raise HTTPException(429, 'Another cross-check is processing. Wait for it to finish, then try your upload again.')
         try:
-            return process_path(path, actor, name)
+            return process_path(path, actor, name, files=files, progress=progress)
         finally:
             processing_lock.release()
 
@@ -628,12 +670,37 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         return {"revision": opaque}
 
     @app.post("/api/runs/from-path")
-    def run_from_path(payload: RunPath, session=Depends(_identified)):
-        payload = payload.model_dump()
-        return run_path(Path(payload["path"]), session.reviewer, str(payload.get("name", "")))
+    def run_from_path(payload: RunPath, stream: bool = False, session=Depends(_identified)):
+        root, name = Path(payload.path), payload.name.strip()
+        # Validate every folder before creating any runs. Keep direct files separate from descendants.
+        sets = document_sets(root)
+        labels = [name if len(sets) == 1 else f"{name} · {folder.name}" if name else folder.name for folder in sets]
+        if any(len(label) > 120 for label in labels):
+            raise HTTPException(400, "Run name including the folder must contain at most 120 characters. Use a shorter name.")
+
+        def work(progress=None):
+            created, failures = [], []
+            for index, (folder, label) in enumerate(zip(sets, labels)):
+                def report(percent, stage, index=index, folder=folder):
+                    if progress:
+                        progress(min(99, int((100 * index + percent) / len(sets))), f"{folder.name}: {stage}")
+                try:
+                    direct = [f for f in discover_files(folder) if f.parent == folder]
+                    created.append(run_path(folder, session.reviewer, label, files=direct, progress=report))
+                except HTTPException as exc:
+                    failures.append({'path': str(folder), 'message': str(exc.detail)})
+                except Exception:
+                    reference = uuid.uuid4().hex[:12]
+                    logging.getLogger(__name__).exception('Local cross-check failed. Error reference: %s', reference)
+                    failures.append({'path': str(folder), 'message': f'Cross-check failed. Error reference: {reference}'})
+            if progress and not failures:
+                progress(100, 'Complete')
+            return {'runs': created, 'failures': failures}
+
+        return stream_run(work) if stream else work()
 
     @app.post("/api/runs/upload")
-    async def run_upload(files: list[UploadFile] = File(...), name: str = Form(""), session=Depends(_identified)):
+    async def run_upload(files: list[UploadFile] = File(...), name: str = Form(""), stream: bool = False, session=Depends(_identified)):
         target = ws.path / "uploads" / uuid.uuid4().hex
         total = 0
         seen = set()
@@ -648,6 +715,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 seen.add(rel)
                 if rel.suffix.lower() not in SUPPORTED_SUFFIXES or rel.name.startswith((".", "~$")):
                     continue
+                if len(rel.parts) < 2:
+                    raise HTTPException(400, f"Upload folders, not individual files: {rel.name} is not inside a folder.")
                 if any(parent in seen for parent in rel.parents) or any(rel in other.parents for other in seen):
                     raise HTTPException(400, "An upload path is used as both a file and a folder.")
                 dest = target / rel
@@ -658,8 +727,21 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                         if total > MAX_UPLOAD_BYTES:
                             raise HTTPException(413, 'Upload at most 250 MB per run.')
                         output.write(chunk)
+            selected = discover_files(target)
+            if len({f.parent for f in selected}) != 1:
+                raise HTTPException(400, "Send one document folder per run. Submit additional folders as separate runs.")
             label = name or f"{Path(files[0].filename or 'Project').parts[0]} · Review · {datetime.now(timezone.utc):%d %b %Y}"
-            return await run_in_threadpool(run_path, target, session.reviewer, label)
+
+            def work(progress=None):
+                try:
+                    if problems := upload_folder_problems(target, files=selected):
+                        raise HTTPException(400, " ".join(problems))
+                    return run_path(target, session.reviewer, label, files=selected, progress=progress)
+                except Exception:
+                    shutil.rmtree(target, ignore_errors=True)
+                    raise
+
+            return stream_run(work) if stream else await run_in_threadpool(work)
         except Exception:
             shutil.rmtree(target, ignore_errors=True)
             raise
@@ -668,13 +750,15 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 await file.close()
 
     @app.post("/api/demo/load")
-    def demo_load(session=Depends(_identified)):
-        src = _demo_dataset_path()
-        if src is None:
-            from kaizen.datasets.build import build_golden
+    def demo_load(stream: bool = False, session=Depends(_identified)):
+        def work(progress=None):
+            src = _demo_dataset_path()
+            if src is None:
+                from kaizen.datasets.build import build_golden
 
-            src = build_golden(ws.path / "demo-data")
-        return run_path(src, session.reviewer, "Demo · BOM cross-check")
+                src = build_golden(ws.path / "demo-data")
+            return run_path(src, session.reviewer, "Demo · BOM cross-check", progress=progress)
+        return stream_run(work) if stream else work()
 
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str, session: ReviewSession | None = Depends(_identified)):

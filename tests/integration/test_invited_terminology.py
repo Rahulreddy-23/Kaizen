@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from kaizen.api.app import create_app
+from kaizen.datasets.drawing_docs import DrawingSpec, render_drawing_pdf
 from kaizen.datasets.pdf_bom import BomRowSpec, BomSpec, render_bom_pdf
 from kaizen.datasets.pdf_label import LabelSpec, render_label_pdf
 from kaizen.review.access import AccessStore
@@ -174,8 +175,9 @@ def test_account_choices_reach_new_uploads_and_survive_restart(env, tmp_path):
     source = tmp_path / 'input'
     render_bom_pdf(BomSpec(parent_item='1295108NS', parent_description='KIT', rows=[BomRowSpec(item='2260001', description='SPECIAL END CAP', qty_per='1')]), source / 'bom.pdf')
     render_label_pdf(LabelSpec(ref='1295108', product_name='KIT', contents=['1 Each - Shared closure']), source / 'label.pdf')
+    render_drawing_pdf(DrawingSpec(drawing_number='DWG1295108', revision='A', title='KIT', plant='TEST', callouts=[]), source / 'drawing.pdf')
     def upload():
-        response = bob.post('/api/runs/upload', files=[('files', (p.name, p.read_bytes(), 'application/pdf')) for p in source.glob('*.pdf')])
+        response = bob.post('/api/runs/upload', files=[('files', (f'Kit/{p.name}', p.read_bytes(), 'application/pdf')) for p in source.glob('*.pdf')])
         assert response.status_code == 200, response.text
         return response.json()['run_id']
     before = upload()

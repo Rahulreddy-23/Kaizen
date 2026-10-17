@@ -34,7 +34,7 @@ import type {
   ViewerParams,
 } from "./types";
 import type { Annotation, DrawingBody, GroundTruthBody, LearningReport, LearningRow, LearningSummary } from "./learning";
-import { supportedRunFiles, uploadProblem } from "./lib/uploads";
+import { uploadProblem, type UploadFolder } from "./lib/uploads";
 import { notifyDataChanged } from "./lib/dataRefresh";
 
 export class ApiError extends Error {
@@ -44,6 +44,9 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+export interface RunProgress { percent: number; stage: string }
+export interface PathRunResult { runs: RunSummary[]; failures: {path: string; message: string}[] }
 
 type Params = Record<string, string | number | boolean | null | undefined>;
 
@@ -59,12 +62,12 @@ function qs(params: Params): string {
 
 const inFlightReads = new Map<string, Promise<unknown>>();
 
-function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const read = !init || (init.method === undefined && !init.signal && !init.headers);
+function request<T>(path: string, init?: RequestInit, onProgress?: (value: RunProgress) => void): Promise<T> {
+  const read = !onProgress && (!init || (init.method === undefined && !init.signal && !init.headers));
   if (!read) inFlightReads.clear(); // Never join a request started before a mutation/sign-out.
   const existing = read ? inFlightReads.get(path) : undefined;
   if (existing) return existing as Promise<T>;
-  const pending = performRequest<T>(path, init);
+  const pending = performRequest<T>(path, init, onProgress);
   if (read) {
     inFlightReads.set(path, pending);
     void pending.finally(() => {if (inFlightReads.get(path) === pending) inFlightReads.delete(path);}).catch(() => {});
@@ -72,10 +75,10 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
   return pending;
 }
 
-async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function performRequest<T>(path: string, init?: RequestInit, onProgress?: (value: RunProgress) => void): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { cache: "no-store", ...init });
+    res = await fetch(onProgress ? `${path}?stream=true` : path, { cache: "no-store", ...init });
   } catch (e) {
     throw new ApiError(0, `Cannot reach Kaizen. Check your connection and try again. ${(e as Error).message}`);
   }
@@ -93,12 +96,47 @@ async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, msg);
   }
-  const data = res.status === 204 ? undefined as T : await res.json() as T;
+  const data = onProgress ? await readRunStream<T>(res, onProgress) : res.status === 204 ? undefined as T : await res.json() as T;
   if (init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase())) {
     inFlightReads.clear();
     notifyDataChanged(path);
   }
   return data;
+}
+
+async function readRunStream<T>(response: Response, onProgress: (value: RunProgress) => void): Promise<T> {
+  if (!response.body || !response.headers.get("content-type")?.includes("application/x-ndjson")) {
+    throw new ApiError(0, "The server cannot report cross-check progress. Refresh after restarting Kaizen.");
+  }
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let pending = "", previous = 0;
+  try {
+    while (true) {
+      const {value, done} = await reader.read();
+      pending += decoder.decode(value, {stream: !done});
+      const lines = pending.split("\n");
+      pending = lines.pop()!;
+      if (done && pending.trim()) lines.push(pending);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === "error") throw new ApiError(event.status, event.detail);
+        if (event.type === "result") return event.data as T;
+        if (event.type === "progress" && Number.isFinite(event.percent)) {
+          previous = Math.max(previous, Math.min(100, Math.max(0, Math.floor(event.percent))));
+          onProgress({percent: previous, stage: event.stage});
+        }
+      }
+      if (done) break;
+    }
+    throw new ApiError(0, "The connection ended before a result arrived. Refresh All runs before retrying; your run may have been saved.");
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(0, "The progress connection was interrupted. Refresh All runs before retrying; your run may have been saved.");
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 function json(method: string, body: unknown): RequestInit {
@@ -182,16 +220,17 @@ export const api = {
   downloadUrl: (runId: string) => `/api/runs/${enc(runId)}/download.zip`,
   // ---- runs
   listRuns: () => request<RunListItem[]>("/api/runs"),
-  loadDemo: () => request<RunSummary>("/api/demo/load", { method: "POST" }),
-  runFromPath: (path: string, name = "") => request<RunSummary>("/api/runs/from-path", json("POST", { path, name })),
-  uploadRun: async (files: File[], name = "") => {
-    files = supportedRunFiles(files);
-    const problem = uploadProblem(files);
+  loadDemo: (onProgress?: (value: RunProgress) => void) => request<RunSummary>("/api/demo/load", { method: "POST" }, onProgress),
+  // One run per folder; every folder must hold exactly a BOM, a label and a drawing, as with uploads.
+  runFromPath: (path: string, name = "", onProgress?: (value: RunProgress) => void) => request<PathRunResult>("/api/runs/from-path", json("POST", { path, name }), onProgress),
+  uploadRun: async (folders: UploadFolder[], name = "", onProgress?: (value: RunProgress) => void) => {
+    if (folders.length > 1) throw new ApiError(400, "Send one folder per run.");
+    const problem = uploadProblem(folders);
     if (problem) throw new ApiError(400, problem);
     const fd = new FormData();
     fd.append("name", name);
-    for (const f of files) fd.append("files", f, f.webkitRelativePath || f.name);
-    return request<RunSummary>("/api/runs/upload", { method: "POST", body: fd });
+    for (const folder of folders) for (const f of folder.files) fd.append("files", f, `${folder.name}/${f.name}`);
+    return request<RunSummary>("/api/runs/upload", { method: "POST", body: fd }, onProgress);
   },
   getRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}`),
   quickView: (runId: string, query: {sku?: string; view?: "components" | "text"; status?: string; search?: string; offset?: number}) =>

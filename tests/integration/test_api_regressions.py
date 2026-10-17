@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from kaizen.api.app import RunCache, create_app
+from kaizen.datasets.drawing_docs import CalloutSpec, DrawingSpec, render_drawing_pdf
 from kaizen.datasets.pdf_bom import BomRowSpec, BomSpec, render_bom_pdf
 from kaizen.datasets.pdf_label import LabelSpec, render_label_pdf
 from kaizen.pipeline import run_folder
@@ -46,6 +47,7 @@ def env(tmp_path):
     source = tmp_path / 'source'
     render_bom_pdf(BomSpec(parent_item='1295108NS', parent_description='KIT', rows=[BomRowSpec(item='2260001', description='END CAP', qty_per='2')]), source / 'bom.pdf')
     render_label_pdf(LabelSpec(ref='1295108', product_name='KIT', contents=['1 Each - End Cap']), source / 'label.pdf')
+    render_drawing_pdf(DrawingSpec(drawing_number='DWG1295108', revision='A', title='KIT', plant='TEST', callouts=[CalloutSpec('END CAP', 'TAPÓN')]), source / 'drawing.pdf')
     ws = Workspace(tmp_path / 'ws')
     AccessStore(ws.db).bootstrap(EMAIL, PASSWORD)
     client = TestClient(create_app(ws))
@@ -58,8 +60,15 @@ def env(tmp_path):
     ws.db.close()
 
 
-def upload(client, source, names=('Project/bom.pdf', 'Project/label.pdf'), **kwargs):
-    return client.post('/api/runs/upload', files=[('files', (name, (source / ('label.pdf' if 'label' in name else 'bom.pdf')).read_bytes(), 'application/pdf')) for name in names], **kwargs)
+SET = ('Project/bom.pdf', 'Project/label.pdf', 'Project/drawing.pdf')
+
+
+def _source_file(source, name):
+    return source / next((kind for kind in ('label.pdf', 'drawing.pdf') if kind.removesuffix('.pdf') in name), 'bom.pdf')
+
+
+def upload(client, source, names=SET, **kwargs):
+    return client.post('/api/runs/upload', files=[('files', (name, _source_file(source, name).read_bytes(), 'application/pdf')) for name in names], **kwargs)
 
 
 @pytest.mark.parametrize('kind', ['assembly_candidate', 'assembly_rule', 'configuration', 'reference', 'type_conflict', 'alternatives', 'ambiguous'])
@@ -99,9 +108,9 @@ def test_upload_on_migrated_database_preserves_existing_run(env):
     response = upload(client, source, data={'name': 'Fresh upload'})
     assert response.status_code == 200, response.text
     assert response.json()['owner'] == EMAIL and response.json()['name'] == 'Fresh upload'
-    assert response.json()['documents'] == 2 and response.json()['rows'] > 0
+    assert response.json()['documents'] == 3 and response.json()['rows'] > 0
     assert client.get(f'/api/runs/{existing.metadata.run_id}').json()['name'] == 'Existing run'
-    assert client.get('/api/health').json()['api_contract'] == 3
+    assert client.get('/api/health').json()['api_contract'] == 4
 
 
 @pytest.mark.parametrize('names', [
@@ -128,11 +137,36 @@ def test_unreadable_or_unsupported_upload_does_not_create_empty_run(env, name, c
 
 def test_unrelated_folder_files_are_not_stored(env):
     ws, client, run, source = env
-    response = client.post('/api/runs/upload', files=[('files', ('Project/bom.pdf', (source / 'bom.pdf').read_bytes())), ('files', ('Project/notes.txt', b'unrelated')), ('files', ('Project/~$bom.xlsx', b'Excel lock'))])
+    junk = [('files', ('Project/notes.txt', b'unrelated')), ('files', ('Project/~$bom.xlsx', b'Excel lock'))]
+    response = client.post('/api/runs/upload', files=[('files', (name, _source_file(source, name).read_bytes())) for name in SET] + junk)
     assert response.status_code == 200, response.text
-    assert response.json()['documents'] == 1
+    assert response.json()['documents'] == 3
     assert not list((ws.path / 'uploads').rglob('*.txt'))
     assert not list((ws.path / 'uploads').rglob('~$*'))
+
+
+def test_folders_with_free_form_names_are_identified_by_content(env):
+    ws, client, run, source = env
+    files = [('files', (f'{folder}/{name}', _source_file(source, kind).read_bytes())) for folder in ('Batch 7/kit b',) for name, kind in zip(('x1.pdf', 'scan.pdf', 'doc 3.pdf'), SET)]
+    response = client.post('/api/runs/upload', files=files)
+    assert response.status_code == 200, response.text
+    assert response.json()['documents'] == 3
+    assert response.json()['name'].startswith('Batch 7')
+
+
+@pytest.mark.parametrize('names,message', [
+    (('Project/bom.pdf', 'Project/label.pdf'), "Folder 'Project' has 2 documents"),
+    (SET + ('Project/label copy.pdf',), "Folder 'Project' has 4 documents"),
+    (('Project/a.pdf', 'Project/b.pdf', 'Project/label.pdf'), "found a.pdf (BOM), b.pdf (BOM), label.pdf (LABEL)"),
+    (('bom.pdf', 'label.pdf', 'drawing.pdf'), 'not inside a folder'),
+    (SET + ('Other/bom.pdf',), 'Send one document folder per run'),
+])
+def test_each_folder_must_hold_one_bom_label_and_drawing(env, names, message):
+    ws, client, run, source = env
+    response = upload(client, source, names)
+    assert response.status_code == 400 and message in response.json()['detail'], response.text
+    assert len(ws.runs.list()) == 1
+    assert not list((ws.path / 'uploads').rglob('*.pdf'))
 
 
 def test_upload_size_limit_and_failed_registration_clean_up(env, monkeypatch):
@@ -277,6 +311,38 @@ def test_action_item_status_and_run_filters_both_apply(env):
 
 def test_local_path_must_be_a_folder(env):
     assert env[1].post('/api/runs/from-path', json={'path': str(env[3] / 'bom.pdf')}).status_code == 400
+
+
+def test_local_path_with_several_sets_makes_one_run_per_folder(env, tmp_path):
+    ws, client, run, source = env
+    batch = tmp_path / 'Good - upload these'
+    for folder in ('Kit A', 'Batch 7'):
+        for kind in ('bom.pdf', 'label.pdf', 'drawing.pdf'):
+            (batch / folder).mkdir(parents=True, exist_ok=True)
+            (batch / folder / f'{folder} {kind}').write_bytes((source / kind).read_bytes())
+    response = client.post('/api/runs/from-path', json={'path': str(batch), 'name': 'Batch'})
+    assert response.status_code == 200, response.text
+    assert sorted((r['name'], r['documents']) for r in response.json()['runs']) == [('Batch · Batch 7', 3), ('Batch · Kit A', 3)]
+
+
+def test_local_path_follows_the_upload_rule(env, tmp_path):
+    ws, client, run, source = env
+    batch = tmp_path / 'Broken - to see errors'
+    (batch / 'Missing drawing').mkdir(parents=True)
+    for kind in ('bom.pdf', 'label.pdf'):
+        (batch / 'Missing drawing' / kind).write_bytes((source / kind).read_bytes())
+    (batch / 'Kit A').mkdir()
+    for kind in ('bom.pdf', 'label.pdf', 'drawing.pdf'):
+        (batch / 'Kit A' / kind).write_bytes((source / kind).read_bytes())
+    before = len(ws.runs.list())
+    response = client.post('/api/runs/from-path', json={'path': str(batch)})
+    assert response.status_code == 400 and "Folder 'Missing drawing' has 2 documents" in response.json()['detail'], response.text
+    assert len(ws.runs.list()) == before, 'no run is created when any folder breaks the rule'
+    single = client.post('/api/runs/from-path', json={'path': str(batch / 'Missing drawing')})
+    assert single.status_code == 400 and "Folder 'Missing drawing' has 2 documents" in single.json()['detail']
+    empty = tmp_path / 'empty'
+    empty.mkdir()
+    assert 'No PDF' in client.post('/api/runs/from-path', json={'path': str(empty)}).json()['detail']
 
 
 def review_row(client, run_id, row_id, kind, classification=None, approve=False):
@@ -515,3 +581,72 @@ def test_document_text_is_retained_separately_and_keeps_run_access_controls(env)
     assert all(line['quantity'] is None and line['attributes']['kind'] == 'source_text' for line in data['text_lines'])
     assert any('Contents' in line['raw_text'] for line in data['text_lines'])
     assert TestClient(client.app).get(route).status_code == 401
+
+
+def test_nested_local_sets_do_not_include_descendant_documents_twice(env, tmp_path):
+    ws, client, run, source = env
+    root = tmp_path / 'parent'
+    for folder in (root, root / 'child'):
+        folder.mkdir(parents=True, exist_ok=True)
+        for file in source.iterdir():
+            (folder / file.name).write_bytes(file.read_bytes())
+    result = client.post('/api/runs/from-path', json={'path': str(root)}).json()
+    assert not result['failures']
+    assert len(result['runs']) == 2
+    assert [r['documents'] for r in result['runs']] == [3, 3]
+
+
+def test_local_runtime_failure_reports_saved_runs_and_failed_paths(env, tmp_path, monkeypatch):
+    ws, client, run, source = env
+    root = tmp_path / 'batch'
+    for name in ('a', 'b', 'c'):
+        folder = root / name
+        folder.mkdir(parents=True)
+        for file in source.iterdir():
+            (folder / file.name).write_bytes(file.read_bytes())
+    original = RunCache.put
+    def fail_middle(cache, run):
+        if Path(run.metadata.input_root).name == 'b':
+            raise RuntimeError('injected failure')
+        return original(cache, run)
+    monkeypatch.setattr(RunCache, 'put', fail_middle)
+    result = client.post('/api/runs/from-path', json={'path': str(root)}).json()
+    assert len(result['runs']) == 2
+    assert [f['path'] for f in result['failures']] == [str(root / 'b')]
+    assert 'Error reference:' in result['failures'][0]['message']
+    assert len(ws.runs.list()) == 3
+
+
+def test_valid_filename_does_not_allow_an_unreadable_document_set(env):
+    ws, client, run, source = env
+    files = [('files', (name, b'corrupt PDF' if 'drawing' in name else _source_file(source, name).read_bytes())) for name in SET]
+    result = client.post('/api/runs/upload', files=files)
+    assert result.status_code == 400 and 'Could not read all three' in result.json()['detail']
+    assert len(ws.runs.list()) == 1
+    assert not list((ws.path / 'uploads').rglob('*.pdf'))
+
+
+def test_streamed_progress_reaches_100_only_after_the_run_is_saved(env):
+    import json
+    ws, client, run, source = env
+    response = upload(client, source, params={'stream': 'true'})
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('application/x-ndjson')
+    events = [json.loads(line) for line in response.text.splitlines()]
+    progress = [e['percent'] for e in events if e['type'] == 'progress']
+    assert progress == sorted(progress) and progress[0] == 0 and progress[-1] == 100
+    assert {5, 70, 90}.issubset(progress)
+    assert events[-1]['type'] == 'result'
+    assert ws.runs.get(events[-1]['data']['run_id']) is not None
+
+
+def test_streamed_parse_failure_never_reports_completion_and_cleans_upload(env):
+    import json
+    ws, client, run, source = env
+    files = [('files', (name, b'bad' if 'drawing' in name else _source_file(source, name).read_bytes())) for name in SET]
+    response = client.post('/api/runs/upload?stream=true', files=files)
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]['type'] == 'error' and events[-1]['status'] == 400
+    assert not any(e.get('percent') == 100 for e in events)
+    assert len(ws.runs.list()) == 1
+    assert not list((ws.path / 'uploads').rglob('*.pdf'))

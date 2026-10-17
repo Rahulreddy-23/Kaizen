@@ -26,10 +26,12 @@ def test_new_run_collects_immediately_without_learning_page(tmp_path, monkeypatc
     ws, app, client = application(tmp_path)
     source = tmp_path / 'source'
     source.mkdir()
+    # This suite stubs extraction; upload validation is covered by the API regression suite.
+    monkeypatch.setattr(module, 'document_sets', lambda root: [root])
     monkeypatch.setattr(module, 'run_folder', lambda *a, **k: fixture())
     response = client.post('/api/runs/from-path', json={'path': str(source), 'name': 'Automatic collection'})
     assert response.status_code == 200, response.text
-    rid = response.json()['run_id']
+    rid = response.json()['runs'][0]['run_id']
     learning = LearningStore(ws.db)
     assert learning.enrolled(rid)
     assert learning.split('SKU-A') == 'train'
@@ -75,10 +77,12 @@ def test_unknown_identity_does_not_block_review_or_fabricate_a_split(tmp_path, m
     run.groups[0].sku = 'UNKNOWN'
     for row in run.results:
         row.sku = 'UNKNOWN'
+    # This suite stubs extraction; upload validation is covered by the API regression suite.
+    monkeypatch.setattr(module, 'document_sets', lambda root: [root])
     monkeypatch.setattr(module, 'run_folder', lambda *a, **k: run)
     response = client.post('/api/runs/from-path', json={'path': str(source)})
     assert response.status_code == 200, response.text
-    rid = response.json()['run_id']
+    rid = response.json()['runs'][0]['run_id']
     assert client.post(f'/api/runs/{rid}/decisions', json={'row_id': 'pair0', 'decision': 'NEEDS_MORE_INFORMATION', 'expected_revision': 0}).status_code == 200
     summary = client.get(f'/api/runs/{rid}/learning').json()
     assert summary['enabled'] is False and summary['collection_mode'] == 'automatic'

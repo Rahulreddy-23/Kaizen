@@ -5,6 +5,7 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -95,11 +96,14 @@ class Ingested:
     audit: list[AuditEvent] = field(default_factory=list)
 
 
-def ingest_folder(root: Path | str) -> Ingested:
+def ingest_folder(root: Path | str, *, files: list[Path] | None = None, progress: Callable[[int, str], None] | None = None) -> Ingested:
     root = Path(root)
     ing = Ingested(root=root, audit=[AuditEvent(action="run.started", detail=f"input root {root}")])
     inputs, documents, warnings, audit = ing.inputs, ing.documents, ing.warnings, ing.audit
-    for f in discover_files(root):
+    selected = discover_files(root) if files is None else files
+    for index, f in enumerate(selected):
+        if progress:
+            progress(5 + int(65 * index / max(1, len(selected))), f"Reading document {index + 1} of {len(selected)}")
         rel = _rel(f, root)
         try:
             outcome = parse_document(f)
@@ -292,5 +296,11 @@ def load_run(path: Path | str) -> Run:
     return Run.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
 
-def run_folder(root: Path | str, store: RelationshipStore, thresholds: Thresholds = Thresholds(), provider: AdjudicationProvider | None = None) -> Run:
-    return run_checks(ingest_folder(root), store, thresholds, provider)
+def run_folder(root: Path | str, store: RelationshipStore, thresholds: Thresholds = Thresholds(), provider: AdjudicationProvider | None = None, *, files: list[Path] | None = None, progress: Callable[[int, str], None] | None = None) -> Run:
+    ingested = ingest_folder(root, files=files, progress=progress)
+    if progress:
+        progress(70, "Comparing documents")
+    result = run_checks(ingested, store, thresholds, provider)
+    if progress:
+        progress(90, "Saving cross-check")
+    return result

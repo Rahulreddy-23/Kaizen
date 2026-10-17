@@ -8,9 +8,12 @@ for implementation boundaries.
 ## Current workflow
 
 1. Accept an administrator-issued invitation for your BD address, choose a password and sign in. Invitation delivery requires a trusted BD channel; it is not automatic email verification.
-2. Open **All runs → New cross-check**. Upload a project folder or individual PDF/XLSX/XLSM/CSV files,
-   review the selected-file list and remove unwanted files, or choose **Try a demo**. Choosing again
-   replaces the selection; cancelling the picker keeps it. Word files are unsupported.
+2. Open **All runs → New cross-check**. Choose a folder or exactly three PDF/XLSX/XLSM/CSV files
+   containing one BOM, one label and one drawing. Each folder or selected set creates its own run;
+   choosing a parent folder adds its document folders. Add more sets or remove a set before starting.
+   Cancelling the picker keeps the selection. Unsupported files are reported and skipped.
+   A compact stage-based 0–100% indicator appears beside the start action; 100% means saving succeeded.
+   After partial failure, successful runs remain saved and only failed sets are retained for retry.
 3. Inspect **Overview** and **Documents**. Documents use actual SKU associations; shared sources appear
    once, with extraction warnings and source details available.
    Use **Quick view** to select a SKU, compare BOM/Label/Diagram entries side by side, and click an entry

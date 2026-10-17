@@ -80,7 +80,7 @@ Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corner
 | Action items, users | Search/filter controls where relevant; 25 entries per client-side page. Manage users includes invitation creation, a one-time code field and pending invitation revocation. |
 | Documents | Actual SKU membership; shared/unassigned sources represented once; six columns, source details and warning disclosures. |
 | Quick view | Per-SKU BOM/Label/Diagram matrix, green/orange text with written status, 100-row pagination, search, retained-text mode, and three source previews. See [surface contract](quick-view.md). |
-| Upload | Explicit folder/file buttons; selected names, folder paths and sizes in a visible bounded list with individual removal and Clear all. Cancelling a picker retains the selection. Skipped unsupported files are reported; pending controls prevent duplicate submission. The dialog body scrolls while its actions stay visible. |
+| Upload | Explicit folder/file buttons; selected document sets and folder paths in a visible bounded list with per-set removal and Clear all. Cancelling a picker retains the selection. Skipped unsupported files are reported; pending controls prevent duplicate submission. A compact 0–100% stage progress indicator sits beside the start action and reaches 100% only after saving succeeds. The dialog body scrolls while its actions stay visible. |
 | Evidence | Review tools beside source evidence from 1280px; layouts stack when space is limited. Ground truth occupies full width below the workspace. |
 | Ground truth | Source lists side by side from 768px and stacked below; searchable checkbox choices, removable selected chips, counts and Clear selection. |
 

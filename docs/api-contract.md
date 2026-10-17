@@ -47,7 +47,7 @@ own. Hosted configuration enables Secure cookies; mutations with a supplied cros
 | 403 | Insufficient permission, revoked/pending provider condition, or forbidden operation. |
 | 404 | Unknown or inaccessible run/item/source. Inaccessible run IDs do not reveal existence. |
 | 409 | Duplicate account or stale decision/annotation version. |
-| 413 | Upload exceeds its size limit. Document-run uploads are limited to 250 MB in total. |
+| 413 | Upload exceeds its size limit. Document uploads are limited to 250 MB per run (one three-document set). |
 | 422 | Invalid typed payload/query, including unsupported Excel detail level. |
 | 429 | Rate limiting; local accounts lock out for 15 minutes after ten consecutive failed attempts. |
 | 500 / 503 | Unexpected error with server-log reference / unavailable account provider. |
@@ -96,10 +96,18 @@ verification, candidate evaluation and dataset exports additionally require Edit
 | Method | Path | Input / result |
 | --- | --- | --- |
 | GET | `/api/runs` | Accessible run records with names, ownership, permissions, original summary and current review progress. Missing saved runs are marked unavailable. `deleted=true` instead lists only the actor’s deleted runs with `deleted_at`/`deleted_by` and stored summaries. |
-| POST | `/api/runs/from-path` | `{path, name?}`; administrator-only and disabled in hosted mode. |
-| POST | `/api/runs/upload` | Multipart `files[]`, optional `name`; relative filenames preserve folder structure. PDF/XLSX/XLSM/CSV, safe paths and total size are validated. |
+| POST | `/api/runs/from-path` | `{path, name?}`; administrator-only and disabled in hosted mode. Returns `{runs: RunSummary[], failures: [{path, message}]}`. Every document folder becomes a separate run; nested folders are independent. Invalid sets are rejected before any runs are created; runtime failures report saved runs and failed paths. |
+| POST | `/api/runs/upload` | Multipart `files`, optional `name`; one folder containing exactly one BOM, one label and one drawing. Three individually selected files use a synthetic folder prefix. Safe relative paths, readable document types and the 250 MB per-run limit are validated. Submit additional folders separately. |
 | POST | `/api/demo/load` | Loads the synthetic fixture run. |
 | GET | `/api/runs/{run_id}` | Run summary, groups, source counts, warnings, thresholds, terminology version and review progress. |
+
+The upload, local-path and demo endpoints accept `?stream=true` to return `application/x-ndjson`.
+Each line is `{type: "progress", percent: 0..100, stage}`, `{type: "result", data}` or
+`{type: "error", status, detail}`. Percentages mark processing stages, rather than elapsed-time estimates;
+100 means the requested runs have been saved. Stream errors occur after HTTP headers, so clients must
+read terminal events and must not infer success from HTTP 200. An interrupted stream is not a safe
+retry signal: refresh All runs first. JSON responses remain the default. Health `api_contract` is 4;
+older cached clients must refresh and stale servers must restart.
 
 Uploads/copies receive distinct web run IDs. Source hashes and metadata identify what actually changed;
 do not treat different run IDs as different source content. Run names are descriptive, not identifiers.
