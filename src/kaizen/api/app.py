@@ -126,21 +126,24 @@ def _demo_dataset_path() -> Path | None:
 
 
 class RunCache:
-    def __init__(self, ws: Workspace):
+    def __init__(self, ws: Workspace, learning: LearningStore | None = None):
         self.ws = ws
+        self.learning = learning
         self._runs: dict[str, Run] = {}
 
     def get(self, run_id: str) -> Run:
         rec = self.ws.runs.get(run_id)
         if rec is None:
             raise HTTPException(404, f"run {run_id} not found")
-        if run_id in self._runs:
-            return self._runs[run_id]
-        try:
-            run = load_run(rec["json_path"])
-        except FileNotFoundError:
-            raise HTTPException(404, "The saved run is unavailable. Upload its source documents again.")
-        self._runs[run_id] = run
+        run = self._runs.get(run_id)
+        if run is None:
+            try:
+                run = load_run(rec["json_path"])
+            except FileNotFoundError:
+                raise HTTPException(404, "The saved run is unavailable. Upload its source documents again.")
+            self._runs[run_id] = run
+        if self.learning and rec.get("owner"):
+            self.learning.ensure_enrolled(run, rec["owner"])
         return run
 
     def put(self, run: Run) -> Path:
@@ -202,12 +205,21 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             logger.error("Request %s failed: %s %s", reference, request.method, request.url.path, exc_info=exc)
         return JSONResponse(status_code=500, content={"detail": f"The server could not complete this request. Error reference: {reference}. See the Kaizen server log for details."}, headers=private_headers())
 
-    cache = RunCache(ws)
+    learning = LearningStore(ws.db)
+    cache = RunCache(ws, learning)
     review = CollaborativeReviewStore(ws.db)
     access = AccessStore(ws.db)
     items = ActionItemStore(ws.db)
     sessions = SessionStore(ws.db)
-    learning = LearningStore(ws.db)
+    # Backfill active owned runs without retaining every large parsed run in RAM.
+    # Oldest-first ordering makes first-time split assignment deterministic.
+    for record in sorted(ws.runs.list(), key=lambda r: (r["created_at"], r["run_id"])):
+        if not record.get("owner") or learning.enrolled(record["run_id"]):
+            continue
+        try:
+            learning.ensure_enrolled(load_run(record["json_path"]), record["owner"])
+        except (OSError, ValueError) as exc:
+            logger.warning("Automatic closed-testing setup deferred (%s)", type(exc).__name__)
     learning_lock = threading.Lock()
     learning_running: set[str] = set()
 
@@ -317,6 +329,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             with ws.db.transaction():
                 cache.put(run)
                 ws.db.conn.execute('UPDATE runs SET owner=?, name=? WHERE run_id=?', (actor, label, run.metadata.run_id))
+                learning.ensure_enrolled(run, actor)
         except Exception:
             cache._runs.pop(run.metadata.run_id, None)
             shutil.rmtree(ws.runs_dir / run.metadata.run_id, ignore_errors=True)
@@ -465,6 +478,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     def make_copy(run_id: str, session=Depends(_identified)):
         try:
             run = copy_run(ws, cache.get(run_id), session.reviewer)
+            learning.ensure_enrolled(run, session.reviewer)
         except ValueError as e:
             raise HTTPException(400, str(e))
         return _summary(run, review) | run_info(run.metadata.run_id, session.reviewer)
@@ -803,7 +817,9 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.get('/api/runs/{run_id}/learning')
     def learning_summary(run_id: str):
         with ws.db.transaction():
-            summary = learning.summary(cache.get(run_id))
+            run = cache.get(run_id)
+            issue = learning.ensure_enrolled(run, ws.runs.get(run_id)["owner"] or "system")
+            summary = learning.summary(run) | {"collection_mode": "automatic", "setup_issue": issue}
             job = ws.db.conn.execute('SELECT state,error FROM learning_jobs WHERE run_id=?', (run_id,)).fetchone()
             return summary | {'automatic_learning': dict(job) if job else {'state': 'idle', 'error': None}}
 
@@ -820,7 +836,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         run = cache.get(run_id)
         try:
             with ws.db.transaction():
-                return learning.row_detail(run, _find(run, row_id))
+                return learning.row_detail(run, _find(run, row_id)) | {"setup_issue": learning.ensure_enrolled(run, ws.runs.get(run_id)["owner"] or "system")}
         except ValueError as e:
             raise HTTPException(400, str(e))
 
@@ -877,10 +893,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.get('/api/runs/{run_id}/learning/observations.json')
     def export_observations(run_id: str):
         run = cache.get(run_id)
-        try:
-            learning.require_enrolled(run)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
+        # Raw observations need no dataset split; unresolved identities must not
+        # prevent administrators from recovering the collected review evidence.
         with ws.db.transaction():
             payload = {'schema_version': 1, 'run_id': run_id, 'purpose': 'Raw review observations; not verified training labels.',
                        'rows': [{'engine': r.model_dump(mode='json'), 'history': review.history(run_id, r.row_id)} for r in run.results if review.decisions(run_id, r.row_id)],

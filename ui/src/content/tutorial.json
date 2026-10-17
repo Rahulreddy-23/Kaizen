@@ -274,11 +274,11 @@
     {
       "id": "closed-testing",
       "label": "Understand closed testing",
-      "intro": "Closed testing is an optional validation workflow for curated feedback, separate from normal review.",
+      "intro": "Closed testing collects review data automatically and turns independently verified corrections into candidate improvements.",
       "steps": [
         {
-          "title": "Enable only when needed",
-          "body": "The run owner enables closed testing. Editors can annotate correct pairings, attributes, drawing applicability and unresolved evidence."
+          "title": "Review normally",
+          "body": "Collection is on by default for eligible runs, including existing active runs and copies. Decisions, changes, approvals and timing are recorded in the private workspace. No Enable step is needed. Editors can add source-backed pairing, attribute, assembly and drawing corrections."
         },
         {
           "title": "Get independent verification",

@@ -118,9 +118,9 @@ Gone means the comparison disappeared; it is not proof that an issue was fixed. 
 
 ## Understand closed testing
 
-Closed testing is an optional validation workflow for curated feedback, separate from normal review.
+Closed testing collects review data automatically and curates independently verified feedback.
 
-1. **Enable only when needed.** The run owner enables closed testing. Editors can annotate correct pairings, attributes, drawing applicability and unresolved evidence.
+1. **Review normally.** Collection is on by default for eligible new runs, copies and existing active owned runs. No Enable step is needed. Editors can annotate correct pairings, attributes, drawing applicability and unresolved evidence.
 
 2. **Get independent verification.** A different administrator verifies an annotation before it enters the verified dataset. Normal self-approval does not create independently verified ground truth.
 

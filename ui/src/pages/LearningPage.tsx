@@ -72,10 +72,15 @@ export default function LearningPage() {
   return <div className="space-y-5">
     <PageHeader title="Closed testing" description="Turn source-backed reviewer corrections into verified examples, then measure candidate improvements alongside testing." back={{to: `/runs/${enc(runId)}`, label: "Overview"}} actions={<LinkButton to={`/runs/${enc(runId)}/mining`}>Terminology worklist</LinkButton>} />
     {error && <ErrorBox error={error} />}
-    {!data.enabled ? <Card><CardHead title="Enable feedback collection" /><div className="p-5 space-y-4 text-sm">
-      <p>Review decisions and timing are already recorded. Enabling closed testing adds pairing corrections, verified attributes, assembly allocations and drawing applicability. Data stays in this workspace.</p>
-      <p>The first delivery with multiple SKUs reserves about 20% of whole SKUs for evaluation. Reuploads and copies keep their split. Reserved examples cannot be promoted through the terminology worklist.</p>
-      {run.data.permission === "owner" ? <Button variant="primary" loading={busy} onClick={() => perform(() => api.learning.enable(runId))}>Enable closed testing</Button> : <p>The run owner enables collection.</p>}
+    <div className="rounded-md border border-line bg-surface-2 p-4 text-sm space-y-2" role="status">
+      <p className="font-medium">Review data is collected automatically</p>
+      <p className="text-ink-2">Decisions, corrections, approvals and review timing stay in this private workspace. Source-backed annotations need independent verification before they become learning examples.</p>
+    </div>
+    {!data.enabled ? <Card><CardHead title="Verified learning needs attention" /><div className="p-5 space-y-3 text-sm">
+      <p>{data.setup_issue || "Product identities or source documents need attention before training and evaluation can be separated safely."}</p>
+      <p className="text-ink-2">Review history is being collected. Resolve the source issue and upload a corrected run to start verified learning automatically.</p>
+      <LinkButton to={`/runs/${enc(runId)}/documents`}>Inspect documents</LinkButton>
+      {isAdmin && canEdit && <AnchorButton href={api.learning.observationsUrl(runId)}>Raw observations</AnchorButton>}
     </div></Card> : <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Recorded review events" value={data.review_events} sub="Decisions and approvals" />

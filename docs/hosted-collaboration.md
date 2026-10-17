@@ -26,7 +26,7 @@ Hosted/confidential sessions expire after eight hours. Hosting approval, retenti
 
 | Access | Run capabilities |
 | --- | --- |
-| Owner | Review, approve, import/export, copy and manage action items; rename/delete/restore, share and enable closed testing. |
+| Owner | Review, approve, import/export, copy and manage action items; rename/delete/restore, share. Closed-testing collection is automatic. |
 | Edit | Review, approve, import/export, copy and manage action items. |
 | View | Browse comparisons and source previews; no changes, approvals, copies or review exports. |
 

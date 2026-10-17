@@ -141,6 +141,7 @@ def test_copy_is_private_and_independent(env):
     response = c[EDITOR].post(f'/api/runs/{rid}/copy')
     assert response.status_code == 200, response.text
     copied = response.json()['run_id']
+    assert ws.db.conn.execute('SELECT 1 FROM learning_enrollments WHERE run_id=?', (copied,)).fetchone()
     assert copied != rid and response.json()['owner'] == EDITOR
     assert c[ADMIN].get(f'/api/runs/{copied}').status_code == 404
     save(c[EDITOR], copied, row, 'Independent change')

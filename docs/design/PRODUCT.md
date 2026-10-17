@@ -21,7 +21,7 @@ for implementation boundaries.
 5. Use **Download Excel** on Overview: **Summary** shows totals and rows needing attention;
    **Complete details** includes all comparisons, evidence and supporting audit sheets. Both provide
    SKU worksheets and importable decision/comment columns. PDFs and independent-copy ZIPs remain available.
-6. Track action items and compare corrective runs. Use **Closed testing** for separately verified
+6. Track action items and compare corrective runs. **Closed testing** collects review data automatically. Use it for separately verified
    ground truth and candidate evaluation, not as an automatic approval or live-model update.
 
 Owners can rename or delete from **Options** in All runs or Overview. Deletion moves a run to **All runs → Deleted runs**,
@@ -35,7 +35,7 @@ steps belong to the legacy CLI workflow; they are not the current website intera
 
 | Role | Capabilities |
 | --- | --- |
-| Run owner | Review/edit/export/copy; rename/delete/restore and manage View/Edit sharing; enable closed testing. |
+| Run owner | Review/edit/export/copy; rename/delete/restore and manage View/Edit sharing; automatic closed-testing collection. |
 | Editor | Review, approve, import/export, copy and manage action items on the shared run. |
 | Viewer | Browse results and source previews; no changes, approvals, copies or review exports. |
 | Application administrator | Invite/manage users; import/edit/deactivate shared terminology. Approved reviewers can publish new equivalences and choose personal entries. Learning verification/evaluation/exports also require Edit access to the run. Administrator status does not reveal private runs. |

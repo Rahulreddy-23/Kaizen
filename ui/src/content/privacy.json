@@ -50,7 +50,7 @@
       "steps": [],
       "paragraphs": [
         "OCR, extraction and deterministic matching run in the application process. Confidential mode prevents configuration from enabling external AI adjudication or an external password provider. Documents and extracted descriptions are not sent to AI model APIs by these workflows.",
-        "Closed testing requires owner enrollment and independently verified feedback. It can create local candidate rules and evaluation datasets within the workspace. Ordinary review approval does not automatically train or release a new model.",
+        "Closed testing collects review activity automatically for owned runs, including existing active runs after an application update. Verified learning requires independently verified feedback. It can create local candidate rules and evaluation datasets within the workspace. Ordinary review approval does not automatically train or release a new model.",
         "This notice makes no claim about a hosting provider’s contractual use of customer data. The operator must assess the provider’s agreement and subprocessors against BD requirements."
       ],
       "note": "",

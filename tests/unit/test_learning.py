@@ -278,3 +278,19 @@ def test_false_clear_scoring_flags_silent_quantity_errors(learning_env):
     assert metrics['false_clears'] == 1
     assert metrics['false_clear_rate'] == 1.0
     assert metrics['discrepancy_recall'] == 0.0
+
+
+def test_automatic_setup_defers_conflicting_sources_without_changing_splits(learning_env):
+    ws, run, learning = learning_env
+    train = next(g for g in run.groups if learning.split(g.sku) == 'train')
+    heldout = next(g for g in run.groups if learning.split(g.sku) == 'evaluation')
+    conflicted = run.model_copy(deep=True)
+    conflicted.metadata.run_id = 'conflicting-copy'
+    train_bom = next(d for d in conflicted.documents if d.id in train.document_ids and d.doc_type == DocType.BOM)
+    heldout_bom = next(d for d in conflicted.documents if d.id in heldout.document_ids and d.doc_type == DocType.BOM)
+    train_bom.sha256 = heldout_bom.sha256
+    before = [tuple(r) for r in ws.db.conn.execute('SELECT * FROM learning_partitions ORDER BY sku_key')]
+    issue = learning.ensure_enrolled(conflicted, AUTHOR)
+    assert issue and 'split' in issue
+    assert not learning.enrolled(conflicted.metadata.run_id)
+    assert [tuple(r) for r in ws.db.conn.execute('SELECT * FROM learning_partitions ORDER BY sku_key')] == before

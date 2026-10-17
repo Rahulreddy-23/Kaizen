@@ -83,9 +83,9 @@ export function GroundTruthPanel({runId, rowId, detail}: {runId: string; rowId: 
       value={ids} onChange={change} hint="Select each component you verified. Choose multiple items for an assembly; clear the selection for an absent counterpart." />;
   }
   return <Card>
-    <CardHead title="Ground truth" description={state.data.enabled ? `Reserved for ${state.data.split === "evaluation" ? "evaluation" : "training"}${annotation ? ` · v${annotation.version} · ${annotation.status}` : ""}` : "Closed testing is not enabled"} />
+    <CardHead title="Ground truth" description={state.data.enabled ? `Reserved for ${state.data.split === "evaluation" ? "evaluation" : "training"}${annotation ? ` · v${annotation.version} · ${annotation.status}` : ""}` : "Verified learning needs attention"} />
     <div className="p-5 space-y-4">
-      {!state.data.enabled ? <p className="text-sm">The run owner can enable data collection on the <Link to={`/runs/${enc(runId)}/learning`}>Closed testing</Link> page.</p> : <>
+      {!state.data.enabled ? <p className="text-sm">Review history is collected automatically. {state.data.setup_issue} Inspect <Link to={`/runs/${enc(runId)}/learning`}>Closed testing</Link> for source identity or dataset split issues.</p> : <>
         <p className="text-xs text-ink-3">Identify the true source pairing and outcome from the documents. A different administrator verifies it before it enters a dataset.</p>
         <fieldset disabled={!canEdit || busy} className="space-y-4">
           <Field label="What did you verify?"><select className="input w-full" value={verdict} onChange={e => setVerdict(e.target.value as Verdict)}>{VERDICTS.map(([v, text]) => <option key={v} value={v}>{text}</option>)}</select></Field>

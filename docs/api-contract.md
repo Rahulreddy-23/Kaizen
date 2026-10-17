@@ -169,14 +169,15 @@ return 400. Held-out SKU examples cannot become learned training terminology. Su
 
 ## Closed testing
 
-All paths retain normal run access. Only the owner enables testing. Editors can annotate; verification,
+All paths retain normal run access. Collection starts automatically for new owned runs, copies and
+existing active owned runs on startup. Editors can annotate; verification,
 dataset exports and candidate evaluation need an administrator with Edit access. Verification must use a different
 actor from the annotation/applicability author. See [learning safeguards](closed-testing.md).
 
 | Method | Path | Input / result |
 | --- | --- | --- |
-| GET | `/api/runs/{run_id}/learning` | Enrollment, immutable SKU splits, tasks, coverage, evaluation and durable job state. |
-| POST | `/api/runs/{run_id}/learning/enable` | Enroll before learning; reserve evaluation identities. |
+| GET | `/api/runs/{run_id}/learning` | Automatic collection status, setup_issue, immutable SKU splits, tasks, coverage, evaluation and durable job state. |
+| POST | `/api/runs/{run_id}/learning/enable` | Compatibility endpoint: owner-only, idempotent enrollment/retry; no longer required by the UI. |
 | GET | `/api/runs/{run_id}/learning/rows/{row_id}` | Current annotation/split, source choices, suggested attributes and review revision. |
 | PUT | `/api/runs/{run_id}/learning/rows/{row_id}` | `{expected_version, review_revision, verdict, classification, expected_a_ids[], expected_b_ids[], discrepancies[], attributes, assembly_quantities, note}`. |
 | POST | `/api/runs/{run_id}/learning/rows/{row_id}/approve` | `{expected_version, approve, note?}`; verifies/rejects and queues candidate rebuild. |

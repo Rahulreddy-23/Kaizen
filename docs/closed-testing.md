@@ -8,8 +8,8 @@ structured attributes and assembly quantities; another application administrator
 ## Start the test
 
 1. Upload representative SKU sets into one run and share Edit access with the testers and verifying administrator.
-2. The owner opens **Closed testing** and selects **Enable closed testing** before anyone creates learned
-   terminology from these examples. A first batch of four distinct SKU identities normally reserves one SKU for evaluation; existing immutable assignments and identical sources are respected.
+2. Closed testing starts automatically when the run is created. Existing active owned runs are enrolled
+   when the app starts; copies and restored runs retain immutable assignments. No Enable step is needed. A first batch of four distinct SKU identities normally reserves one SKU for evaluation; existing immutable assignments and identical sources are respected.
 3. Confirm the correct released drawing for each SKU using the drawing selector, released revision, release
    record reference and evidence note. A different administrator verifies the applicability record. If the
    supplied drawing does not apply, record that and upload a new run with the correct released drawing.
@@ -66,8 +66,9 @@ SKU assignments are immutable in the workspace. Numeric identity variants, repea
 keep their assignment. Identical BOM/label content cannot cross training/evaluation splits, even under a
 renamed SKU. Shared packaging drawings are governed by per-SKU applicability; they are not an independent
 held-out document corpus. A first run with just one SKU has training data only; accuracy is unmeasured until
-another distinct SKU is reserved. With small deliveries, the 20% allocation is rounded up. Enable testing
-before learned terminology is created, and keep the same workspace across deployments.
+another distinct SKU is reserved. With small deliveries, the 20% allocation is rounded up. Automatic setup reserves identities before the new run can supply learned terminology. Keep the same
+workspace across deployments. Previously learned terminology can affect historical data; inspect its provenance
+before treating a historical example as independent evaluation evidence.
 
 Only the latest independently verified annotation is eligible. Unresolved, rejected, stale and unverified
 records stay out of both datasets. Drawing examples also require independently verified released
@@ -100,8 +101,10 @@ Each evaluation writes frozen `train.json`, `evaluation.json`, `candidate.json`,
 Datasets have content versions; configurations include the terminology snapshot, structured matching,
 negative pairs, attribute overrides and assembly rules. Annotation versions remain in SQLite.
 
-Render deployment is pending. The prepared configuration uses one server worker and a persistent disk. Back up the full workspace,
+The Render pilot uses one server worker and a persistent disk. Back up the full workspace,
 including `kaizen.db`, source files and candidate artifacts. Learning tables are created idempotently when
-the workspace opens. Closed testing is disabled per run until its owner enables it. Learning artifacts stay
+the workspace opens. Closed testing is on by default for eligible owned runs. Unknown SKU identities or
+conflicting source splits defer verified learning and show an actionable explanation; normal review events
+continue to be collected. Setup is idempotent and never changes an existing split or creates approved labels. Learning artifacts stay
 in the workspace and its backups; an administrator exports them explicitly. Retention and deletion remain
 operator-managed through workspace backups/storage; there is no new automatic deletion policy.
