@@ -26,9 +26,9 @@ export default function RunsPage() {
   const [runName, setRunName] = useState("");
   const health = useAsync(api.health, []);
   const runs = useAsync(() => api.listRuns(), []);
-  useDataRefresh(runs.reload);
+  useDataRefresh(runs.refresh);
   const deleted = useAsync(() => tab === "deleted" ? api.listDeletedRuns() : Promise.resolve([]), [tab]);
-  useDataRefresh(deleted.reload);
+  useDataRefresh(deleted.refresh);
   const list = tab === "deleted" ? deleted : runs;
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);

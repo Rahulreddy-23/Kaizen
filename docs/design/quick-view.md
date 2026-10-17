@@ -28,7 +28,9 @@ saved comparisons in BOM / Label / Diagram columns, then select an entry to insp
   overflow stays within the matrix. Back to comparison and Clear selection provide explicit recovery.
 - Default to compared entries; All entries includes exempt/unpaired source rows. Keep search controls
   and SKU navigation available while requests load, and hide stale rows until the response arrives.
-- Switching SKU, run, mode or filters clears the selection. Refresh picks up current review status.
+- Switching SKU, run, mode or filters clears the selection. Background refresh updates current status without hiding entries, disabling controls or moving manually positioned source pages. Source targets that actually change still relocate their evidence. Manual Refresh keeps its explicit loading feedback.
+- A shared authenticated change check runs every five seconds while the tab is visible; full queries run only after changes. Successful local/cross-tab run edits refresh immediately. Identical concurrent JSON reads join one request; responses are not retained in a client cache. Navigation does not reload the entire run list.
+- Page resolution remains 300 DPI. BOMs use lossless PNG; labels and diagrams use quality-92 JPEG to reduce transfer size. A process-local 64 MiB LRU joins duplicate renders and reuses pages, keyed by run/document/source metadata/page/DPI/highlight/format. Every request still checks current access and source availability. Browser caching stays disabled; no CDN or new document service is used.
 - The surface is read-only, including for editors; decisions and approvals remain in Evidence.
   Authentication, run sharing, deleted-run protection and private response headers apply unchanged.
 - Owners/editors can download this SKU or all SKUs as Excel: one BOM/Label/Diagram comparison sheet per SKU, plus original source text, quantities and page/row locators. Export includes all entries regardless of screen filters; current saved statuses match Quick view. Literal text cannot execute as formulas. It cannot be imported as review decisions. Viewers and blind sessions cannot export.

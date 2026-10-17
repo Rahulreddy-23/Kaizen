@@ -38,12 +38,42 @@ describe("review data refresh", () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
-  it("refreshes on focus and periodically while visible", () => {
+  it("shares one lightweight poll, refreshes only on change, and stops when unmounted", async () => {
     vi.useFakeTimers();
-    const refresh = vi.fn();
-    renderHook(() => useDataRefresh(refresh, "first"));
+    let revision = "one";
+    const fetch = vi.fn(async () => new Response(JSON.stringify({revision})));
+    vi.stubGlobal("fetch",fetch);
+    const refresh = vi.fn(), second = vi.fn();
+    const one = renderHook(() => useDataRefresh(refresh, "first"));
+    const two = renderHook(() => useDataRefresh(second, "second"));
+    await act(async () => {});
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(refresh).not.toHaveBeenCalled();
+    revision = "two";
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledOnce();
     act(() => window.dispatchEvent(new Event("focus")));
-    act(() => vi.advanceTimersByTime(30000));
     expect(refresh).toHaveBeenCalledTimes(2);
+    one.unmount(); two.unmount();
+    const before = fetch.mock.calls.length;
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(fetch).toHaveBeenCalledTimes(before);
+  });
+
+  it("does not overlap change checks or poll while hidden", async () => {
+    vi.useFakeTimers();
+    let resolve!: (response: Response) => void;
+    const fetch = vi.fn(() => new Promise<Response>(done => {resolve=done;}));
+    vi.stubGlobal("fetch",fetch);
+    renderHook(() => useDataRefresh(vi.fn(),"first"));
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(fetch).toHaveBeenCalledOnce();
+    await act(async () => resolve(new Response('{"revision":"one"}')));
+    const visibility = vi.spyOn(document,"visibilityState","get").mockReturnValue("hidden");
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(fetch).toHaveBeenCalledOnce();
+    visibility.mockRestore();
   });
 });

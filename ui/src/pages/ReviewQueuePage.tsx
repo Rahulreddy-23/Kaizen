@@ -29,7 +29,7 @@ export default function ReviewQueuePage() {
   const run = useAsync(() => api.getRun(runId), [runId]);
   const query = queueQueryFromParams(sp, viewerParams);
   const page = useAsync(() => api.getResults(runId, query), [runId, sp.toString(), viewerParams.viewer, viewerParams.blind]);
-  useDataRefresh(() => { run.reload(); page.reload(); }, runId);
+  useDataRefresh(() => { run.refresh(); page.refresh(); }, runId);
 
   const [search, setSearch] = useState(sp.get("q") ?? "");
   useEffect(() => setSearch(sp.get("q") ?? ""), [sp]);

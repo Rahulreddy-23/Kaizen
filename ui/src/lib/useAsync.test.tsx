@@ -63,4 +63,29 @@ describe("useAsync", () => {
     await act(async () => late.resolve("late data"));
     expect(result.current.data).toBeNull();
   });
+
+  it("keeps loaded controls usable while a background refresh is pending", async () => {
+    const next = deferred<string>();
+    let refresh = false;
+    const {result} = renderHook(() => useAsync(() => refresh ? next.promise : Promise.resolve("old"), []));
+    await waitFor(() => expect(result.current.data).toBe("old"));
+    refresh = true;
+    act(() => result.current.refresh());
+    expect(result.current.loading).toBe(false);
+    expect(result.current.refreshing).toBe(true);
+    expect(result.current.data).toBe("old");
+    await act(async () => next.resolve("updated"));
+    expect(result.current.data).toBe("updated");
+    expect(result.current.refreshing).toBe(false);
+  });
+
+  it("removes private data when access is revoked during a background refresh", async () => {
+    let denied = false;
+    const {result} = renderHook(() => useAsync(() => denied ? Promise.reject(Object.assign(new Error("Access revoked"), {status:404})) : Promise.resolve("private"), []));
+    await waitFor(() => expect(result.current.data).toBe("private"));
+    denied = true;
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.error).toBe("Access revoked"));
+    expect(result.current.data).toBeNull();
+  });
 });

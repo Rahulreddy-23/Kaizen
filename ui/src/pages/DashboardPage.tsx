@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const { runId = "" } = useParams();
   const toast = useToast();
   const run = useAsync(() => api.getRun(runId), [runId]);
-  useDataRefresh(run.reload, runId);
+  useDataRefresh(run.refresh, runId);
   const [verify, setVerify] = useState<VerifyOutcome | null>(null);
   const [verifyErr, setVerifyErr] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import {cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {MemoryRouter, Route, Routes} from "react-router-dom";
 import {api} from "../api";
 import type {QuickCell, QuickKind, QuickStatus, QuickView} from "../types";
 import QuickViewPage from "./QuickViewPage";
+import {notifyDataChanged} from "../lib/dataRefresh";
 
 vi.mock('../api',()=>({api:{quickView:vi.fn(),pageImageUrl:vi.fn()}}));
 vi.mock('../components/PageImage',()=>({PageImage:({src,bbox,tone,alt,zoom,fit,dpi}:{src:string|null;bbox:unknown;tone:string;alt:string;zoom:number;fit:boolean;dpi:number})=><div data-zoom={zoom} data-fit={String(fit)} data-dpi={dpi} data-testid={alt} data-box={JSON.stringify(bbox)} data-tone={tone}>{src ?? 'Spreadsheet preview'}</div>}));
@@ -17,6 +18,22 @@ const payload=():QuickView=>({sku:'SKU-A',groups:[{sku:'SKU-A',document_ids:kind
 const open=(url='/runs/run/quick-view')=>render(<MemoryRouter initialEntries={[url]}><Routes><Route path='/runs/:runId/quick-view' element={<QuickViewPage/>}/></Routes></MemoryRouter>);
 
 describe('SKU quick view',()=>{
+ it('refreshes status without blanking entries or resetting a manually chosen page',async()=>{
+  let finish!: (value:QuickView)=>void;
+  vi.mocked(api.quickView).mockResolvedValueOnce(payload()).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));open();
+  fireEvent.click(await screen.findByRole('button',{name:'Show BOM source for row 1'}));
+  fireEvent.change(screen.getByRole('combobox',{name:'BOM page'}),{target:{value:'3'}});
+  fireEvent.change(screen.getByRole('combobox',{name:'BOM zoom'}),{target:{value:'150'}});
+  act(()=>notifyDataChanged('/api/runs/run/decisions'));
+  await waitFor(()=>expect(api.quickView).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText('Loading entries…')).toBeNull();
+  expect(screen.getByRole('button',{name:'Show BOM source for row 1'})).toBeTruthy();
+  const next=payload();next.rows[0].status='attention';next.rows[0].cells.BOM!.status='attention';
+  await act(async()=>finish(next));
+  expect((screen.getByRole('combobox',{name:'BOM page'}) as HTMLSelectElement).value).toBe('3');
+  expect((screen.getByRole('combobox',{name:'BOM zoom'}) as HTMLSelectElement).value).toBe('150');
+  expect(screen.getByTestId('BOM.pdf, page 3').getAttribute('data-tone')).toBe('attention');
+ });
  it('focuses a source from the selected pair and restores that pair from the toolbar',async()=>{
   vi.mocked(api.quickView).mockResolvedValue(payload());open();
   fireEvent.click(await screen.findByRole('button',{name:'Open document reader'}));
@@ -42,7 +59,8 @@ describe('SKU quick view',()=>{
   fireEvent.change(bom,{target:{value:'200'}});
   expect(within(dialog).getByTestId('BOM.pdf, page 1').getAttribute('data-zoom')).toBe('200');
   expect(within(dialog).getByTestId('LABEL.pdf, page 2').getAttribute('data-zoom')).toBe('125');
-  expect(api.pageImageUrl).toHaveBeenCalledWith('run','BOM',1,null,300);
+  expect(api.pageImageUrl).toHaveBeenCalledWith('run','BOM',1,null,300,'png');
+  expect(api.pageImageUrl).toHaveBeenCalledWith('run','LABEL',2,null,300,'jpeg');
   fireEvent.change(bom,{target:{value:'fit'}});
   expect(within(dialog).getByTestId('BOM.pdf, page 1').getAttribute('data-fit')).toBe('true');
   fireEvent.click(within(dialog).getByRole('button',{name:'Next entry'}));

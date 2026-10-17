@@ -27,6 +27,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from kaizen import __version__
+from kaizen.api.page_cache import PageImageCache
 from kaizen.api.payloads import (
     ActionInput,
     ActionUpdate,
@@ -194,6 +195,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     ws = workspace or Workspace.resolve(None)
     app = FastAPI(title="Kaizen Cross-Check", version=__version__)
     source_fingerprint = _source_fingerprint()
+    page_images = PageImageCache()
+    change_salt = uuid.uuid4().hex
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception):
@@ -614,6 +617,16 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             out.append(record | run_info(record['run_id'], session.reviewer))
         return out
 
+    @app.get("/api/changes")
+    def changes(session=Depends(_identified)):
+        # Do not load runs, inspect documents or count last-seen session writes.
+        # Audit events cover saved edits; jobs also change without a browser mutation.
+        with ws.db.lock:
+            revision = ws.db.conn.execute('SELECT COALESCE(MAX(seq),0) FROM audit').fetchone()[0]
+            jobs = [tuple(row) for row in ws.db.conn.execute('SELECT run_id,generation,completed_generation,state,updated_at FROM learning_jobs ORDER BY run_id')]
+        opaque = hashlib.sha256(f'{change_salt}:{session.reviewer}:{revision}:{jobs}'.encode()).hexdigest()
+        return {"revision": opaque}
+
     @app.post("/api/runs/from-path")
     def run_from_path(payload: RunPath, session=Depends(_identified)):
         payload = payload.model_dump()
@@ -790,28 +803,33 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         return {"doc_id": d.id, "doc_type": d.doc_type.value, "file_name": Path(d.path).name, "header": d.header, "warnings": d.warnings, "pages": _page_count(d.path), "items": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.items], "text_lines": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.text_lines]}
 
     @app.get("/api/runs/{run_id}/documents/{doc_id}/pages/{page_no}")
-    def get_page_image(run_id: str, doc_id: str, page_no: int, highlight: str | None = None, dpi: int = Query(110, ge=36, le=300)):
+    def get_page_image(run_id: str, doc_id: str, page_no: int, highlight: str | None = None, dpi: int = Query(110, ge=36, le=300), format: Literal["png", "jpeg"] = "png"):
         run = cache.get(run_id)
         d = _doc(run, doc_id)
         if not d.path.lower().endswith(".pdf"):
             raise HTTPException(404, "document has no page images (spreadsheet source)")
         if not Path(d.path).is_file():
             raise HTTPException(404, "Source document is unavailable. Upload it again to view its pages.")
-        with pymupdf.open(d.path) as pdf:
-            if page_no < 1 or page_no > len(pdf):
-                raise HTTPException(404, "page out of range")
-            page = pdf[page_no - 1]
-            if highlight:
-                r = _find(run, highlight)
-                for item in (r.source_a, r.source_b):
-                    if item is not None and item.doc_id == doc_id and item.evidence.bbox is not None and item.evidence.page == page_no:
-                        b = item.evidence.bbox
-                        shape = page.new_shape()
-                        shape.draw_rect(pymupdf.Rect(b.x0 - 2, b.y0 - 2, b.x1 + 2, b.y1 + 2) * page.derotation_matrix)
-                        shape.finish(color=(0.9, 0.1, 0.1), fill=(1, 0.85, 0.2), fill_opacity=0.25, width=1.2)
-                        shape.commit()
-            png = page.get_pixmap(dpi=dpi).tobytes("png")
-        return Response(content=png, media_type="image/png")
+        stat = Path(d.path).stat()
+        key = (run_id, doc_id, str(Path(d.path).resolve()), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, page_no, dpi, highlight, format)
+
+        def render():
+            with pymupdf.open(d.path) as pdf:
+                if page_no < 1 or page_no > len(pdf):
+                    raise HTTPException(404, "page out of range")
+                page = pdf[page_no - 1]
+                if highlight:
+                    r = _find(run, highlight)
+                    for item in (r.source_a, r.source_b):
+                        if item is not None and item.doc_id == doc_id and item.evidence.bbox is not None and item.evidence.page == page_no:
+                            b = item.evidence.bbox
+                            shape = page.new_shape()
+                            shape.draw_rect(pymupdf.Rect(b.x0 - 2, b.y0 - 2, b.x1 + 2, b.y1 + 2) * page.derotation_matrix)
+                            shape.finish(color=(0.9, 0.1, 0.1), fill=(1, 0.85, 0.2), fill_opacity=0.25, width=1.2)
+                            shape.commit()
+                return page.get_pixmap(dpi=dpi).tobytes(format, jpg_quality=92)
+
+        return Response(content=page_images.get(key, render), media_type=f"image/{format}")
 
     # ---- review -------------------------------------------------------------------------------
     @app.get('/api/runs/{run_id}/learning')

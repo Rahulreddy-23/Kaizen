@@ -5,6 +5,30 @@ import { api, ApiError } from "./api";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("API error and upload behavior", () => {
+  it("joins concurrent identical reads without retaining a response cache", async () => {
+    let resolve!: (response: Response) => void;
+    const fetch = vi.fn(() => new Promise<Response>(done => {resolve=done;}));
+    vi.stubGlobal("fetch",fetch);
+    const a = api.listRuns(), b = api.listRuns();
+    expect(fetch).toHaveBeenCalledOnce();
+    resolve(new Response('[]'));
+    expect(await a).toEqual(await b);
+    const next = api.listRuns();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    resolve(new Response('[]')); await next;
+  });
+  it("never joins a read that started before sign-out", async () => {
+    const pending: ((response:Response)=>void)[] = [];
+    const fetch = vi.fn(() => new Promise<Response>(done => pending.push(done)));
+    vi.stubGlobal("fetch",fetch);
+    const old = api.listRuns();
+    const logout = api.signOut();
+    pending[1](new Response('{"ended":true}')); await logout;
+    const next = api.listRuns();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    pending[0](new Response('[]')); pending[2](new Response('[]'));
+    await Promise.all([old,next]);
+  });
   it("makes validation errors readable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: [{ loc: ["body", "name"], msg: "Input should be a valid string" }] }), { status: 422 })));
     await expect(api.listRuns()).rejects.toThrow("name: Input should be a valid string");

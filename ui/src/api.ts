@@ -57,12 +57,27 @@ function qs(params: Params): string {
   return s ? `?${s}` : "";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const inFlightReads = new Map<string, Promise<unknown>>();
+
+function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const read = !init || (init.method === undefined && !init.signal && !init.headers);
+  if (!read) inFlightReads.clear(); // Never join a request started before a mutation/sign-out.
+  const existing = read ? inFlightReads.get(path) : undefined;
+  if (existing) return existing as Promise<T>;
+  const pending = performRequest<T>(path, init);
+  if (read) {
+    inFlightReads.set(path, pending);
+    void pending.finally(() => {if (inFlightReads.get(path) === pending) inFlightReads.delete(path);}).catch(() => {});
+  }
+  return pending;
+}
+
+async function performRequest<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, { cache: "no-store", ...init });
   } catch (e) {
-    throw new ApiError(0, `Cannot reach the API (${path}). Is \`kaizen serve\` running on port 8765? ${(e as Error).message}`);
+    throw new ApiError(0, `Cannot reach Kaizen. Check your connection and try again. ${(e as Error).message}`);
   }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
@@ -79,7 +94,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, msg);
   }
   const data = res.status === 204 ? undefined as T : await res.json() as T;
-  if (init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase())) notifyDataChanged(path);
+  if (init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase())) {
+    inFlightReads.clear();
+    notifyDataChanged(path);
+  }
   return data;
 }
 
@@ -185,8 +203,8 @@ export const api = {
   // The session decides which decisions are visible; `_v` only forces a refetch when it changes.
   getRow: (runId: string, rowId: string, _v: ViewerParams) =>
     request<RowDetail>(`/api/runs/${enc(runId)}/results/${enc(rowId)}`),
-  pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110) =>
-    `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi })}`,
+  pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110, format?: "png" | "jpeg") =>
+    `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi, format })}`,
 
   // ---- decisions
   postDecision: (runId: string, body: DecisionBody) => request<DecisionResponse>(`/api/runs/${enc(runId)}/decisions`, json("POST", body)),

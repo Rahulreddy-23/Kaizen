@@ -60,6 +60,7 @@ own. Hosted configuration enables Secure cookies; mutations with a supplied cros
 | GET | `/api/sessions/current` | `{session: {...} or null, blind_review_policy, accounts, registration: "invite_only"}`; account provider is local or supabase. |
 | DELETE | `/api/sessions/current` | Ends the current session and clears its cookie. |
 | GET | `/api/health` | Public `{status, version, api_contract, restart_required, hosted}`. |
+| GET | `/api/changes` | Authenticated opaque revision for saved changes and candidate-job state. No document content, run IDs or audit details. Private/no-store. Reads and session last-seen updates do not change it. |
 
 There are no confirmation/reset-email endpoints. Provider password recovery needs authorized operator
 help. Local account reset uses the CLI; prior decisions retain their recorded email identity.
@@ -120,7 +121,7 @@ remains pending even after approval. Editing an approved row invalidates approva
 | GET | `/api/runs/{run_id}/results/{row_id}` | Full original result/evidence, decisions, effective classification, state/final, revision, owner, permission, history, action items and `can_save_relationship`. |
 | GET | `/api/runs/{run_id}/documents` | Document identity/type, paths/hashes, parser, SKU, pages, item counts and warnings. |
 | GET | `/api/runs/{run_id}/documents/{doc_id}/items` | Extracted source items with retained page/evidence details. |
-| GET | `/api/runs/{run_id}/documents/{doc_id}/pages/{page_no}` | PNG for a 1-based PDF page; optional `highlight={row_id}`, `dpi=110`. Spreadsheet sources have no source-page image. |
+| GET | `/api/runs/{run_id}/documents/{doc_id}/pages/{page_no}` | 1-based PDF page; optional `highlight={row_id}`, `dpi=110` (36–300), `format=png|jpeg` (default PNG; JPEG quality 92). Spreadsheet sources have no source-page image. Authorized on every request, including server memory-cache hits; responses remain private/no-store. |
 
 Queue parameters: `check`, `sku`, `classification` (current), `engine_classification` (original), `severity`,
 `discrepancy`, `needs_validation`, `unresolved`, `state`, `role`, `search`, `limit` (default 500, 1–5000)
