@@ -1,6 +1,7 @@
 // Thin typed client for the local Kaizen API (docs/api-contract.md). Relative URLs only, so the same bundle
 // works from the Vite dev server (proxy) and when served by the backend at "/".
 import type {
+  QuickView,
   Profile,
   Invitation,
   RunShare,
@@ -175,6 +176,8 @@ export const api = {
     return request<RunSummary>("/api/runs/upload", { method: "POST", body: fd });
   },
   getRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}`),
+  quickView: (runId: string, query: {sku?: string; view?: "components" | "text"; status?: string; search?: string; offset?: number}) =>
+    request<QuickView>(`/api/runs/${enc(runId)}/quick-view${qs(query)}`),
 
   // ---- results / evidence
   getResults: (runId: string, q: ResultsQuery) => request<ResultsPage>(`/api/runs/${enc(runId)}/results${qs(q as Params)}`),

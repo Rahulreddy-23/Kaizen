@@ -82,6 +82,37 @@
       "audience": ""
     },
     {
+      "id": "quick-view",
+      "label": "Compare three documents",
+      "intro": "Open Quick view from a run to inspect one SKU across BOM, Label and Diagram.",
+      "steps": [
+        {
+          "title": "Choose a SKU",
+          "body": "Select SKU 1, SKU 2 or another SKU button. The code beside each label identifies the selected product. Compared entries shows the engine’s comparison rows; All entries also includes source rows that were not compared."
+        },
+        {
+          "title": "Read the comparison",
+          "body": "Green text means an accepted match with no pending review or unresolved finding. Orange means an unmapped counterpart or review is needed. Neutral entries were not compared. A missing match does not establish that the physical component is absent."
+        },
+        {
+          "title": "Select an entry",
+          "body": "Click an entry to open three source previews below the table. Each available document opens on its own evidence page. Green or orange highlights show the selected text; a missing counterpart has no invented location. Use Expand documents for full-window reading. Each preview has its own document, page and zoom controls. Previous entry and Next entry move through the current results; Escape returns to the comparison."
+        },
+        {
+          "title": "Inspect all extracted text",
+          "body": "Choose All extracted text to read retained headers, notes and unparsed wording. These columns follow independent source order; entries on the same row are not matched. Older runs and BOMs may have parsed-row evidence only, which the view explains."
+        },
+        {
+          "title": "Review a finding",
+          "body": "Expand Comparison details to read the recorded checks and current findings, then open a check to review or approve it in Evidence. Quick view itself is read-only."
+        }
+      ],
+      "paragraphs": [],
+      "note": "Search, status filters and pagination keep the table manageable. Switching SKU clears the selection; Refresh picks up newer decisions.",
+      "action": null,
+      "audience": ""
+    },
+    {
       "id": "documents",
       "label": "Check extracted documents",
       "intro": "Confirm that the app read the intended files before relying on any finding.",

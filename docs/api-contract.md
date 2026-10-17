@@ -1,7 +1,7 @@
 # HTTP API contract
 
 The local server is `http://127.0.0.1:8765`; the UI uses relative `/api` URLs on the same origin.
-Render deployment is pending. Responses are JSON unless a download/image is specified.
+The Render pilot uses the same API contract. Responses are JSON unless a download/image is specified.
 
 Contract version: **3**. `/api/health` includes `restart_required` when the running server no longer
 matches the source. Restart the server after backend changes; the UI refuses an incompatible contract.
@@ -9,6 +9,18 @@ matches the source. Restart the server after backend changes; the UI refuses an 
 Request models live in [payloads.py](../src/kaizen/api/payloads.py) and
 [learning.py](../src/kaizen/review/learning.py). Full response types are in
 [types.ts](../ui/src/types.ts); implementation is [app.py](../src/kaizen/api/app.py).
+
+## Quick view
+
+`GET /api/runs/{run_id}/quick-view` is a read-only, run-access-protected projection. Query parameters:
+`sku` (defaults to first saved group), `view=components|text`, `status=all|compared|matched|attention|neutral`,
+`search`, `offset` (non-negative), `limit` (1–500, default 100). It returns selected `sku`, saved `groups`,
+associated `documents` with page counts/full-text availability, unfiltered status `counts`, filtered
+`total`, pagination and `rows`. Each row has three nullable cells (`BOM`, `LABEL`, `DRAWING`) containing
+source `items` (evidence plus ID), its `status`, and recorded `checks` with current findings and review state.
+No new pairings, extraction, decisions or approvals are written. Text-mode rows follow independent source
+order; positions across columns do not mean equivalence. Missing counterparts/exemptions cannot turn green
+from their stored classification alone. Invalid SKU returns 404. View-only access is sufficient.
 
 ## Authentication and errors
 

@@ -24,6 +24,7 @@ const SECTIONS: [RegExp, string][] = [
   [/^\/runs\/[^/]+\/rows\//, "Evidence"],
   [/^\/runs\/[^/]+\/documents\//, "Document"],
   [/^\/runs\/[^/]+\/documents$/, "Documents"],
+  [/^\/runs\/[^/]+\/quick-view$/, "Quick view"],
   [/^\/runs\/[^/]+\/mining$/, "Suggested matches"],
   [/^\/runs\/[^/]+\/learning$/, "Closed testing"],
   [/^\/runs\/[^/]+\/diff$/, "Compare runs"],
@@ -179,6 +180,7 @@ export function Layout() {
                   {item(base, "Overview", <SquaresFour size={18} />, true)}
                   {item(`${base}/review`, "Review queue", <ListChecks size={18} />)}
                   {item(`${base}/documents`, "Documents", <Files size={18} />)}
+                  {item(`${base}/quick-view`, "Quick view", <SquaresFour size={18} />)}
                   {item(`${base}/learning`, "Closed testing", <ChartBar size={18} />)}
                   {item(`${base}/mining`, "Suggested matches", <Lightbulb size={18} />)}
                   {item(`${base}/diff`, "Compare runs", <GitDiff size={18} />)}
@@ -196,6 +198,7 @@ export function Layout() {
             {item(r(""), "Overview", <SquaresFour size={20} />, true)}
             {item(r("/review"), "Review queue", <ListChecks size={20} />)}
             {item(r("/documents"), "Documents", <Files size={20} />)}
+            {item(r("/quick-view"), "Quick view", <SquaresFour size={20} />)}
             {item(r("/learning"), "Closed testing", <ChartBar size={20} />)}
             {item(r("/mining"), "Suggested matches", <Lightbulb size={20} />)}
             {item(r("/diff"), "Compare runs", <GitDiff size={20} />)}

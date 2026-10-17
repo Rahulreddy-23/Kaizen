@@ -13,6 +13,9 @@ for implementation boundaries.
    replaces the selection; cancelling the picker keeps it. Word files are unsupported.
 3. Inspect **Overview** and **Documents**. Documents use actual SKU associations; shared sources appear
    once, with extraction warnings and source details available.
+   Use **Quick view** to select a SKU, compare BOM/Label/Diagram entries side by side, and click an entry
+   to highlight its source locations in three previews. **All extracted text** includes retained text
+   outside comparisons; source-order rows in that mode are not aligned matches.
 4. Filter **Review queue**, open **Evidence**, inspect both source pages and save a decision.
    Approval is separate; changing a decision clears its previous approval.
 5. Use **Download Excel** on Overview: **Summary** shows totals and rows needing attention;
@@ -51,6 +54,7 @@ Routes below follow the `#` in the browser URL. All run destinations require acc
 | `/runs/:runId/review` | Review queue: filters, current findings and comparison selection. |
 | `/runs/:runId/rows/:rowId` | Evidence: explanations, source previews, decisions/history and enabled ground-truth forms. |
 | `/runs/:runId/documents` | Documents: grouped source list, filters and extraction warnings. |
+| `/runs/:runId/quick-view` | Quick view: per-SKU comparison matrix, retained text and three linked source previews. |
 | `/runs/:runId/documents/:docId` | Document: comparison entries, full recognized label/drawing text, source pages and deep links. |
 | `/runs/:runId/learning` | Closed testing: enrollment, drawing applicability, annotations and candidate reports. |
 | `/runs/:runId/mining` | Suggested matches: terminology worklist and approval eligibility. |

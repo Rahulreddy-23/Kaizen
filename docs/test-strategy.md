@@ -31,6 +31,7 @@ Test paths below are relative to `tests/` unless prefixed with `ui/`.
 | OCR | `unit/test_ocr_and_extraction_method.py`, `integration/test_offline_ocr.py`, `integration/test_pdf_ocr_layouts.py`, `unit/test_ocr_runtime.py`, `integration/test_outline_text_recovery.py`, `unit/test_label_text_coverage.py`, `unit/test_text_layout.py` | Engine failure/fallback/confidence/geometry paths; portable OCR on native/raster/outlined labels and raster drawings, partial text layers, column boundaries, raw-evidence preservation and bilingual captions beside notes. |
 | Matching and quantities | `unit/test_component_candidates.py`, `test_ladder.py`, `test_assignment.py`, `test_quantity_compare.py` | Unseen item codes/wording, reversed callout order, object/accessory distinctions, conflicting specifications, alternatives, ambiguity and pack/pair bases. |
 | Check policies | `unit/test_bom_label_check.py`, `test_pco_bom_check.py`, `test_label_revision.py`, `test_check_sweep_regressions.py` | Applicable sources, PCO/revision changes, coverage, exemptions and uncertainty rather than false auto-clears. |
+| SKU Quick view | `unit/test_quick_view.py`, `integration/test_quick_view_api.py`, UI QuickViewPage/PageImage tests | Saved pairings, no false green for missing/exempt sources, shared-SKU isolation, complete source text, merged rows, filtering, run access, zoom geometry and reading-workspace keyboard recovery. |
 | Accounts and collaboration | `integration/test_auth_password.py`, `test_auth_supabase.py`, `test_collaboration.py`, `test_api_regressions.py` | Sign-in, revocation, grants, admin boundaries, same-origin changes, stale revisions, uploads and copies. |
 | Learning and terminology | `unit/test_learning.py`, `test_worklist.py`, `test_terminology_source_import.py`, `integration/test_learning_api.py` | Immutable splits, independent verification, stale-label invalidation, learning eligibility and atomic imports. |
 | Excel and PDF reporting | `unit/test_sku_excel.py`, `test_excel_review_export.py`, `test_excel_roundtrip.py`, `test_annotated_bom.py` | Per-SKU Summary/Complete layouts, safe sheet names/text, current review state, stable row IDs, imports/conflicts and source geometry. |
@@ -52,7 +53,8 @@ Use synthetic data for saves, approvals, copies, imports and account-role checks
 3. Evidence: correct source pages, review save/reload, ground-truth search/chips and preserved selections.
 4. Exports: Summary and Complete details per-SKU workbooks, import preview/conflicts, PDFs and ZIPs.
 5. Permissions: viewer cannot mutate/export; owner sharing and admin-only controls remain distinct.
-6. Desktop/narrow layouts, both themes, keyboard ownership, drawer/dialog focus and error recovery.
+6. Quick view: SKU selection, green/orange actual source boxes, full-text limitations, independent pages/zoom, expanded reading and previous/next navigation.
+7. Desktop/narrow layouts, both themes, keyboard ownership, drawer/dialog focus and error recovery.
 
 A viewport emulation check does not certify a physical mobile device or another browser engine.
 Keep evidence under ignored `out/`, with the tested revision and source hashes where applicable.

@@ -279,6 +279,50 @@ export interface BBox {
   x1: number;
   y1: number;
 }
+
+export type QuickStatus = "matched" | "attention" | "neutral";
+export type QuickKind = "BOM" | "LABEL" | "DRAWING";
+export interface QuickCell {
+  status: QuickStatus;
+  items: (Evidence & {id: string})[];
+}
+export interface QuickCheck {
+  row_id: string;
+  check: string;
+  status: QuickStatus;
+  classification: Classification;
+  engine_classification: Classification;
+  state: ReviewState;
+  explanation: string;
+  findings: Discrepancy[];
+  merged_rows: number;
+}
+export interface QuickRow {
+  id: string;
+  status: QuickStatus;
+  cells: Record<QuickKind, QuickCell | null>;
+  checks: QuickCheck[];
+}
+export interface QuickDocument {
+  id: string;
+  doc_type: QuickKind;
+  file_name: string;
+  pages: number;
+  warnings: string[];
+  full_text: boolean;
+  items: number;
+}
+export interface QuickView {
+  sku: string | null;
+  groups: {sku: string; document_ids: string[]}[];
+  view: "components" | "text";
+  documents: QuickDocument[];
+  rows: QuickRow[];
+  counts: Partial<Record<QuickStatus, number>>;
+  total: number;
+  offset: number;
+  limit: number;
+}
 export interface SubQuantity {
   value: number;
   kind: string;

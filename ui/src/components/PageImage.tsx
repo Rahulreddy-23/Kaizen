@@ -12,20 +12,26 @@ interface Props {
   alt: string;
   /** true = fit to container width; false = actual pixel size (scrollable). */
   fit?: boolean;
+  /** Reading zoom relative to 96 CSS pixels per inch; independent of render DPI. */
+  zoom?: number;
   fallback?: ReactNode;
   maxHeight?: string;
+  /** Comparison status; omitted keeps the ordinary evidence accent. */
+  tone?: "matched" | "attention" | "neutral";
 }
 
-export function PageImage({ src, bbox, dpi = 110, alt, fit = true, fallback, maxHeight = "70vh" }: Props) {
+export function PageImage({ src, bbox, dpi = 110, alt, fit = true, zoom, fallback, maxHeight = "70vh", tone }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [scale, setScale] = useState<number | null>(null);
+  const [naturalWidth, setNaturalWidth] = useState(0);
   const bboxKey = bbox ? `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}` : "";
 
   useEffect(() => {
     setStatus("loading");
     setScale(null);
+    setNaturalWidth(0);
   }, [src]);
 
   // scale = rendered CSS px per PDF point: (clientWidth / naturalWidth) * (dpi / 72)
@@ -42,7 +48,7 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, fallback, max
     const ro = new ResizeObserver(() => measure());
     ro.observe(img);
     return () => ro.disconnect();
-  }, [measure, status, fit]);
+  }, [measure, status, fit, zoom]);
 
   // Scroll the container so the evidence box is centred (never scrolls the page itself).
   useEffect(() => {
@@ -72,13 +78,14 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, fallback, max
       {status === "error" ? (
         <div className="p-4 text-sm">{fallback}</div>
       ) : (
-        <div className={`relative ${fit ? "w-full" : "w-max"}`}>
+        <div className={`relative ${fit ? "w-full" : "w-max"}`} style={!fit && zoom && naturalWidth ? {width: naturalWidth * (96 / dpi) * zoom / 100} : undefined}>
           <img
             ref={imgRef}
             src={src}
             alt={alt}
-            className={`block h-auto transition-opacity duration-200 ease-out ${fit ? "w-full" : "max-w-none"} ${status === "ok" ? "opacity-100" : "opacity-0"}`}
+            className={`block h-auto transition-opacity duration-200 ease-out ${fit || zoom ? "w-full" : "max-w-none"} ${status === "ok" ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
+              setNaturalWidth(imgRef.current?.naturalWidth ?? 0);
               setStatus("ok");
               measure();
             }}
@@ -87,7 +94,10 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, fallback, max
           {bbox && scale !== null && status === "ok" && (
             <div
               className="absolute rounded-sm border-2 border-accent-500 pointer-events-none enter-pop"
+              data-highlight-tone={tone ?? "default"}
               style={{
+                borderColor: tone ? `rgb(var(--c-${tone === "matched" ? "ok-strong" : tone === "attention" ? "warn-strong" : "ink-3"}))` : undefined,
+                backgroundColor: tone ? `rgb(var(--c-${tone === "matched" ? "ok" : tone === "attention" ? "warn" : "ink-3"}) / 0.12)` : undefined,
                 left: bbox.x0 * scale - 4,
                 top: bbox.y0 * scale - 4,
                 width: (bbox.x1 - bbox.x0) * scale + 8,

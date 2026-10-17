@@ -47,9 +47,9 @@ export default function DocumentsPage() {
           )
         }
         actions={
-          <Button variant="ghost" onClick={docs.reload} loading={docs.loading && docs.data !== null} icon={<ArrowsClockwise size={16} />}>
+          <><LinkButton to={`/runs/${enc(runId)}/quick-view`} icon={<Eye size={16} />}>Quick view</LinkButton><Button variant="ghost" onClick={docs.reload} loading={docs.loading && docs.data !== null} icon={<ArrowsClockwise size={16} />}>
             Refresh
-          </Button>
+          </Button></>
         }
       />
 

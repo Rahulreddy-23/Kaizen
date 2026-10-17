@@ -46,6 +46,7 @@ from kaizen.api.payloads import (
     TerminologySelection,
     UserUpdate,
 )
+from kaizen.api.quick_view import build_quick_view, filter_quick_view
 from kaizen.evaluation.learning import shadow_evaluate
 from kaizen.models import Classification, DocType, Run, Thresholds
 from kaizen.pipeline import SUPPORTED_SUFFIXES, load_run, run_folder, save_run
@@ -725,6 +726,23 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     def get_documents(run_id: str):
         run = cache.get(run_id)
         return [{"id": d.id, "doc_type": d.doc_type.value, "file": d.path, "file_name": Path(d.path).name, "sku": d.sku, "sha256": d.sha256, "parser": d.parser_name, "parser_version": d.parser_version, "items": len(d.items), "warnings": d.warnings, "header": d.header, "pages": _page_count(d.path)} for d in run.documents]
+
+    @app.get("/api/runs/{run_id}/quick-view")
+    def get_quick_view(run_id: str, sku: str | None = None, view: Literal["components", "text"] = "components",
+                       status: Literal["all", "compared", "matched", "attention", "neutral"] = "all", search: str = "",
+                       offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500),
+                       session: ReviewSession = Depends(_identified)):
+        run = cache.get(run_id)
+        if not run.groups:
+            return {"sku": None, "groups": [], "view": view, "documents": [], "rows": [], "counts": {}, "total": 0, "offset": 0, "limit": limit}
+        rows, _, _ = review_snapshot(run, review, session.slot, session.blind)
+        try:
+            data = build_quick_view(run, rows, sku or run.groups[0].sku, view, _evidence)
+        except KeyError:
+            raise HTTPException(404, "SKU not found in this run. Choose a SKU from this run's Overview.")
+        for document in data["documents"]:
+            document["pages"] = _page_count(next(d.path for d in run.documents if d.id == document["id"]))
+        return filter_quick_view(data, status, search, offset, limit)
 
     def _doc(run: Run, doc_id: str):
         d = next((d for d in run.documents if d.id == doc_id), None)
