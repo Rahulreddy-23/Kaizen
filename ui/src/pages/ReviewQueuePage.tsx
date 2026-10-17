@@ -256,10 +256,10 @@ export default function ReviewQueuePage() {
                         <Side s={row.b} />
                       </td>
                       <td className="whitespace-nowrap">
-                        <ClassificationBadge value={row.effective_classification} title="Current review classification" />
+                        <ClassificationBadge value={row.effective_classification} role={row.role} title="Current review classification" />
                         {row.effective_classification !== row.engine.classification && (
                           <div className="text-xs text-ink-3 mt-1 flex items-center gap-1">
-                            engine <ClassificationBadge value={row.engine.classification} />
+                            engine <ClassificationBadge value={row.engine.classification} role={row.role} />
                           </div>
                         )}
                         {row.engine.relationship_id && <div className="text-xs text-ink-3 mono mt-1">{row.engine.relationship_id}</div>}

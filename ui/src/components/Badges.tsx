@@ -44,7 +44,8 @@ export function Badge({ tone = "neutral", dot = true, size = "sm", title, childr
 const CLS_TONE: Record<Classification, Tone> = { EXACT: "exact", EQUIVALENT: "equivalent", POTENTIAL: "potential", MISMATCH: "mismatch", MISSING: "missing" };
 const CLS_LABEL: Record<Classification, string> = { EXACT: "Exact", EQUIVALENT: "Equivalent", POTENTIAL: "Potential", MISMATCH: "Mismatch", MISSING: "Unmapped" };
 
-export function ClassificationBadge({ value, title, size = "sm" }: { value: string | null | undefined; title?: string; size?: "sm" | "lg" | "md" }) {
+export function ClassificationBadge({ value, title, size = "sm", role }: { value: string | null | undefined; title?: string; size?: "sm" | "lg" | "md"; role?: string }) {
+  if (role === "exempt" && value === "EXACT") return <Badge tone="neutral" size={size === "sm" ? "sm" : "md"} title="Excluded by this check's rules; no counterpart was verified">Not required by this check</Badge>;
   if (!value) return <span className="text-ink-4">—</span>;
   const tone = CLS_TONE[value as Classification] ?? "neutral";
   return (

@@ -16,6 +16,31 @@ EMAIL = 'regression@bd.com'
 PASSWORD = 'regression-password'
 
 
+def test_exemption_is_not_an_exact_match_or_a_bulk_accept_candidate(env):
+    from kaizen.models import Classification
+    from kaizen.pipeline import save_run
+
+    ws, client, run, _ = env
+    paired = next(r for r in run.results if r.role == 'item' and r.source_a and r.source_b)
+    matched = paired.model_copy(deep=True, update=dict(row_id='matched', classification=Classification.EXACT, requires_validation=False, discrepancies=[]))
+    exempt = matched.model_copy(deep=True, update=dict(row_id='exempt', role='exempt', source_b=None, explanation='Packaging is not required on the drawing.'))
+    missing = matched.model_copy(deep=True, update=dict(row_id='missing', source_b=None, classification=Classification.MISSING, requires_validation=True))
+    run.results.extend([matched, exempt, missing])
+    save_run(run, ws.runs.get(run.metadata.run_id)['json_path'])
+    base = f'/api/runs/{run.metadata.run_id}'
+    for params in ({'engine_classification': 'EXACT'}, {'classification': 'EXACT'}, {'needs_validation': False}):
+        ids = {r['row_id'] for r in client.get(f'{base}/results', params=params).json()['rows']}
+        assert 'matched' in ids and 'exempt' not in ids and 'missing' not in ids
+    assert client.get(f'{base}/results/exempt').json()['result']['source_b'] is None
+    assert 'exempt' in {r['row_id'] for r in client.get(f'{base}/results', params={'role': 'exempt'}).json()['rows']}
+    assert 'missing' in {r['row_id'] for r in client.get(f'{base}/results', params={'needs_validation': True}).json()['rows']}
+    summary = client.get(base).json()
+    assert summary['auto_cleared'] == sum(r.role in ('item', 'change') and not r.requires_validation for r in run.results)
+    assert client.post(f'{base}/bulk-accept', json={}).status_code == 200
+    assert client.get(f'{base}/results/exempt').json()['state'] == 'ENGINE_RECOMMENDED'
+    assert client.get(f'{base}/results/matched').json()['state'] == 'REVIEWED'
+
+
 @pytest.fixture
 def env(tmp_path):
     source = tmp_path / 'source'

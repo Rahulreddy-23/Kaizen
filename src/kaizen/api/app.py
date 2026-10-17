@@ -662,7 +662,9 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if sku:
             rows = [r for r in rows if r.sku == sku]
         if engine_classification:
-            rows = [r for r in rows if r.classification.value == engine_classification]
+            # Historical exemptions use EXACT as a storage value, but they are
+            # not matched counterparts and must not appear as exact matches.
+            rows = [r for r in rows if r.role != 'exempt' and r.classification.value == engine_classification]
         if role:
             rows = [r for r in rows if r.role == role]
         if search:
@@ -673,7 +675,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         selected_ids = {r.row_id for r in rows}
         merged = [m for m in snapshot_rows if m['row_id'] in selected_ids]
         if classification:
-            merged = [m for m in merged if m['effective_classification'] == classification]
+            merged = [m for m in merged if m['role'] != 'exempt' and m['effective_classification'] == classification]
         if severity:
             merged = [m for m in merged if m['current_severity'] == severity]
         if discrepancy:
@@ -683,6 +685,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 merged = [m for m in merged if any(d.type.value == discrepancy for d in by_id[m['row_id']].discrepancies)]
         if needs_validation is not None:
             merged = [m for m in merged if m['pending_review'] == needs_validation]
+            if not needs_validation:
+                merged = [m for m in merged if m['role'] != 'exempt']
         if unresolved is not None:
             merged = [m for m in merged if m['unresolved'] == unresolved]
         if state:

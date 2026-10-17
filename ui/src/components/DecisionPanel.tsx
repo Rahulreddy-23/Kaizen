@@ -50,7 +50,7 @@ export function DecisionPanel({runId, rowId, detail, onChanged}: {runId: string;
         <p className="text-xs text-ink-3">Accept keeps the engine recommendation. To clear a flagged mismatch as a valid match, save an Exact or Equivalent override and approve it.</p>
         {detail.final && <p className="text-xs text-ink-3">Saving another change clears this approval and keeps it in the history.</p>}
         {current && <p className="text-xs text-ink-3">Last changed by {current.reviewer} · {fmtDate(current.decided_at)}</p>}
-        <div className="text-sm">Effective classification: <ClassificationBadge value={detail.effective_classification} /></div>
+        <div className="text-sm">Effective classification: <ClassificationBadge value={detail.effective_classification} role={detail.result.role} /></div>
         {error && <ErrorBox error={error} />}
       </div>
       <div className="space-y-4">

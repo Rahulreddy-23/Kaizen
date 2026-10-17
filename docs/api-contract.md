@@ -110,6 +110,10 @@ override a signed-in session. Search covers SKU, explanations and both sides' de
 `needs_validation` filters current pending review; severity filters current severity. With `unresolved=true`,
 discrepancy filters current findings; otherwise it filters original discrepancies. UI `nv=0` clears its
 pending-only default. Queue order prioritizes severity, ambiguity, potential and low-confidence rows.
+Exempt rows remain available through the unfiltered queue, `role=exempt`, and direct row links.
+Classification filters and `needs_validation=false` exclude them: their historical `EXACT` storage
+value is an exemption, not a verified counterpart. The UI labels these rows “Not required by this
+check”; they are excluded from auto-cleared counts and bulk acceptance.
 
 Each queue row keeps `engine`, `effective_classification`, `decisions`, `state`, `final`, `pending_review`,
 `unresolved`, `current_severity`, `current_discrepancies`, source summaries `a`/`b`, original discrepancies

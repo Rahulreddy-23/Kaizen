@@ -55,6 +55,7 @@ export default function EvidencePage() {
   if (!detail.data) return <Loading label="Loading row" lines={6} />;
   const d = detail.data;
   const res = d.result;
+  const exempt = res.role === "exempt";
   const topSeverity = res.discrepancies.length > 0 ? [...res.discrepancies].sort((a, b) => sevRank(a.severity) - sevRank(b.severity))[0].severity : null;
 
   return (
@@ -117,9 +118,9 @@ export default function EvidencePage() {
             <div>
               <div className="text-xs font-medium text-ink-2">Automated result</div>
               <div className="mt-1.5">
-                <ClassificationBadge value={res.classification} size="lg" title="Automated result" />
+                <ClassificationBadge value={res.classification} role={res.role} size="lg" title="Automated result" />
               </div>
-              <div className={`text-xs mt-2 font-medium ${res.requires_validation ? "text-bad-strong" : "text-ok-strong"}`}>{res.requires_validation ? "Flagged for review" : "Auto-cleared"}</div>
+              <div className={`text-xs mt-2 font-medium ${exempt ? "text-ink-3" : res.requires_validation ? "text-bad-strong" : "text-ok-strong"}`}>{exempt ? "Excluded from auto-cleared matches" : res.requires_validation ? "Flagged for review" : "Auto-cleared"}</div>
               {d.effective_classification !== res.classification && (
                 <div className="mt-3">
                   <div className="text-xs font-medium text-ink-2">After reviewer override</div>
@@ -167,7 +168,7 @@ export default function EvidencePage() {
                   ))}
                 </ul>
               ) : (
-                <div className="text-sm text-ink-3 mt-2">{res.requires_validation ? "Review required; no discrepancy confirmed." : "No discrepancy found."}</div>
+                <div className="text-sm text-ink-3 mt-2">{exempt ? "No counterpart was verified. This exemption applies only to this check; it does not approve the item or confirm that it is present." : res.requires_validation ? "Review required; no discrepancy confirmed." : "No discrepancy found."}</div>
               )}
             </div>
           </div>
