@@ -12,7 +12,7 @@ Read the [user tutorial](docs/user-guide.md) and [privacy/document-handling noti
 ## Capabilities
 
 - Five cross-checks: BOM–Label, BOM–Drawing, Label–Drawing, PCO–BOM and Old–New label, plus missing-document coverage.
-- **Quick view**: per-SKU BOM / Label / Diagram comparisons with green/orange source highlights, full-window reading and independent document zoom.
+- **Quick view**: per-SKU BOM / Label / Diagram comparisons with green/orange source highlights, resizable two/three-document layouts, full-width focus and independent pan/zoom.
 - SKU-grouped documents, searchable source/discrepancy lists, paginated review queues and source-page references. Labels/drawings offer comparison entries and a separate **All recognized text** view for headers, notes and unparsed text.
 - Invite-only BD accounts, private runs, rename/delete/restore, View/Edit sharing, independent copies, decisions and explicit approvals.
 - Shared reviewer-approved terminology, with named approvals and optional account selections; independently verified closed-testing feedback. Uncertain component matches, assemblies, quantity bases and drawing applicability remain review-required.
@@ -79,7 +79,7 @@ BD recipient; it expires after 72 hours. The recipient chooses **Accept invitati
 and code, and creates a password. A BD address alone cannot register.
 
 1. On **All runs**, choose **New cross-check** and upload a folder or individual files. Choose **Try a demo** for synthetic examples.
-2. Open **Quick view**, choose a SKU and select an entry to compare its three sources. Use **Expand documents** for side-by-side reading. **Documents** shows extraction; **Review queue** records decisions.
+2. Open **Quick view**, choose a SKU and select an entry to compare its three sources. Use **Open document reader** for adjustable side-by-side reading or full-width focus. **Documents** shows extraction; **Review queue** records decisions.
 3. Save decisions and approve reviewed results. On **Overview**, use **Download Excel** for a summary or complete details, with each SKU on its own worksheet. Both support decision imports. View-only users cannot change or export runs.
 
 In **Terminology**, filter the **Shared library** by **Approved by**, then add the entire list or select

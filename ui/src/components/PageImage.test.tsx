@@ -5,6 +5,19 @@ import {PageImage} from "./PageImage";
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
+it('pans the reading canvas with a captured pointer and stops on release',()=>{
+  vi.stubGlobal('PointerEvent',MouseEvent);
+  render(<PageImage src="/page.png" alt="Source" pan/>);
+  const canvas=screen.getByRole('region',{name:'Source page canvas'});
+  canvas.scrollLeft=60;canvas.scrollTop=50;
+  fireEvent.pointerDown(canvas,{button:0,clientX:100,clientY:100});
+  fireEvent.pointerMove(canvas,{clientX:70,clientY:80});
+  expect(canvas.scrollLeft).toBe(90);expect(canvas.scrollTop).toBe(70);
+  fireEvent.pointerUp(canvas);
+  fireEvent.pointerMove(canvas,{clientX:10,clientY:10});
+  expect(canvas.scrollLeft).toBe(90);expect(canvas.scrollTop).toBe(70);
+});
+
 it('keeps PDF-point highlights aligned at reading zoom independently of render DPI', async()=>{
   vi.stubGlobal('ResizeObserver', class { constructor(private cb:()=>void) {} observe(){this.cb();} disconnect(){} });
   vi.spyOn(HTMLImageElement.prototype,'naturalWidth','get').mockReturnValue(1500);

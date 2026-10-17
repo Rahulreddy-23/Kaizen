@@ -1,65 +1,18 @@
-import { ArrowsClockwise, ArrowsOut, ArrowSquareOut, CheckCircle, Circle, MagnifyingGlass, WarningCircle } from "@phosphor-icons/react";
+import { ArrowsClockwise, Circle, MagnifyingGlass } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { ErrorBox } from "../components/Feedback";
-import { PageImage } from "../components/PageImage";
+import { QuickDocumentWorkspace } from "../components/QuickDocumentWorkspace";
+import { QUICK_KINDS as KINDS, QUICK_NAME as NAME, QuickStatusLabel as Status } from "../components/QuickStatus";
 import { Pagination } from "../components/Pagination";
-import { Button, Dialog, EmptyState, LinkButton, PageHeader, TableSkeleton } from "../components/ui";
+import { Button, EmptyState, LinkButton, PageHeader, TableSkeleton } from "../components/ui";
 import { enc, fmtQty, issueLabel } from "../lib/format";
 import { useAsync } from "../lib/useAsync";
 import { useDataRefresh } from "../lib/dataRefresh";
-import type { QuickCell, QuickDocument, QuickKind, QuickRow, QuickStatus, QuickView } from "../types";
+import type { QuickKind, QuickRow, QuickView } from "../types";
 
-const KINDS: QuickKind[] = ["BOM", "LABEL", "DRAWING"];
-const NAME = {BOM: "BOM", LABEL: "Label", DRAWING: "Diagram"};
-const STATUS = {matched: "Matched", attention: "Missing or needs review", neutral: "Not compared"};
 const PAIR: Record<string, string> = {BOM_LABEL: "BOM ↔ Label", BOM_DRAWING: "BOM ↔ Diagram", LABEL_DRAWING: "Label ↔ Diagram"};
-
-function Status({status}: {status: QuickStatus}) {
-  const Icon = status === "matched" ? CheckCircle : status === "attention" ? WarningCircle : Circle;
-  return <span className={`quick-status quick-${status}`}><Icon size={14} aria-hidden />{STATUS[status]}</span>;
-}
-
-function SourcePreview({runId, kind, documents, cell, missing, selected, preferred}: {
-  runId: string; kind: QuickKind; documents: QuickDocument[]; cell: QuickCell | null; missing: boolean; selected: boolean; preferred?: string;
-}) {
-  const [choice, setChoice] = useState("");
-  const [page, setPage] = useState(1);
-  const [zoom, setZoom] = useState("125");
-  const document = documents.find(d => d.id === choice) ?? documents[0];
-  const target = cell?.items.find(i => i.id === preferred) ?? cell?.items[0];
-  const item = target && document && target.doc_id === document.id && target.page === page ? target : cell?.items.find(i => i.doc_id === document?.id && i.page === page) ?? cell?.items.find(i => i.doc_id === document?.id);
-  const targetId = target?.doc_id;
-  const targetPage = target?.page;
-  useEffect(() => { if (targetId) {setChoice(targetId); setPage(targetPage ?? 1);} }, [targetId, targetPage, target?.id]);
-  const actualPage = Math.min(Math.max(1, page), document?.pages || 1);
-  const image = document?.pages ? api.pageImageUrl(runId, document.id, actualPage, null, 180) : null;
-  const box = selected && item?.page === actualPage ? item.bbox : null;
-  return <section className="quick-source" aria-label={`${NAME[kind]} source preview`}>
-    <header className="quick-source-head"><h3>{NAME[kind]}</h3>{selected && cell && <Status status={cell.status} />}</header>
-    {document ? <>
-      <label className="sr-only" htmlFor={`quick-doc-${kind}`}>{NAME[kind]} document</label>
-      <select id={`quick-doc-${kind}`} className="input input-sm w-full" value={document.id} onChange={e => {setChoice(e.target.value); setPage(1);}}>
-        {documents.map(d => <option key={d.id} value={d.id}>{d.file_name}</option>)}
-      </select>
-      <div className="quick-page-controls">
-        <label>Page <select className="input input-sm" aria-label={`${NAME[kind]} page`} value={actualPage} disabled={!document.pages} onChange={e => setPage(Number(e.target.value))}>
-          {Array.from({length: document.pages || 1}, (_, n) => <option key={n} value={n + 1}>{n + 1} of {document.pages || 1}</option>)}
-        </select></label>
-        {document.pages > 0 && <label>Zoom <select className="input input-sm" aria-label={`${NAME[kind]} zoom`} value={zoom} onChange={e => setZoom(e.target.value)}>
-          <option value="fit">Fit width</option>{[50,75,100,125,150,200].map(n => <option key={n} value={n}>{n}%</option>)}
-        </select></label>}
-        <Link className="quick-open" to={`/runs/${enc(runId)}/documents/${enc(document.id)}?page=${actualPage}`} aria-label={`Open ${NAME[kind]} document`}><ArrowSquareOut size={16} />Open</Link>
-      </div>
-      {missing && <p className="quick-gap">No counterpart in this comparison. There is no location to highlight.</p>}
-      {selected && item && <p className="quick-locator">{item.locator || item.file_name}{item.page && ` · page ${item.page}`}{item.page !== actualPage && " · highlight is on another page"}</p>}
-      <div className="quick-page-surface"><PageImage src={image} bbox={box} tone={cell?.status ?? "neutral"} alt={`${document.file_name}, page ${actualPage}`} fit={zoom === "fit"} zoom={zoom === "fit" ? undefined : Number(zoom)} dpi={180} maxHeight="var(--quick-preview-height, 72vh)"
-        fallback={<p>{document.file_name.toLowerCase().endsWith('.pdf') ? "The page preview could not be loaded. Open the document to check the source." : "Spreadsheet source: use the extracted text and sheet/row locator below."}</p>} /></div>
-      {selected && item && <details className="quick-raw"><summary>Selected source text</summary><p>{item.description}</p><pre>{item.raw_text}</pre></details>}
-    </> : <div className="quick-unavailable"><WarningCircle size={24} /><strong>No {NAME[kind].toLowerCase()} document</strong><p>This SKU has no associated {NAME[kind].toLowerCase()} source.</p></div>}
-  </section>;
-}
 
 export default function QuickViewPage() {
   const {runId = ""} = useParams();
@@ -113,7 +66,7 @@ export default function QuickViewPage() {
     <div className="flex gap-2"><Button size="sm" disabled={data.loading || selectedIndex <= 0} onClick={() => choose(result.rows[selectedIndex - 1])}>Previous entry</Button><Button size="sm" disabled={data.loading || selectedIndex < 0 || selectedIndex >= result.rows.length - 1} onClick={() => choose(result.rows[selectedIndex + 1])}>Next entry</Button></div>
   </div>;
   const comparisonDetails = selected && selected.checks.length > 0 && <details className="quick-checks"><summary>Comparison details · {selected.checks.length} checks</summary><div>{selected.checks.map(check => <div key={check.row_id} className="quick-check"><Status status={check.status} /><Link to={`/runs/${enc(runId)}/rows/${enc(check.row_id)}`}>{PAIR[check.check] || check.check} · {check.state === "FINALIZED" ? "Approved" : "Engine / pending review"}</Link><p>{check.explanation}</p>{check.merged_rows > 1 && <p>{check.merged_rows} BOM rows combined by the comparison; individual source rows are shown above.</p>}{check.findings.map((f,n) => <p key={n}>{issueLabel(f.type)}: {f.detail}</p>)}</div>)}</div></details>;
-  const sourcePanels = result && <div className="quick-sources">{KINDS.map(k => <SourcePreview key={`${runId}:${activeSku}:${k}`} runId={runId} kind={k} documents={result.documents.filter(d => d.doc_type === k)} cell={selected?.cells[k] ?? null} preferred={focusItems[k]} selected={!!selected} missing={!!selected && !selected.cells[k] && selected.status !== "neutral"} />)}</div>;
+
   return <div className="quick-view">
     <PageHeader back={{to:`/runs/${enc(runId)}`,label:"Overview"}} title="Quick view"
       description="Compare one SKU across its BOM, label and diagram. Select an entry to locate the source text."
@@ -160,11 +113,9 @@ export default function QuickViewPage() {
       </div>
       <Pagination offset={offset} size={100} total={result.total} onChange={n => change("offset", String(n))} label="Quick view" loading={data.loading} />
       <section ref={preview} className="quick-evidence" aria-label="Three source documents">
-        <div className="quick-evidence-title"><div><h2>Source documents</h2><p>{selected ? "Selected text is highlighted in each available source. Page controls are independent." : "Select an entry above to highlight its locations across the documents."}</p></div><div className="flex gap-2 flex-wrap"><Button size="sm" icon={<ArrowsOut size={16} />} onClick={() => setExpanded(true)}>Expand documents</Button>{selected && <><Button size="sm" onClick={() => matrix.current?.scrollIntoView?.({block:"start"})}>Back to comparison</Button><Button size="sm" variant="ghost" onClick={() => setSelected(null)}>Clear selection</Button></>}</div></div>
-        {!expanded && <div className="quick-document-workspace">{entryNavigation}{comparisonDetails}{sourcePanels}</div>}
-        <Dialog open={expanded} onClose={() => setExpanded(false)} title="Source documents" description={`${activeSku} · Independent page and zoom controls. Press Escape to return.`} width="lg" className="quick-document-dialog" closeLabel="Close expanded documents">
-          <div className="quick-document-workspace">{entryNavigation}{comparisonDetails}{sourcePanels}</div>
-        </Dialog>
+        <div className="quick-evidence-title"><div><h2>Source documents</h2><p>{selected ? "Selected text is highlighted in each available source. Page controls are independent." : "Select an entry above to highlight its locations across the documents."}</p></div><div className="flex gap-2 flex-wrap">{selected && <><Button size="sm" onClick={() => matrix.current?.scrollIntoView?.({block:"start"})}>Back to comparison</Button><Button size="sm" variant="ghost" onClick={() => setSelected(null)}>Clear selection</Button></>}</div></div>
+        <QuickDocumentWorkspace key={`${runId}:${activeSku}`} runId={runId} sku={activeSku} documents={result.documents} selected={selected} preferred={focusItems} expanded={expanded} onExpanded={setExpanded} navigation={entryNavigation} details={comparisonDetails}/>
+
       </section>
     </>}
   </div>;

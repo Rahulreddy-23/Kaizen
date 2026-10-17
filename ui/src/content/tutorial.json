@@ -96,7 +96,7 @@
         },
         {
           "title": "Select an entry",
-          "body": "Click an entry to open three source previews below the table. Each available document opens on its own evidence page. Green or orange highlights show the selected text; a missing counterpart has no invented location. Use Expand documents for full-window reading. Each preview has its own document, page and zoom controls. Previous entry and Next entry move through the current results; Escape returns to the comparison."
+          "body": "Click an entry to open three source previews below the table. Each available document opens on its own evidence page. Green or orange highlights show the selected text; a missing counterpart has no invented location. Open document reader for a full-window workspace. Choose Three documents, Two documents or Focus; select any document pair or use a pane’s Focus button. Drag dividers to resize and drag a page to pan. Page and zoom choices are retained when switching layouts. Locate selected returns to the evidence. Previous/Next entry moves through the current results; Escape closes the reader. Narrow screens use full-width source tabs."
         },
         {
           "title": "Inspect all extracted text",

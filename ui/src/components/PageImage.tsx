@@ -14,18 +14,25 @@ interface Props {
   fit?: boolean;
   /** Reading zoom relative to 96 CSS pixels per inch; independent of render DPI. */
   zoom?: number;
+  /** Explicitly return to evidence after the reader has panned away. */
+  focusToken?: number;
+  /** Wide row boxes can start at their first column instead of their centre. */
+  alignWideEvidence?: "center" | "start";
+  /** Enable drag-to-pan and keyboard scrolling for document readers. */
+  pan?: boolean;
   fallback?: ReactNode;
   maxHeight?: string;
   /** Comparison status; omitted keeps the ordinary evidence accent. */
   tone?: "matched" | "attention" | "neutral";
 }
 
-export function PageImage({ src, bbox, dpi = 110, alt, fit = true, zoom, fallback, maxHeight = "70vh", tone }: Props) {
+export function PageImage({ src, bbox, dpi = 110, alt, fit = true, zoom, focusToken, alignWideEvidence = "center", pan = false, fallback, maxHeight = "70vh", tone }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [scale, setScale] = useState<number | null>(null);
   const [naturalWidth, setNaturalWidth] = useState(0);
+  const panStart = useRef<{x:number;y:number;left:number;top:number} | null>(null);
   const bboxKey = bbox ? `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}` : "";
 
   useEffect(() => {
@@ -58,14 +65,21 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, zoom, fallbac
     const left = bbox.x0 * scale;
     const h = (bbox.y1 - bbox.y0) * scale;
     const w = (bbox.x1 - bbox.x0) * scale;
-    c.scrollTo({ top: Math.max(0, top + h / 2 - c.clientHeight / 2), left: Math.max(0, left + w / 2 - c.clientWidth / 2) });
+    c.scrollTo({ top: Math.max(0, top + h / 2 - c.clientHeight / 2), left: Math.max(0, alignWideEvidence === "start" && w > c.clientWidth ? left - 16 : left + w / 2 - c.clientWidth / 2) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, scale, bboxKey]);
+  }, [status, scale, bboxKey, focusToken, alignWideEvidence]);
 
   if (!src) return <div className="rounded-md border border-line bg-surface-2/60 p-4">{fallback}</div>;
 
   return (
-    <div ref={containerRef} className="relative rounded-md border border-line bg-surface-2 overflow-auto" style={{ maxHeight }}>
+    <div ref={containerRef} className={`relative rounded-md border border-line bg-surface-2 overflow-auto ${pan ? "quick-pan-canvas" : ""}`} style={{ maxHeight }} tabIndex={pan ? 0 : undefined} role={pan ? "region" : undefined} aria-label={pan ? `${alt} page canvas` : undefined}
+      onPointerDown={e => {
+        if (!pan || e.pointerType === "touch" || e.button !== 0) return;
+        panStart.current={x:e.clientX,y:e.clientY,left:e.currentTarget.scrollLeft,top:e.currentTarget.scrollTop};
+        e.currentTarget.setPointerCapture?.(e.pointerId);e.preventDefault();
+      }}
+      onPointerMove={e => {const start=panStart.current;if(start){e.currentTarget.scrollLeft=start.left + start.x-e.clientX;e.currentTarget.scrollTop=start.top + start.y-e.clientY;}}}
+      onPointerUp={()=>{panStart.current=null;}} onPointerCancel={()=>{panStart.current=null;}}>
       {status === "loading" && (
         <div className="absolute inset-0 p-4 space-y-3" aria-hidden>
           <Skeleton className="h-4 w-1/3" />
@@ -83,6 +97,7 @@ export function PageImage({ src, bbox, dpi = 110, alt, fit = true, zoom, fallbac
             ref={imgRef}
             src={src}
             alt={alt}
+            draggable={pan ? false : undefined}
             className={`block h-auto transition-opacity duration-200 ease-out ${fit || zoom ? "w-full" : "max-w-none"} ${status === "ok" ? "opacity-100" : "opacity-0"}`}
             onLoad={() => {
               setNaturalWidth(imgRef.current?.naturalWidth ?? 0);
