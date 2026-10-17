@@ -6,6 +6,7 @@ import { errorMessage } from "../lib/useAsync";
 import type { RunListItem } from "../types";
 import { ErrorBox } from "./Feedback";
 import { Button, Dialog, Field } from "./ui";
+import { ActionMenu } from "./ActionMenu";
 
 export function RunActions({ run, compact = false, onChanged, onDeleted }: {
   run: Pick<RunListItem, "run_id" | "name" | "permission">;
@@ -39,8 +40,10 @@ export function RunActions({ run, compact = false, onChanged, onDeleted }: {
     finally { setBusy(false); }
   };
   return <div className="run-actions">
-    <Button size="sm" variant="ghost" iconOnly={compact} aria-label={`Rename ${label}`} title="Rename run" icon={<PencilSimple size={16} />} onClick={() => open("rename")}>{!compact && "Rename"}</Button>
-    <Button size="sm" variant="ghost" iconOnly={compact} aria-label={`Delete ${label}`} title="Delete run" icon={<Trash size={16} />} onClick={() => open("delete")}>{!compact && "Delete"}</Button>
+    <ActionMenu compact={compact} label={compact ? `Options for ${label}` : "Options"} items={[
+      {label: "Rename run", icon: <PencilSimple size={17}/>, onSelect: () => open("rename")},
+      {label: "Delete run", icon: <Trash size={17}/>, danger: true, onSelect: () => open("delete")},
+    ]}/>
     <Dialog open={action !== null} onClose={close} title={action === "rename" ? "Rename run" : "Delete run?"} width="sm" footer={<>
       <Button disabled={busy} onClick={close}>Cancel</Button>
       <Button variant={action === "delete" ? "danger" : "primary"} loading={busy} disabled={busy || (action === "rename" && (!name.trim() || name.trim() === run.name))} onClick={() => void save()}>{action === "rename" ? "Save name" : "Delete run"}</Button>

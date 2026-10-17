@@ -14,10 +14,10 @@ saved comparisons in BOM / Label / Diagram columns, then select an entry to insp
   neutral; component context may colour the text within its source box. Where full text was not saved,
   show original parsed-row evidence and explain the limitation.
 - Selecting an entry navigates to the previews. Each source has its own document/page controls and zoom;
-  previews render at 220 DPI (300 DPI for zoom of 200% or more), defaulting to 200% for dense BOM rows and 125% for labels/diagrams.
+  previews render at a stable 300 DPI, defaulting to 200% for dense BOM rows and 125% for labels/diagrams.
   Open document reader uses the full window with focus containment and Escape/close recovery.
   Previous/next entry controls navigate the current filtered page. Each pane supports drag-to-pan,
-  keyboard scrolling, 50–300% zoom, Fit width and explicit Locate selected recovery. The clicked entry determines its exact page/box, including multiple entries in one column.
+  keyboard scrolling, 25–400% zoom, Fit width and explicit Locate selected recovery. Touch supports one-finger pan and two-finger pinch; trackpad pinch/Ctrl-wheel zooms around the pointer. Only document canvases intercept these gestures. Zoom preserves the source point under the gesture instead of snapping back to evidence. The clicked entry determines its exact page/box, including multiple entries in one column.
   Missing counterparts have no invented box. Spreadsheet sources retain raw text and sheet/row locators.
 - Search/status filters and 100-row pagination bound the matrix; its header stays visible inside its
   scroll area. Desktop layouts offer three panes, any document pair, or a focused single source. Drag dividers
@@ -31,6 +31,7 @@ saved comparisons in BOM / Label / Diagram columns, then select an entry to insp
 - Switching SKU, run, mode or filters clears the selection. Refresh picks up current review status.
 - The surface is read-only, including for editors; decisions and approvals remain in Evidence.
   Authentication, run sharing, deleted-run protection and private response headers apply unchanged.
+- Owners/editors can download this SKU or all SKUs as Excel: one BOM/Label/Diagram comparison sheet per SKU, plus original source text, quantities and page/row locators. Export includes all entries regardless of screen filters; current saved statuses match Quick view. Literal text cannot execute as formulas. It cannot be imported as review decisions. Viewers and blind sessions cannot export.
 
 
 ## Reader design references
@@ -42,3 +43,4 @@ and [VS Code resizable/maximized editor groups](https://code.visualstudio.com/do
 The application-specific inference is to synchronize by saved evidence selection, with independent page/zoom/pan:
 a BOM, label and drawing have different geometry and pagination, so equal page indices or scroll offsets would
 not reliably show corresponding content. No external viewer, telemetry or document upload service is introduced.
+Gesture handling follows [MDN pointer pinch guidance](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events/Pinch_zoom_gestures) and [wheel events](https://developer.mozilla.org/en-US/docs/Web/API/Element/wheel_event), scoped to the canvas so ordinary page zoom remains available elsewhere.

@@ -34,3 +34,11 @@ describe("Excel download options", () => {
     expect(screen.queryByRole("region", { name: "Excel download options" })).toBeNull();
   });
 });
+
+it('offers selected and all SKU comparisons independently of screen filters',()=>{
+  render(<ExcelExport runId="run 1" quickSku="SKU/A"/>);
+  fireEvent.click(screen.getByRole('button',{name:'Download Excel'}));
+  expect(screen.getByRole('link',{name:'Download this SKU comparison Excel'}).getAttribute('href')).toBe('/api/runs/run%201/quick-view/export.xlsx?sku=SKU%2FA');
+  expect(screen.getByRole('link',{name:'Download all SKUs comparison Excel'}).getAttribute('href')).toBe('/api/runs/run%201/quick-view/export.xlsx');
+  expect(screen.getByText(/Screen filters are not applied/)).toBeTruthy();
+});

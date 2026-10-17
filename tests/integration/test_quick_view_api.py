@@ -83,3 +83,31 @@ def test_decision_changes_are_visible_without_reparsing(env):
     row = client.get(f"{base}/quick-view").json()["rows"][0]
     assert row["status"] == "attention" and row["cells"]["LABEL"]["status"] == "attention"
     assert any(c["state"] == "REVIEWED" for c in row["checks"])
+
+
+def test_quick_export_uses_current_snapshot_and_private_download(env):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    ws, client, run = env
+    base = f"/api/runs/{run.metadata.run_id}/quick-view"
+    before = ws.db.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+    projection = client.get(base).json()
+    assert projection["can_export"] is True
+    response = client.get(f"{base}/export.xlsx", params={"sku": "SKU-A"})
+    assert response.status_code == 200, response.text
+    assert "no-store" in response.headers["cache-control"]
+    assert "attachment" in response.headers["content-disposition"]
+    book = load_workbook(BytesIO(response.content))
+    expected = "Matched" if projection["rows"][0]["status"] == "matched" else "Missing or needs review"
+    assert book["1 SKU-A"]["A2"].value == expected
+    assert book["Sources"].max_row == 4
+    assert client.get(f"{base}/export.xlsx").status_code == 200
+    assert client.get(f"{base}/export.xlsx", params={"sku": "not-in-run"}).status_code == 404
+    assert ws.db.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0] == before
+    other = TestClient(create_app(ws))
+    assert other.get(f"{base}/export.xlsx").status_code == 401
+    assert other.post("/api/auth/signin", json={"email": "viewer@bd.com", "password": "other-test-password"}).status_code == 200
+    assert other.get(base).json()["can_export"] is False
+    assert other.get(f"{base}/export.xlsx").status_code == 403

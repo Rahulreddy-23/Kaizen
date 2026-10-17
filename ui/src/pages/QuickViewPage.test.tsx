@@ -187,3 +187,12 @@ describe('SKU quick view',()=>{
   expect(screen.getByRole('link',{name:'Open documents'})).toBeTruthy();
  });
 });
+
+it('only offers comparison export when the server grants export access',async()=>{
+ const p=payload();p.can_export=true;
+ vi.mocked(api.quickView).mockResolvedValue(p);open();
+ expect(await screen.findByRole('button',{name:'Download Excel'})).toBeTruthy();
+ p.can_export=false;
+ fireEvent.click(screen.getByRole('button',{name:'Refresh'}));
+ await waitFor(()=>expect(screen.queryByRole('button',{name:'Download Excel'})).toBeNull());
+});

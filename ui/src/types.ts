@@ -313,6 +313,7 @@ export interface QuickDocument {
   items: number;
 }
 export interface QuickView {
+  can_export?: boolean;
   sku: string | null;
   groups: {sku: string; document_ids: string[]}[];
   view: "components" | "text";

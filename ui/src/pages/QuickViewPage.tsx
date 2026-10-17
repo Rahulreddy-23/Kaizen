@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { ErrorBox } from "../components/Feedback";
 import { QuickDocumentWorkspace } from "../components/QuickDocumentWorkspace";
+import { ExcelExport } from "../components/ExcelExport";
 import { QUICK_KINDS as KINDS, QUICK_NAME as NAME, QuickStatusLabel as Status } from "../components/QuickStatus";
 import { Pagination } from "../components/Pagination";
 import { Button, EmptyState, LinkButton, PageHeader, TableSkeleton } from "../components/ui";
@@ -70,7 +71,7 @@ export default function QuickViewPage() {
   return <div className="quick-view">
     <PageHeader back={{to:`/runs/${enc(runId)}`,label:"Overview"}} title="Quick view"
       description="Compare one SKU across its BOM, label and diagram. Select an entry to locate the source text."
-      actions={<Button icon={<ArrowsClockwise size={16} />} onClick={data.reload} loading={data.loading}>Refresh</Button>} />
+      actions={<>{result?.can_export && activeSku && <ExcelExport key={`${runId}:${activeSku}`} runId={runId} quickSku={activeSku}/>}<Button icon={<ArrowsClockwise size={16} />} onClick={data.reload} loading={data.loading}>Refresh</Button></>} />
     <nav className="quick-skus" aria-label="SKU selection">
       {groups.map((g, n) => <button key={g.sku} className={`quick-sku ${activeSku === g.sku ? "is-active" : ""}`} aria-pressed={activeSku === g.sku} onClick={() => change("sku", g.sku)}><strong>SKU {n + 1}</strong><span>{g.sku}</span></button>)}
     </nav>

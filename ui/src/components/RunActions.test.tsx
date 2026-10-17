@@ -18,7 +18,8 @@ describe("run management", () => {
     vi.mocked(api.renameRun).mockResolvedValue({});
     const changed = vi.fn();
     render(<RunActions run={run} onChanged={changed} />);
-    fireEvent.click(screen.getByRole("button", {name: "Rename Alpha run"}));
+    fireEvent.click(screen.getByRole("button", {name: "Options"}));
+    fireEvent.click(screen.getByRole("menuitem", {name: "Rename run"}));
     const field = screen.getByRole("textbox", {name: "Run name"});
     expect((field as HTMLInputElement).maxLength).toBe(120);
     const save = screen.getByRole("button", {name: "Save name"}) as HTMLButtonElement;
@@ -33,7 +34,8 @@ describe("run management", () => {
   });
   it("requires a confirmation and supports cancelling deletion", () => {
     render(<RunActions run={run} />);
-    fireEvent.click(screen.getByRole("button", {name: "Delete Alpha run"}));
+    fireEvent.click(screen.getByRole("button", {name: "Options"}));
+    fireEvent.click(screen.getByRole("menuitem", {name: "Delete run"}));
     expect(screen.getByRole("dialog", {name: "Delete run?"})).toBeTruthy();
     expect(screen.getByText("Alpha run")).toBeTruthy();
     expect(api.deleteRun).not.toHaveBeenCalled();
@@ -45,7 +47,8 @@ describe("run management", () => {
     vi.mocked(api.deleteRun).mockRejectedValueOnce(new Error("Connection lost")).mockResolvedValueOnce({deleted:true});
     const deleted = vi.fn();
     render(<RunActions run={run} onDeleted={deleted} />);
-    fireEvent.click(screen.getByRole("button", {name: "Delete Alpha run"}));
+    fireEvent.click(screen.getByRole("button", {name: "Options"}));
+    fireEvent.click(screen.getByRole("menuitem", {name: "Delete run"}));
     fireEvent.click(screen.getByRole("button", {name: "Delete run"}));
     await screen.findByRole("alert");
     expect(deleted).not.toHaveBeenCalled();
@@ -54,4 +57,22 @@ describe("run management", () => {
     expect(api.deleteRun).toHaveBeenLastCalledWith("run 1");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+});
+
+it('keeps owner actions inside Options with keyboard navigation and focus recovery', () => {
+  render(<RunActions run={run}/>);
+  const trigger=screen.getByRole('button',{name:'Options'});
+  expect(screen.queryByRole('menuitem')).toBeNull();
+  trigger.focus();fireEvent.keyDown(trigger,{key:'ArrowDown'});
+  const rename=screen.getByRole('menuitem',{name:'Rename run'});
+  const remove=screen.getByRole('menuitem',{name:'Delete run'});
+  expect(document.activeElement).toBe(rename);
+  fireEvent.keyDown(rename,{key:'ArrowDown'});expect(document.activeElement).toBe(remove);
+  fireEvent.keyDown(remove,{key:'Escape'});expect(document.activeElement).toBe(trigger);
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(trigger);fireEvent.click(screen.getByRole('menuitem',{name:'Rename run'}));
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('menu')).toBeNull();
 });

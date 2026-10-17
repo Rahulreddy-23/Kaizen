@@ -178,6 +178,7 @@ export const api = {
   getRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}`),
   quickView: (runId: string, query: {sku?: string; view?: "components" | "text"; status?: string; search?: string; offset?: number}) =>
     request<QuickView>(`/api/runs/${enc(runId)}/quick-view${qs(query)}`),
+  quickExportUrl: (runId: string, sku?: string) => `/api/runs/${enc(runId)}/quick-view/export.xlsx${qs({sku})}`,
 
   // ---- results / evidence
   getResults: (runId: string, q: ResultsQuery) => request<ResultsPage>(`/api/runs/${enc(runId)}/results${qs(q as Params)}`),

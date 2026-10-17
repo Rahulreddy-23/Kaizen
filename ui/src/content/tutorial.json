@@ -96,7 +96,7 @@
         },
         {
           "title": "Select an entry",
-          "body": "Click an entry to open three source previews below the table. Each available document opens on its own evidence page. Green or orange highlights show the selected text; a missing counterpart has no invented location. Open document reader for a full-window workspace. Choose Three documents, Two documents or Focus; select any document pair or use a pane’s Focus button. Drag dividers to resize and drag a page to pan. Page and zoom choices are retained when switching layouts. Locate selected returns to the evidence. Previous/Next entry moves through the current results; Escape closes the reader. Narrow screens use full-width source tabs."
+          "body": "Click an entry to open three source previews below the table. Each available document opens on its own evidence page. Green or orange highlights show the selected text; a missing counterpart has no invented location. Open document reader for a full-window workspace. Choose Three documents, Two documents or Focus; select any document pair or use a pane’s Focus button. Drag dividers to resize and drag a page to pan. Page and zoom choices are retained when switching layouts. Locate selected returns to the evidence. Previous/Next entry moves through the current results; Escape closes the reader. Narrow screens use full-width source tabs. Spread two fingers to zoom in; pinch together to zoom out. Trackpad pinch and Ctrl + scroll also zoom inside a page. Each source keeps its own zoom."
         },
         {
           "title": "Inspect all extracted text",
@@ -105,6 +105,10 @@
         {
           "title": "Review a finding",
           "body": "Expand Comparison details to read the recorded checks and current findings, then open a check to review or approve it in Evidence. Quick view itself is read-only."
+        },
+        {
+          "title": "Download the comparison",
+          "body": "Owners and editors can choose Download Excel, then This SKU or All SKUs. The workbook includes all comparison entries, matching status, original text and source references, regardless of screen filters. This download is read-only and cannot be imported as review decisions."
         }
       ],
       "paragraphs": [],

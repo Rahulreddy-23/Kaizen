@@ -940,9 +940,7 @@
   .account-avatar { flex-shrink: 0; text-decoration: none; }
   .account-avatar:hover { border-color: rgb(var(--c-ink-3)); color: rgb(var(--c-ink)); }
   .overview-heading .head-title { flex: 0 1 auto; min-width: 0; }
-  .overview-review-action { padding-top: 2px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-  .overview-review-action > span { font-size: 12px; color: rgb(var(--c-ink-3)); }
-  .excel-export { position: relative; align-self: flex-start; padding-top: 2px; }
+  .excel-export { position: relative; }
   .excel-export-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: min(24rem, calc(100vw - 48px)); padding: 8px; border: 1px solid rgb(var(--c-line-2)); border-radius: var(--radius-input); background: rgb(var(--c-surface)); }
   .excel-export-panel a { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 6px; text-decoration: none; color: rgb(var(--c-ink)); font-size: 14px; }
   .excel-export-panel a:hover, .excel-export-panel a:focus-visible { background: rgb(var(--c-brand-100)); }
@@ -991,7 +989,6 @@
   .profile-details, .profile-run-links { padding-inline: var(--space-md); }
   .profile-note, .profile-preference { padding-inline: var(--space-md); }
   .overview-heading { flex-direction: column; }
-  .overview-review-action { flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
   .excel-export-panel { right: auto; left: 0; }
 }
 @media (max-width: 479px) {
@@ -1332,4 +1329,30 @@
   .quick-reader-layout button, .quick-reader-tabs button { padding-inline: 10px; }
   .quick-reader-content { height: max(620px, 84dvh); }
   .quick-reader-help { font-size: 12px; }
+}
+
+/* Run identity and actions share a stable top edge; captions never shift buttons. */
+.overview-heading { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: start; gap: 16px 24px; margin-bottom: 16px; }
+.overview-heading > .head-title { min-width: 0; }
+.overview-heading > .head-title h1 { min-height: 40px; align-items: center; }
+.overview-heading > .head-title > div:last-child { margin-top: 8px; }
+.overview-heading > div:last-child:not(.head-title) { align-items: center; justify-content: flex-end; gap: 8px; }
+.overview-heading .btn { min-height: 40px; }
+.overview-heading .excel-export { padding-top: 0; align-self: auto; }
+.action-menu { position: relative; }
+.action-menu-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 35; width: 192px; max-width: calc(100vw - 32px); padding: 6px; border: 1px solid rgb(var(--c-line-2)); border-radius: 8px; background: rgb(var(--c-surface)); box-shadow: 0 8px 24px rgb(0 0 0 / .14); }
+.action-menu-panel button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 10px; text-align: left; font-size: 14px; border-radius: 4px; color: rgb(var(--c-ink)); }
+.action-menu-panel button:hover, .action-menu-panel button:focus-visible { background: rgb(var(--c-surface-2)); outline: 2px solid transparent; }
+.action-menu-panel button:focus-visible { outline-color: var(--accent-focus); outline-offset: -2px; }
+.action-menu-panel button.is-danger { color: rgb(var(--c-bad-strong)); }
+@media (max-width: 1199px) {
+  .overview-heading { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .overview-heading > div:last-child:not(.head-title) { justify-content: flex-start; }
+}
+@media (max-width: 479px) {
+  .overview-heading > div:last-child:not(.head-title) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .overview-heading > div:last-child .btn, .overview-heading .run-actions, .overview-heading .excel-export { width: 100%; }
+  .overview-heading .run-actions > .action-menu { width: 100%; }
+  .overview-heading .action-menu-panel { right: 0; }
+  .overview-heading .excel-export-panel { left: 0; right: auto; }
 }

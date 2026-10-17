@@ -91,11 +91,9 @@ export default function DashboardPage() {
                 recorded in the workbook's run-info sheet and on the certificate. */}
           </>
         }
-        description="Results and review status for this run."
-        actions={<><LinkButton to={`${base}/quick-view`}>Quick view</LinkButton><div className="overview-review-action">
+        actions={<><LinkButton to={`${base}/quick-view`}>Quick view</LinkButton>
           <LinkButton variant="primary" to={queue({ nv: "1" })} iconRight={<ArrowRight size={16} />}>Review queue <span className="queue-count">{flagged}</span></LinkButton>
-          <span>{flagged ? "Awaiting review or approval" : "No pending reviews"}</span>
-        </div>{r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
+          {r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
       />
       <details className="run-management">
         <summary>Run settings and exports</summary>

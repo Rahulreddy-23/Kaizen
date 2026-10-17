@@ -742,7 +742,27 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise HTTPException(404, "SKU not found in this run. Choose a SKU from this run's Overview.")
         for document in data["documents"]:
             document["pages"] = _page_count(next(d.path for d in run.documents if d.id == document["id"]))
-        return filter_quick_view(data, status, search, offset, limit)
+        return filter_quick_view(data, status, search, offset, limit) | {"can_export": access.permission(run_id, session.reviewer) != "view" and not session.blind}
+
+    @app.get("/api/runs/{run_id}/quick-view/export.xlsx")
+    def export_quick_comparison(run_id: str, sku: str | None = None, session: ReviewSession = Depends(_identified)):
+        from kaizen.reporting.quick_view import export_quick_view
+
+        _refuse_if_blind(session)
+        run = cache.get(run_id)
+        rows, _, _ = review_snapshot(run, review, session.slot, session.blind)
+        chosen = [g for g in run.groups if sku is None or g.sku == sku]
+        if sku is not None and not chosen:
+            raise HTTPException(404, "SKU not found in this run.")
+        payloads = [build_quick_view(run, rows, g.sku, "components", _evidence) for g in chosen]
+        temporary = tempfile.TemporaryDirectory()
+        try:
+            filename = f"kaizen-{run_id}-quick-view.xlsx"
+            path = export_quick_view(payloads, Path(temporary.name) / filename, run_id=run_id, run_name=run_info(run_id, session.reviewer).get("name", ""))
+            return FileResponse(path, media_type=XLSX, filename=filename, background=BackgroundTask(temporary.cleanup))
+        except Exception:
+            temporary.cleanup()
+            raise
 
     def _doc(run: Run, doc_id: str):
         d = next((d for d in run.documents if d.id == doc_id), None)

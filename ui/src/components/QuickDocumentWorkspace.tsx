@@ -54,7 +54,8 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
   const page = Math.min(Math.max(1,view.page),doc?.pages || 1);
   const item = target && target.doc_id === doc?.id && target.page === page ? target : cell?.items.find(i=>i.doc_id === doc?.id && i.page === page) ?? cell?.items.find(i=>i.doc_id === doc?.id);
   const box = selected && item?.page === page ? item.bbox : null;
-  const dpi = Number(view.zoom) >= 200 ? 300 : 220;
+  // Keep the rendered image stable throughout a pinch; reading scale is separate.
+  const dpi = 300;
   const image = doc?.pages ? api.pageImageUrl(runId,doc.id,page,null,dpi) : null;
   const locate = () => {if (target) onView({documentId:target.doc_id,page:target.page ?? 1,locate:view.locate + 1});};
   return <section id={`reader-${kind}`} className="quick-reader-pane" aria-label={`${NAME[kind]} source preview`} hidden={hidden}>
@@ -65,14 +66,14 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
       <div className="quick-pane-tools">
         <label>Page <select className="input input-sm" aria-label={`${NAME[kind]} page`} value={page} disabled={!doc.pages} onChange={e=>onView({page:Number(e.target.value)})}>{Array.from({length:doc.pages || 1},(_,n)=><option key={n} value={n+1}>{n+1} / {doc.pages || 1}</option>)}</select></label>
         <label className="sr-only" htmlFor={`reader-zoom-${kind}`}>{NAME[kind]} zoom</label>
-        <select id={`reader-zoom-${kind}`} className="input input-sm" value={view.zoom} disabled={!doc.pages} onChange={e=>onView({zoom:e.target.value})}><option value="fit">Fit width</option>{[50,75,100,125,150,200,300].map(n=><option key={n} value={n}>{n}%</option>)}</select>
+        <select id={`reader-zoom-${kind}`} className="input input-sm" value={view.zoom} disabled={!doc.pages} onChange={e=>onView({zoom:e.target.value})}><option value="fit">Fit width</option>{Array.from(new Set([25,50,75,100,125,150,200,300,400,...(view.zoom === "fit" ? [] : [Number(view.zoom)])])).sort((a,b)=>a-b).map(n=><option key={n} value={n}>{n}%</option>)}</select>
         <Button size="sm" variant="ghost" iconOnly icon={<CrosshairSimple size={16}/>} aria-label={`Locate selected text in ${NAME[kind]}`} disabled={!selected || !target?.page} onClick={locate}/>
         <Link className="quick-pane-open" to={`/runs/${enc(runId)}/documents/${enc(doc.id)}?page=${page}`} aria-label={`Open ${NAME[kind]} document`} title="Open full document"><ArrowSquareOut size={17}/></Link>
       </div>
       <div className={`quick-source-excerpt quick-${cell?.status ?? (missing ? "attention" : "neutral")}`}>
         {selected ? item ? <><strong>{item.description}</strong><small>{item.locator || item.file_name}{item.page !== page && " · Highlight on another page"}</small></> : <span>{cell ? "The selected entry is in another source file." : "No counterpart in this comparison. There is no location to highlight."}</span> : <span>Select a comparison entry to locate its source text.</span>}
       </div>
-      <div className="quick-page-surface"><PageImage src={image} bbox={box} dpi={dpi} fit={view.zoom === "fit"} zoom={view.zoom === "fit" ? undefined : Number(view.zoom)} focusToken={view.locate} pan alignWideEvidence="start" tone={cell?.status ?? "neutral"} alt={`${doc.file_name}, page ${page}`} maxHeight="100%"
+      <div className="quick-page-surface"><PageImage src={image} bbox={box} dpi={dpi} fit={view.zoom === "fit"} zoom={view.zoom === "fit" ? undefined : Number(view.zoom)} onZoomChange={percent=>onView({zoom:String(percent)})} focusToken={view.locate} pan alignWideEvidence="start" tone={cell?.status ?? "neutral"} alt={`${doc.file_name}, page ${page}`} maxHeight="100%"
         fallback={<p>{doc.file_name.toLowerCase().endsWith('.pdf') ? "Page preview unavailable. Open the document to inspect the source." : "Spreadsheet source: the selected text and sheet/row locator are shown above."}</p>}/></div>
       {selected && item && <details className="quick-pane-raw"><summary>Original source text</summary><pre>{item.raw_text}</pre></details>}
     </> : <div className="quick-unavailable"><WarningCircle size={24}/><strong>No {NAME[kind].toLowerCase()} document</strong><p>This SKU has no associated {NAME[kind].toLowerCase()} source.</p></div>}
@@ -137,7 +138,7 @@ export function QuickDocumentWorkspace({runId, sku, documents, selected, preferr
         {visible.includes(k) && visible.indexOf(k)<visible.length-1 && <Splitter left={k} right={visible[visible.indexOf(k)+1]} weights={weights} totalWeight={visible.reduce((sum,k)=>sum+weights[k],0)} onChange={setWeights}/>}
       </Fragment>)}
     </div>
-    <p className="quick-reader-help">{narrow ? "Switch source tabs to read each document at full width." : "Drag a divider to resize. Drag the page to pan; use Focus for a full-width document."}</p>
+    <p className="quick-reader-help">{narrow ? "Switch source tabs for full width. " : "Drag a divider to resize. "}Drag to pan. Spread two fingers to zoom in; pinch together to zoom out. Trackpad pinch or Ctrl + scroll also zooms.</p>
   </div>;
   return <>
     <div className="quick-reader-launch"><Button icon={<ArrowsOut size={16}/>} onClick={()=>onExpanded(true)}>Open document reader</Button><span>Adjustable splits · source-linked highlights</span></div>

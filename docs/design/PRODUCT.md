@@ -24,7 +24,7 @@ for implementation boundaries.
 6. Track action items and compare corrective runs. Use **Closed testing** for separately verified
    ground truth and candidate evaluation, not as an automatic approval or live-model update.
 
-Owners can rename or delete from All runs or Overview. Deletion moves a run to **All runs → Deleted runs**,
+Owners can rename or delete from **Options** in All runs or Overview. Deletion moves a run to **All runs → Deleted runs**,
 where only its owner can restore it. Documents, decisions and existing sharing are retained; deleted runs
 are inaccessible to everyone until restored. Independent copies are unaffected.
 

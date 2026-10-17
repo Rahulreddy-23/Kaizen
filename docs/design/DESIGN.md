@@ -64,6 +64,9 @@ Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corner
   and restores focus to its trigger. Dialogs follow the same focus/recovery conventions.
 - Breadcrumbs identify the current screen. A named run selector appears on run pages. Do not ask users
   to paste raw run IDs where the app can supply accessible run names.
+- Overview groups the heading, verdict and run metadata together. Quick view, Review queue, Download
+  Excel and Options share a top edge and 40px height; narrow screens reflow the actions into two columns.
+  Owners open Options for Rename/Delete; deletion retains the named-run confirmation and restore workflow.
 - Keep page overflow within the viewport. Dense tables and source images may scroll in their own
   containers. Wrap long explanations, paths and identifiers; preserve full text in accessible content.
 
@@ -71,7 +74,7 @@ Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corner
 
 | Surface | Implemented behavior |
 | --- | --- |
-| All runs | Totals, ownership filters, Deleted runs and search; 25 entries per client-side page. Owners have Rename/Delete controls; deleted runs offer Restore. Destructive actions require a confirmation that names the run. |
+| All runs | Totals, ownership filters, Deleted runs and search; 25 entries per client-side page. Owners open Options for Rename/Delete; deleted runs offer Restore. Destructive actions require a confirmation that names the run. |
 | Review queue | 100 comparisons per page; basic filters plus More filters; current review state and engine evidence stay distinct. |
 | Terminology | Shared library/My terminology, named approval/time/version, reviewer/scope/search filters, explicit checkbox subsets or Add entire list. Current account usage and available version updates stay visible. Packaged defaults are included; shared management remains administrator-only. 25 entries per page. |
 | Action items, users | Search/filter controls where relevant; 25 entries per client-side page. Manage users includes invitation creation, a one-time code field and pending invitation revocation. |

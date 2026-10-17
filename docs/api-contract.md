@@ -21,6 +21,13 @@ source `items` (evidence plus ID), its `status`, and recorded `checks` with curr
 No new pairings, extraction, decisions or approvals are written. Text-mode rows follow independent source
 order; positions across columns do not mean equivalence. Missing counterparts/exemptions cannot turn green
 from their stored classification alone. Invalid SKU returns 404. View-only access is sufficient.
+`can_export` indicates whether the current session may download a comparison workbook.
+
+`GET /api/runs/{run_id}/quick-view/export.xlsx?sku=...` downloads that SKU; omitting `sku` includes all
+saved SKU groups. Requires owner/editor access and a non-blind session. One comparison sheet per SKU,
+with original extracted source details on Sources. Includes every entry regardless of screen filters or
+pagination, using one current review snapshot. No reparsing or decision changes. Private/no-store;
+each request owns a temporary file deleted after streaming. This value-only workbook is not a decision import.
 
 ## Authentication and errors
 
