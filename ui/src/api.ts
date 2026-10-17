@@ -34,7 +34,7 @@ import type {
   ViewerParams,
 } from "./types";
 import type { Annotation, DrawingBody, GroundTruthBody, LearningReport, LearningRow, LearningSummary } from "./learning";
-import { supportedRunFiles, uploadProblem } from "./lib/uploads";
+import { uploadProblem, type UploadFolder } from "./lib/uploads";
 import { notifyDataChanged } from "./lib/dataRefresh";
 
 export class ApiError extends Error {
@@ -159,14 +159,14 @@ export const api = {
   // ---- runs
   listRuns: () => request<RunListItem[]>("/api/runs"),
   loadDemo: () => request<RunSummary>("/api/demo/load", { method: "POST" }),
-  runFromPath: (path: string, name = "") => request<RunSummary>("/api/runs/from-path", json("POST", { path, name })),
-  uploadRun: async (files: File[], name = "") => {
-    files = supportedRunFiles(files);
-    const problem = uploadProblem(files);
+  // One run per folder; every folder must hold exactly a BOM, a label and a drawing, as with uploads.
+  runFromPath: (path: string, name = "") => request<RunSummary[]>("/api/runs/from-path", json("POST", { path, name })),
+  uploadRun: async (folders: UploadFolder[], name = "") => {
+    const problem = uploadProblem(folders);
     if (problem) throw new ApiError(400, problem);
     const fd = new FormData();
     fd.append("name", name);
-    for (const f of files) fd.append("files", f, f.webkitRelativePath || f.name);
+    for (const folder of folders) for (const f of folder.files) fd.append("files", f, `${folder.name}/${f.name}`);
     return request<RunSummary>("/api/runs/upload", { method: "POST", body: fd });
   },
   getRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}`),

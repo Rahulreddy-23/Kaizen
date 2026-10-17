@@ -211,10 +211,11 @@ def test_document_previews_and_items_require_sharing(env):
 
 def test_repeated_upload_is_a_new_owned_run(env, sample):
     ws, access, c, rid, row = env
-    file = Path(sample.documents[0].path)
+    kit = [Path(d.path) for d in sample.documents if d.header.get('revision_role') != 'old']
+    assert len(kit) == 3
     results = []
     for _ in range(2):
-        response = c[EDITOR].post('/api/runs/upload', files={'files': ('Project/bom.pdf', file.read_bytes(), 'application/pdf')}, data={'name':'My project review'})
+        response = c[EDITOR].post('/api/runs/upload', files=[('files', (f'Project/{p.name}', p.read_bytes(), 'application/pdf')) for p in kit], data={'name':'My project review'})
         assert response.status_code == 200, response.text
         results.append(response.json())
     assert results[0]['run_id'] != results[1]['run_id']

@@ -45,7 +45,8 @@ from kaizen.api.payloads import (
 )
 from kaizen.evaluation.learning import shadow_evaluate
 from kaizen.models import Classification, DocType, Run, Thresholds
-from kaizen.pipeline import SUPPORTED_SUFFIXES, load_run, run_folder, save_run
+from kaizen.ingest.detect import detect_doc_type
+from kaizen.pipeline import SUPPORTED_SUFFIXES, discover_files, load_run, run_folder, save_run
 from kaizen.reporting.annotated_bom import write_annotated_bom
 from kaizen.reporting.certificate import write_certificate, write_run_certificate
 from kaizen.reporting.excel import ReviewBundle, export_with_review
@@ -93,6 +94,41 @@ def _source_fingerprint() -> str:
         digest.update(path.relative_to(root).as_posix().encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+UPLOAD_SET = (DocType.BOM, DocType.LABEL, DocType.DRAWING)
+
+
+def upload_folder_problems(root: Path) -> list[str]:
+    """Each uploaded folder must hold exactly one BOM, one label and one drawing. File and folder names are
+    free-form, so types come from content detection, the same detection the pipeline uses to parse them."""
+    folders: dict[Path, list[Path]] = {}
+    for f in discover_files(root):
+        folders.setdefault(f.parent, []).append(f)
+    problems = []
+    for folder, files in sorted(folders.items()):
+        name = folder.relative_to(root).as_posix() if folder != root else folder.name
+        if len(files) != len(UPLOAD_SET):
+            problems.append(f"Folder '{name}' has {len(files)} document{'s' if len(files) != 1 else ''}; it needs exactly 3: a BOM, a label and a drawing.")
+            continue
+        types = [detect_doc_type(f) for f in files]
+        if sorted(t.value for t in types if t) != sorted(t.value for t in UPLOAD_SET):
+            found = ", ".join(f"{f.name} ({t.value if t else 'not recognised'})" for f, t in zip(files, types))
+            problems.append(f"Folder '{name}' needs one BOM, one label and one drawing; found {found}.")
+    return problems
+
+
+def document_sets(root: Path) -> list[Path]:
+    """The folders to run separately, under the same rule as uploads: every folder holding documents must be
+    exactly one BOM, one label and one drawing, and each becomes its own run. Anything else is refused."""
+    if not root.is_dir():
+        raise HTTPException(400, f"Enter a folder path; '{root}' is not a folder on this machine.")
+    folders = sorted({f.parent for f in discover_files(root)})
+    if not folders:
+        raise HTTPException(400, f"No PDF, XLSX, XLSM or CSV documents found in '{root}'.")
+    if problems := upload_folder_problems(root):
+        raise HTTPException(400, " ".join(problems))
+    return folders
 
 # ---- sign-in -----------------------------------------------------------------------------------
 def _bd_email(raw: str) -> str:
@@ -521,7 +557,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.post("/api/runs/from-path")
     def run_from_path(payload: RunPath, session=Depends(_identified)):
         payload = payload.model_dump()
-        return run_path(Path(payload["path"]), session.reviewer, str(payload.get("name", "")))
+        root, name = Path(payload["path"]), str(payload.get("name", "")).strip()
+        sets = document_sets(root)
+        if len(sets) == 1:
+            return [run_path(sets[0], session.reviewer, name)]
+        # Labels like the upload flow: the typed name plus the folder, or the folder's own default label.
+        return [run_path(folder, session.reviewer, f"{name} · {folder.name}" if name else "") for folder in sets]
 
     @app.post("/api/runs/upload")
     async def run_upload(files: list[UploadFile] = File(...), name: str = Form(""), session=Depends(_identified)):
@@ -539,6 +580,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 seen.add(rel)
                 if rel.suffix.lower() not in SUPPORTED_SUFFIXES or rel.name.startswith((".", "~$")):
                     continue
+                if len(rel.parts) < 2:
+                    raise HTTPException(400, f"Upload folders, not individual files: {rel.name} is not inside a folder.")
                 if any(parent in seen for parent in rel.parents) or any(rel in other.parents for other in seen):
                     raise HTTPException(400, "An upload path is used as both a file and a folder.")
                 dest = target / rel
@@ -549,6 +592,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                         if total > MAX_UPLOAD_BYTES:
                             raise HTTPException(413, 'Upload at most 250 MB per run.')
                         output.write(chunk)
+            if problems := await run_in_threadpool(upload_folder_problems, target):
+                raise HTTPException(400, " ".join(problems))
             label = name or f"{Path(files[0].filename or 'Project').parts[0]} · Review · {datetime.now(timezone.utc):%d %b %Y}"
             return await run_in_threadpool(run_path, target, session.reviewer, label)
         except Exception:

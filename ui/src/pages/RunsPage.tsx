@@ -1,5 +1,5 @@
-import { ArrowRight, ArrowClockwise, CircleNotch, FolderOpen, MagnifyingGlass, Plus, UploadSimple } from "@phosphor-icons/react";
-import { useState } from "react";
+import { ArrowRight, ArrowClockwise, CircleNotch, Files, FolderOpen, MagnifyingGlass, Plus, UploadSimple, X } from "@phosphor-icons/react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useReviewer } from "../lib/reviewer";
 import { api } from "../api";
@@ -7,8 +7,9 @@ import { ErrorBox } from "../components/Feedback";
 import { Button, Card, Dialog, EmptyState, PageHeader, TableSkeleton } from "../components/ui";
 import { enc, fmtDate, displayName } from "../lib/format";
 import { errorMessage, useAsync } from "../lib/useAsync";
-import { supportedRunFiles, uploadProblem } from "../lib/uploads";
+import { addFileSet, addFolders, folderProblem, supportedRunFiles, uploadProblem, type UploadFolder } from "../lib/uploads";
 import { useDataRefresh } from "../lib/dataRefresh";
+import { useToast } from "../lib/toast";
 import type { RunSummary } from "../types";
 
 const DIR_PROPS = { webkitdirectory: "", directory: "" } as Record<string, string>;
@@ -28,13 +29,29 @@ export default function RunsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [path, setPath] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const fileCount = files.length;
-  const problem = fileCount ? uploadProblem(files) : null;
-  const selectFiles = (list: FileList | null) => {
-    const supported = supportedRunFiles(Array.from(list ?? []));
-    setFiles(supported);
-    setErr(list?.length && !supported.length ? uploadProblem(supported) : null);
+  const [folders, setFolders] = useState<UploadFolder[]>([]);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const filesInput = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState("");
+  const [failure, setFailure] = useState<{ title: string; message: string } | null>(null);
+  const toast = useToast();
+  const fileCount = folders.reduce((total, folder) => total + folder.files.length, 0);
+  const problem = folders.length ? uploadProblem(folders) : null;
+  const selectFolder = (input: HTMLInputElement) => {
+    const picked = Array.from(input.files ?? []);
+    input.value = "";  // so choosing the same folder again still fires a change
+    if (!picked.length) return;
+    const next = addFolders(folders, picked);
+    setFolders(next);
+    setErr(next.length === folders.length ? (supportedRunFiles(picked).length ? "That folder is already added." : "That folder has no PDF, XLSX, XLSM or CSV documents.") : null);
+  };
+  const selectFiles = (input: HTMLInputElement) => {
+    const picked = Array.from(input.files ?? []);
+    input.value = "";
+    if (!picked.length) return;
+    const added = addFileSet(folders, picked);
+    setFolders(added.folders);
+    setErr(added.problem);
   };
   const start = async (label: string, fn: () => Promise<RunSummary>) => {
     setBusy(label); setErr(null);
@@ -42,12 +59,41 @@ export default function RunsPage() {
     catch (e) { setErr(errorMessage(e)); }
     finally { setBusy(null); }
   };
-  const upload = () => {
-    if (files.length) void start("upload", () => api.uploadRun(files, runName));
+  // Every folder or 3-file set is its own run, sent one at a time so one bad set does not stop the rest.
+  const upload = async () => {
+    setBusy("upload"); setErr(null); setFailure(null);
+    const failed: UploadFolder[] = [], problems: string[] = [];
+    let last: RunSummary | null = null;
+    for (const [index, folder] of folders.entries()) {
+      setProgress(`Checking ${folder.name} (${index + 1} of ${folders.length})…`);
+      const label = folder.name.split("/").pop()!, typed = runName.trim();
+      try { last = await api.uploadRun([folder], typed ? (folders.length === 1 ? typed : `${typed} · ${label}`) : label); }
+      catch (e) { failed.push(folder); problems.push(`${folder.name}: ${errorMessage(e)}`); }
+    }
+    setBusy(null); setProgress("");
+    const created = folders.length - failed.length;
+    if (created) runs.reload();
+    if (failed.length) {
+      setFolders(failed);
+      const notChecked = `${failed.length} ${failed.length === 1 ? "folder" : "folders"} could not be checked`;
+      setFailure({ title: created ? `Created ${created} run${created === 1 ? "" : "s"} · ${notChecked}` : notChecked, message: `${problems.join("\n")}\n\nFix ${failed.length === 1 ? "it" : "them"} and try again, or remove ${failed.length === 1 ? "it" : "them"} from the list.` });
+    } else if (created === 1 && last) nav(`/runs/${enc(last.run_id)}`);
+    else { setCreating(false); toast({ tone: "ok", title: `Created ${created} runs`, description: "One run per folder." }); }
+  };
+  const runFromPath = async () => {
+    setBusy("path"); setErr(null);
+    try {
+      const created = await api.runFromPath(path.trim(), runName);
+      if (created.length === 1) { nav(`/runs/${enc(created[0].run_id)}`); return; }
+      runs.reload(); setCreating(false);
+      toast({ tone: "ok", title: `Created ${created.length} runs`, description: "One run per folder." });
+    }
+    catch (e) { setErr(errorMessage(e)); }
+    finally { setBusy(null); }
   };
   const all = runs.data ?? [];
   const visible = all.filter(r => (tab === "all" || (tab === "mine" ? r.permission === "owner" : r.permission !== "owner")) && `${r.name} ${r.run_id} ${r.owner}`.toLowerCase().includes(search.toLowerCase()));
-  const openCreate = () => { setErr(null); setFiles([]); setRunName(""); setCreating(true); };
+  const openCreate = () => { setErr(null); setFailure(null); setFolders([]); setRunName(""); setCreating(true); };
 
   return <div className="workspace-page">
     <PageHeader title="Cross-checks" description="Open a run or upload documents to start a new check." actions={<Button variant="primary" onClick={openCreate} icon={<Plus size={18} />}>New cross-check</Button>} />
@@ -75,13 +121,15 @@ export default function RunsPage() {
       </Card>
 
     </section>
-    <Dialog open={creating} onClose={() => { if (!busy) setCreating(false); }} title="New cross-check" description="Choose a folder or files containing your BOMs, labels, drawings and PCOs." footer={<><Button disabled={!!busy} onClick={() => setCreating(false)}>Cancel</Button><Button variant="primary" loading={busy === "upload"} disabled={!!busy || !fileCount || !!problem} onClick={upload} icon={<UploadSimple size={17} />}>{fileCount ? `Check ${fileCount} files` : "Start cross-check"}</Button></>}>
-      <label className="label" htmlFor="run-name">Run name <span className="text-ink-3">(optional)</span></label><input id="run-name" className="input w-full" maxLength={120} placeholder="e.g. Orion · September label review" value={runName} onChange={e => setRunName(e.target.value)} />
-      <div className="upload-zone"><FolderOpen size={32} /><strong>Choose your project folder</strong><p>Include SKU subfolders with BOMs, labels and drawings, plus any PCO files.</p><input type="file" multiple {...DIR_PROPS} className="file-input" disabled={!!busy} onChange={e => selectFiles(e.target.files)} aria-label="Project folder" /><small>PDF, XLSX, XLSM and CSV · Up to 250 MB · Folder structure is preserved</small><label className="label">Or choose individual files<input type="file" multiple accept=".pdf,.xlsx,.xlsm,.csv" disabled={!!busy} onChange={e => selectFiles(e.target.files)} aria-label="Individual documents" /></label>{!!fileCount && <span role="status">{fileCount} supported files selected</span>}</div>
+    <Dialog open={creating} onClose={() => { if (!busy) setCreating(false); }} title="New cross-check" description="Add folders or sets of 3 files. Each one becomes its own run and needs exactly 3 documents: a BOM, a label and a drawing." footer={<><Button disabled={!!busy} onClick={() => setCreating(false)}>Cancel</Button><Button variant="primary" loading={busy === "upload"} disabled={!!busy || !folders.length || !!problem} onClick={upload} icon={<UploadSimple size={17} />}>{folders.length > 1 ? `Create ${folders.length} runs` : "Start cross-check"}</Button></>}>
+      <label className="label" htmlFor="run-name">Run name <span className="text-ink-3">(optional; each run is also named after its folder)</span></label><input id="run-name" className="input w-full" maxLength={120} placeholder="e.g. Orion · September label review" value={runName} onChange={e => setRunName(e.target.value)} />
+      <div className="upload-zone"><FolderOpen size={32} /><strong>Add kit documents</strong><p>Each run needs one BOM, one label and one drawing: choose a folder holding them, or select the 3 files together. Any file and folder names work: documents are recognised by their content.</p><input ref={folderInput} type="file" multiple {...DIR_PROPS} hidden disabled={!!busy} onChange={e => selectFolder(e.target)} /><input ref={filesInput} type="file" multiple accept=".pdf,.xlsx,.xlsm,.csv" hidden disabled={!!busy} onChange={e => selectFiles(e.target)} /><div className="flex flex-wrap justify-center gap-2"><Button variant={folders.length ? undefined : "primary"} disabled={!!busy} onClick={() => folderInput.current?.click()} icon={folders.length ? <Plus size={17} /> : <FolderOpen size={17} />}>{folders.length ? "Add a folder" : "Choose folder"}</Button><Button disabled={!!busy} onClick={() => filesInput.current?.click()} icon={<Files size={17} />}>{folders.length ? "Add 3 files" : "Choose 3 files"}</Button></div><small>PDF, XLSX, XLSM and CSV · Up to 250 MB per run · Choose a parent folder to add every folder inside it</small>{!!folders.length && <span role="status">{folders.length} run{folders.length === 1 ? "" : "s"} · {fileCount} documents</span>}</div>
+      {!!folders.length && <ul className="space-y-2" aria-label="Runs to create">{folders.map(folder => { const issue = folderProblem(folder); const Icon = folder.loose ? Files : FolderOpen; return <li key={folder.name} className="flex items-start gap-3 text-sm"><Icon size={20} className={issue ? "text-bad-strong shrink-0" : "text-ok-strong shrink-0"} aria-hidden /><div className="min-w-0 flex-1"><strong className="block truncate">{folder.name || "(no folder)"}</strong><span className={issue ? "text-bad-strong" : "text-ink-3"}>{issue ?? `${folder.files.length} documents: ${folder.files.map(f => f.name).join(", ")}`}</span></div><Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setFolders(folders.filter(f => f !== folder))} icon={<X size={16} />} aria-label={`Remove ${folder.name}`}>Remove</Button></li>; })}</ul>}
       <div className="demo-option"><div><strong>Sample documents</strong><p>Use the demo to see how a review works.</p></div><Button disabled={!!busy} loading={busy === "demo"} onClick={() => start("demo", api.loadDemo)}>Try a demo</Button></div>
-      {session?.is_admin && health.data && !health.data.hosted && <details className="advanced-options"><summary>Advanced: use a local folder path</summary><div className="space-y-3 pt-3"><p className="text-ink-3">Enter a folder path on the machine running Kaizen.</p><input className="input w-full mono" placeholder="/path/to/project-folder" value={path} aria-label="Local folder path" onChange={e => setPath(e.target.value)} /><Button loading={busy === "path"} disabled={!!busy || !path.trim()} onClick={() => start("path", () => api.runFromPath(path.trim(), runName))}>Run folder</Button></div></details>}
-      {busy && <p className="flex gap-2 items-center" role="status"><CircleNotch size={16} className="animate-spin" />Checking documents…</p>}
+      {session?.is_admin && health.data && !health.data.hosted && <details className="advanced-options"><summary>Advanced: use a local folder path</summary><div className="space-y-3 pt-3"><p className="text-ink-3">Enter a folder path on the machine running Kaizen.</p><input className="input w-full mono" placeholder="/path/to/project-folder" value={path} aria-label="Local folder path" onChange={e => setPath(e.target.value)} /><Button loading={busy === "path"} disabled={!!busy || !path.trim()} onClick={() => void runFromPath()}>Run folder</Button></div></details>}
+      {busy && <p className="flex gap-2 items-center" role="status"><CircleNotch size={16} className="animate-spin" />{progress || "Checking documents…"}</p>}
       {err && <ErrorBox error={err} />}
+      {failure && <ErrorBox title={failure.title} error={failure.message} />}
       {problem && <ErrorBox error={problem} />}
     </Dialog>
   </div>;

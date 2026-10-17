@@ -53,9 +53,21 @@ def env(tmp_path_factory):
     client.ws = ws
     # Reviewer identity is a verified BD address now, so the shared client signs in as the facilitator.
     sign_in(client, DHARMA, 1)
-    r = client.post("/api/runs/from-path", json={"path": str(golden)})
+    # The whole project, PCOs and label revisions included; a local path only accepts BOM/label/drawing sets.
+    r = client.post("/api/demo/load")
     assert r.status_code == 200, r.text
     return client, golden, ws, r.json()["run_id"]
+
+
+def kit(golden, sku):
+    """One SKU set as a local path accepts it: the BOM, the current label and the drawing."""
+    target = golden.parent / f"{sku}-kit"
+    if not target.exists():
+        target.mkdir()
+        for p in golden.joinpath(sku).iterdir():
+            if not p.stem.endswith("_old"):
+                (target / p.name).write_bytes(p.read_bytes())
+    return str(target)
 
 
 def test_health_and_run_listing(env):
@@ -126,8 +138,8 @@ def test_save_as_relationship_and_next_run_uses_it(env):
     assert rel["provenance"] == "learned" and rel["item_anchors"] == ["4440003"]
     assert rel["created_by"] == DHARMA, "the signed-in session names the author, not the payload"
     assert "CHLORAPREP APPLICATOR 3ML" in rel["aliases"]
-    r2 = client.post("/api/runs/from-path", json={"path": str(golden / "sku-002")})
-    run2 = r2.json()["run_id"]
+    r2 = client.post("/api/runs/from-path", json={"path": kit(golden, "sku-002")})
+    run2 = r2.json()[0]["run_id"]
     rows = client.get(f"/api/runs/{run2}/results", params={"check": "BOM_LABEL", "sku": "1295108FNS"}).json()["rows"]
     again = next(x for x in rows if "CHLORAPREP" in x["engine"]["explanation"].upper())
     assert again["engine"]["classification"] == "EQUIVALENT" and again["engine"]["relationship_id"] == rel["id"]
@@ -149,7 +161,7 @@ def test_mining_action_items_verify_close_business_and_exports(env):
     assert ai["id"].startswith("AI-") and ai["status"] == "OPEN"
     assert client.patch(f"/api/action-items/{ai['id']}", json={"status": "IN_PROGRESS", "by": "Hemant"}).json()["status"] == "IN_PROGRESS"
     assert any(x["id"] == ai["id"] for x in client.get("/api/action-items").json())
-    r3 = client.post("/api/runs/from-path", json={"path": str(golden / "sku-002")}).json()["run_id"]
+    r3 = client.post("/api/runs/from-path", json={"path": kit(golden, "sku-002")}).json()[0]["run_id"]
     vc = client.post(f"/api/runs/{r3}/verify-and-close").json()
     assert ai["id"] not in vc["resolved"], "Verifying another run must not alter this run's action items"
 
@@ -187,8 +199,8 @@ def test_terminology_endpoints(env):
 def test_upload_and_demo(env):
     client, golden, ws, run_id = env
     files = []
-    for p in sorted((golden / "sku-001").iterdir()):
-        files.append(("files", (f"sku-001/{p.name}", p.read_bytes(), "application/octet-stream")))
+    for p in sorted((golden / "sku-003").iterdir()):  # a BOM, a label and a drawing
+        files.append(("files", (f"sku-003/{p.name}", p.read_bytes(), "application/octet-stream")))
     r = client.post("/api/runs/upload", files=files)
     assert r.status_code == 200, r.text
     assert r.json()["skus"] == 1

@@ -13,13 +13,13 @@ export function Loading({ label = "Loading", lines = 3 }: { label?: string; line
   );
 }
 
-export function ErrorBox({ error, onRetry }: { error: string; onRetry?: () => void }) {
+export function ErrorBox({ error, onRetry, title = "Request failed" }: { error: string; onRetry?: () => void; title?: string }) {
   return (
     <div role="alert" className="flex items-start gap-3 rounded-lg border border-bad/30 bg-bad-soft text-bad-strong px-4 py-3 text-sm">
       <WarningOctagon size={18} weight="fill" className="shrink-0 mt-0.5 text-bad" />
       <div className="flex-1 min-w-0 break-words">
-        <div className="font-medium">Request failed</div>
-        <div className="text-ink-2 mt-0.5">{error}</div>
+        <div className="font-medium">{title}</div>
+        <div className="text-ink-2 mt-0.5 whitespace-pre-line">{error}</div>
       </div>
       {onRetry && (
         <Button size="sm" onClick={onRetry} icon={<ArrowsClockwise size={14} />}>

@@ -16,18 +16,17 @@ describe("API error and upload behavior", () => {
   it("does not send an unsupported selection", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    await expect(api.uploadRun([new File(["notes"], "notes.txt")])).rejects.toBeInstanceOf(ApiError);
+    await expect(api.uploadRun([])).rejects.toBeInstanceOf(ApiError);
+    await expect(api.uploadRun([{ name: "Kit", files: [new File(["PDF"], "only.pdf")] }])).rejects.toBeInstanceOf(ApiError);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it("preserves relative folder paths and only sends supported files", async () => {
+  it("sends each folder's documents under that folder's unique name", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal("fetch", fetch);
-    const pdf = new File(["PDF"], "bom.pdf");
-    Object.defineProperty(pdf, "webkitRelativePath", { value: "Project/SKU/bom.pdf" });
-    await api.uploadRun([pdf, new File(["notes"], "notes.txt")], "My run");
+    const files = () => ["one.pdf", "two.pdf", "three.pdf"].map(name => new File(["PDF"], name));
+    await api.uploadRun([{ name: "Kit", files: files() }, { name: "Kit (2)", files: files() }], "My run");
     const form = fetch.mock.calls[0][1].body as FormData;
     expect(form.get("name")).toBe("My run");
-    expect(form.getAll("files")).toHaveLength(1);
-    expect((form.get("files") as File).name).toBe("Project/SKU/bom.pdf");
+    expect((form.getAll("files") as File[]).map(f => f.name)).toEqual(["Kit/one.pdf", "Kit/two.pdf", "Kit/three.pdf", "Kit (2)/one.pdf", "Kit (2)/two.pdf", "Kit (2)/three.pdf"]);
   });
 });
