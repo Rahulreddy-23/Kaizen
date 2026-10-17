@@ -17,6 +17,19 @@ const payload=():QuickView=>({sku:'SKU-A',groups:[{sku:'SKU-A',document_ids:kind
 const open=(url='/runs/run/quick-view')=>render(<MemoryRouter initialEntries={[url]}><Routes><Route path='/runs/:runId/quick-view' element={<QuickViewPage/>}/></Routes></MemoryRouter>);
 
 describe('SKU quick view',()=>{
+ it('focuses a source from the selected pair and restores that pair from the toolbar',async()=>{
+  vi.mocked(api.quickView).mockResolvedValue(payload());open();
+  fireEvent.click(await screen.findByRole('button',{name:'Open document reader'}));
+  const dialog=screen.getByRole('dialog',{name:'Source documents'});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Two documents'}));
+  fireEvent.change(within(dialog).getByRole('combobox',{name:'Document pair'}),{target:{value:'2'}});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Focus'}));
+  expect(within(dialog).getByRole('region',{name:'Label source preview'})).toBeTruthy();
+  expect(within(dialog).queryByRole('region',{name:'BOM source preview'})).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button',{name:'Restore split view'}));
+  expect(within(dialog).getByRole('region',{name:'Diagram source preview'})).toBeTruthy();
+  expect(within(dialog).queryByRole('region',{name:'BOM source preview'})).toBeNull();
+ });
  it('opens a full-window reading workspace, keeps zoom independent and restores keyboard focus',async()=>{
   const p=payload();p.rows.push({...p.rows[0],id:'two',cells:{BOM:cell('BOM','attention',2),LABEL:null,DRAWING:null},checks:[],status:'attention'});p.total=2;
   vi.mocked(api.quickView).mockResolvedValue(p);open();
@@ -76,6 +89,13 @@ describe('SKU quick view',()=>{
   fireEvent.click(within(dialog).getByRole('button',{name:'Locate selected'}));
   expect((within(dialog).getByRole('combobox',{name:'BOM page'}) as HTMLSelectElement).value).toBe('1');
   expect((within(dialog).getByRole('combobox',{name:'BOM zoom'}) as HTMLSelectElement).value).toBe('150');
+  fireEvent.change(within(dialog).getByRole('combobox',{name:'Document pair'}),{target:{value:'2'}});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Focus'}));
+  expect(within(dialog).getByRole('region',{name:'Label source preview'})).toBeTruthy();
+  expect(within(dialog).queryByRole('region',{name:'BOM source preview'})).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button',{name:'Restore split view'}));
+  expect(within(dialog).getByRole('region',{name:'Diagram source preview'})).toBeTruthy();
+  expect(within(dialog).queryByRole('region',{name:'BOM source preview'})).toBeNull();
  });
  it('uses full-width source tabs in a narrow container',async()=>{
   vi.spyOn(HTMLElement.prototype,'clientWidth','get').mockReturnValue(390);

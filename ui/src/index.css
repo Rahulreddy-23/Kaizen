@@ -1256,7 +1256,7 @@
 .quick-reader-launch { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .quick-reader-launch > span { font-size: 13px; color: rgb(var(--c-ink-3)); }
 .quick-reader-content { display: flex; flex-direction: column; min-width: 0; height: max(620px, 84vh); gap: 0; }
-.quick-reader-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0 12px; }
+.quick-reader-toolbar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0 12px; }
 .quick-reader-layout, .quick-reader-tabs { display: flex; align-items: center; border: 1px solid rgb(var(--c-line)); border-radius: 6px; padding: 2px; }
 .quick-reader-layout button, .quick-reader-tabs button { min-height: 32px; padding: 6px 12px; border-radius: 4px; font-size: 13px; color: rgb(var(--c-ink-2)); }
 .quick-reader-layout button[aria-pressed="true"], .quick-reader-tabs button[aria-pressed="true"] { background: rgb(var(--c-brand-50)); color: rgb(var(--c-link)); font-weight: 600; }
@@ -1299,9 +1299,9 @@
 .quick-entry-navigation strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .quick-entry-navigation > div > span { font-size: 12px; color: rgb(var(--c-ink-3)); }
 .quick-entry-navigation > .flex { flex-shrink: 0; }
-.quick-reader-check-menu { position: relative; }
+.quick-reader-check-menu { position: static; }
 .quick-reader-check-menu > .quick-checks { padding: 6px 0; margin: 0; border: 0; font-size: 12px; }
-.quick-reader-check-menu .quick-checks > div { position: absolute; right: 0; top: 100%; z-index: 5; width: min(640px, 82vw); max-height: 45dvh; overflow: auto; padding: 16px; border: 1px solid rgb(var(--c-line)); border-radius: 6px; background: rgb(var(--c-surface)); }
+.quick-reader-check-menu .quick-checks > div { position: absolute; right: 0; top: 100%; z-index: 5; width: min(640px, 100%); max-height: 45dvh; overflow: auto; padding: 16px; border: 1px solid rgb(var(--c-line)); border-radius: 6px; background: rgb(var(--c-surface)); }
 .quick-document-dialog.quick-reader-dialog { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: 100dvh; border-radius: 0; display: flex; flex-direction: column; }
 .quick-reader-dialog .dialog-header { padding: 8px 16px; border-bottom: 1px solid rgb(var(--c-line)); }
 .quick-reader-dialog .dialog-header > div { display: flex; align-items: baseline; gap: 12px; }

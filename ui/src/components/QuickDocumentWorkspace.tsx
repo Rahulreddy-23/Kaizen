@@ -105,7 +105,14 @@ export function QuickDocumentWorkspace({runId, sku, documents, selected, preferr
   },[expanded]);
   const visible = narrow || layout === "focus" ? [focus] : layout === "two" ? PAIRS[pair] : KINDS;
   const focusPane=(kind:QuickKind)=>{if(layout !== "focus")setRestore(layout);setFocus(kind);setLayout("focus");onExpanded(true);};
-  const changeLayout=(next:Layout)=>{setLayout(next);setWeights({...INITIAL_WEIGHTS});};
+  const changeLayout=(next:Layout)=>{
+    if (next === "focus" && layout !== "focus") {
+      setRestore(layout);
+      if (!visible.includes(focus)) setFocus(visible[0]);
+    }
+    setLayout(next);
+    if (next !== "focus" && layout !== "focus") setWeights({...INITIAL_WEIGHTS});
+  };
   const locateAll=()=>setViews(old=>Object.fromEntries(KINDS.map(k=>{
     const item=selected?.cells[k]?.items.find(i=>i.id === preferred[k]) ?? selected?.cells[k]?.items[0];
     return [k,{...old[k],...(item?{documentId:item.doc_id,page:item.page ?? 1}:{}),locate:old[k].locate+1}];
