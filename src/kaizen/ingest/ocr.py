@@ -1,5 +1,5 @@
 """Offline OCR for scanned BOMs, labels, and drawings, including damaged label text layers.
-Native PDF text is preferred. Tesseract or the optional RapidOCR engine renders pages locally;
+Native PDF text is preferred. Tesseract or the bundled RapidOCR engine reads pages locally;
 results carry confidence and displayed-page bounding boxes, marked extraction_method='ocr'.
 
 Product-name OCR corrections are loaded from ``ocr_corrections.json`` (same directory) so they can be
@@ -9,6 +9,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -114,23 +115,63 @@ class OcrResult:
     words: list[tuple[float, float, float, float, str, float]] = field(default_factory=list)  # x0,y0,x1,y1 (PDF points), text, confidence
     engine: str = ""
     dpi: int = 200
+    notices: list[str] = field(default_factory=list)
 
 
 _LOCK = threading.RLock()
 _CACHE: OrderedDict[str, OcrResult] = OrderedDict()
 
 
-def available_engines() -> list[str]:
-    """No external calls; report engines that can run on this host."""
-    engines = []
-    if shutil.which("tesseract"):
-        engines.append("tesseract")
-    try:
-        import rapidocr_onnxruntime  # noqa: F401
+OCR_SETUP_HELP = 'Run `kaizen doctor` in the app virtual environment. From the project folder, repair with `python -m pip install -e ".[api]"`, then restart Kaizen.'
 
+
+class OcrError(RuntimeError):
+    """A safe installation/runtime diagnostic, without document text or subprocess output."""
+
+
+def _rapid_session_options():
+    """Bound inference threads to fit desktop CPUs and the single-core pilot."""
+    import onnxruntime
+
+    options = onnxruntime.SessionOptions()
+    # Hosted image sets OMP_NUM_THREADS=1; desktops use at most four workers.
+    try:
+        threads = int(os.environ.get("OMP_NUM_THREADS", min(4, os.cpu_count() or 1)))
+    except ValueError:
+        threads = 1
+    options.intra_op_num_threads = max(1, min(4, threads))
+    options.inter_op_num_threads = 1
+    options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    return options
+
+
+def _rapid_module():
+    # Set before importing ONNX Runtime: its initialization may otherwise enable telemetry.
+    # OCR and its bundled models must remain offline, including on desktop installations.
+    os.environ["ORT_DISABLE_TELEMETRY"] = "1"
+    import onnxruntime
+
+    onnxruntime.disable_telemetry_events()
+    import rapidocr_onnxruntime
+    from rapidocr_onnxruntime import utils
+
+    # Pinned RapidOCR 1.2.3 does not expose thread options in its constructor.
+    # Configure its session-options factory before it constructs any detector,
+    # recognizer or classifier. This leaves ONNX Runtime's global API untouched.
+    utils.SessionOptions = _rapid_session_options
+    return rapidocr_onnxruntime
+
+
+def available_engines() -> list[str]:
+    """Discover candidates locally; `ocr_diagnostics` verifies actual recognition."""
+    engines = []
+    try:
+        _rapid_module()
         engines.append("rapidocr-onnxruntime")
     except Exception:
         pass
+    if shutil.which("tesseract"):
+        engines.append("tesseract")
     return engines
 
 
@@ -140,7 +181,7 @@ def ocr_available() -> bool:
 
 @lru_cache(maxsize=2)
 def _rapid_engine(single_line: bool = False):
-    from rapidocr_onnxruntime import RapidOCR
+    RapidOCR = _rapid_module().RapidOCR
 
     # The default detector downsizes engineering sheets to 736px, losing small callouts.
     # Passing model_path also supports RapidOCR 1.2's parameter updater.
@@ -150,33 +191,78 @@ def _rapid_engine(single_line: bool = False):
 def ocr_page(page: pymupdf.Page, dpi: int = 240, *, clip: pymupdf.Rect | None = None, single_line: bool = False) -> OcrResult:
     """Offline OCR with word confidence and rendered-page coordinates in PDF points.
 
-    Tesseract (already present in the hosted image) is preferred; RapidOCR is the portable
-    alternative. A bounded content cache reuses a shared drawing without retaining rasters.
-    Engine failures propagate to parsers, which report an unreadable page explicitly.
+    Bundled RapidOCR is preferred consistently on desktop and hosted installs;
+    Tesseract is an optional backup. A bounded content cache reuses a shared drawing without retaining rasters.
+    Failed or empty recognition falls back to the next engine. If all engines fail,
+    parsers report an unreadable page explicitly.
     """
     engines = available_engines()
     if not engines:
-        raise RuntimeError("no offline OCR engine; install Tesseract or kaizen-crosscheck[ocr]")
+        raise OcrError(f"No offline OCR engine is usable. {OCR_SETUP_HELP}")
     rect = clip or page.rect
     pix = page.get_pixmap(dpi=dpi, clip=rect, colorspace=pymupdf.csRGB, alpha=False)
     png = pix.tobytes("png")
-    key = hashlib.sha256(png + str((dpi, tuple(rect), page.rotation, engines[0], single_line)).encode()).hexdigest()
+    key = hashlib.sha256(png + str((dpi, tuple(rect), page.rotation, engines, single_line)).encode()).hexdigest()
     with _LOCK:
         if key in _CACHE:
             _CACHE.move_to_end(key)
-            return OcrResult(words=list(_CACHE[key].words), engine=_CACHE[key].engine, dpi=dpi)
-        result = _recognize(png, engines[0], single_line)
+            cached = _CACHE[key]
+            return OcrResult(words=list(cached.words), engine=cached.engine, dpi=dpi, notices=list(cached.notices))
+        failures = []
+        empty = []
+        for engine in engines:
+            try:
+                result = _recognize(png, engine, single_line)
+            except Exception as exc:
+                # Missing English data, a broken executable or a failed model must not
+                # prevent a second installed offline engine from reading the page.
+                failures.append(f"{engine}: {type(exc).__name__}")
+                continue
+            if result:
+                break
+            empty.append(engine)
+        else:
+            if not empty:
+                raise OcrError(f"All offline OCR engines failed ({'; '.join(failures)}). {OCR_SETUP_HELP}")
+            engine, result = empty[-1], []
         words = []
         for x0, y0, x1, y1, t, conf in result:
             # Pixmap origin includes clip offsets. Keep the displayed orientation for
-            # layout parsing and evidence overlays, including BD's 270-degree scans.
+            # layout parsing and evidence overlays, including rotated scans.
             box = pymupdf.Rect((x0 + pix.x) * 72 / dpi, (y0 + pix.y) * 72 / dpi, (x1 + pix.x) * 72 / dpi, (y1 + pix.y) * 72 / dpi)
             words.append((box.x0, box.y0, box.x1, box.y1, t, conf))
-        out = OcrResult(words=words, engine=engines[0], dpi=dpi)
-        _CACHE[key] = out
-        if len(_CACHE) > 32:
-            _CACHE.popitem(last=False)
-        return OcrResult(words=list(out.words), engine=out.engine, dpi=dpi)
+        notices = [f"OCR fallback used {engine} after {'; '.join(failures)}"] if failures and words else []
+        out = OcrResult(words=words, engine=engine, dpi=dpi, notices=notices)
+        # Do not cache failed/empty recognition: repaired engines can retry immediately.
+        if words:
+            _CACHE[key] = out
+            if len(_CACHE) > 32:
+                _CACHE.popitem(last=False)
+        return OcrResult(words=list(out.words), engine=out.engine, dpi=dpi, notices=list(out.notices))
+
+
+def ocr_diagnostics() -> list[dict[str, str | bool]]:
+    """Read synthetic pixels with each engine; never opens a user's documents."""
+    checks = []
+    with pymupdf.open() as pdf:
+        page = pdf.new_page(width=600, height=140)
+        page.insert_text((30, 85), "KAIZEN TEST 123", fontsize=36)
+        png = page.get_pixmap(dpi=150).tobytes("png")
+    for engine in ("tesseract", "rapidocr-onnxruntime"):
+        if engine == "tesseract" and not shutil.which("tesseract"):
+            checks.append({"engine": engine, "ready": False, "detail": "not on PATH (optional)"})
+            continue
+        try:
+            text = " ".join(w[4] for w in _recognize(png, engine, False)).upper()
+            ready = "KAIZEN" in text and "123" in text
+            detail = "synthetic scan read successfully" if ready else "could not read the synthetic scan"
+        except Exception as exc:
+            ready = False
+            detail = type(exc).__name__
+            if engine == "tesseract":
+                detail += " (check the executable and English language data)"
+        checks.append({"engine": engine, "ready": ready, "detail": detail})
+    return checks
 
 
 def _recognize(png: bytes, engine: str, single_line: bool) -> list[tuple]:

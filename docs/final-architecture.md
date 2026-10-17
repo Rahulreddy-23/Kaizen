@@ -25,7 +25,7 @@ flowchart LR
 
 | Area | Responsibility |
 | --- | --- |
-| `ingest/` | Type detection, BOM tables, labels, drawings, PCOs, optional offline OCR and evidence geometry. Word is unsupported. |
+| `ingest/` | Type detection, BOM tables, labels, drawings, PCOs, bundled offline OCR and evidence geometry. Word is unsupported. |
 | `models/` | Typed documents/items, evidence, results, roles, discrepancies, thresholds and run metadata. |
 | `matching/` | Normalization, approved relationships, fuzzy/typed component candidates, numeric guards and assignment. Optional semantic/AI adapters remain opt-in. |
 | `checks/` | BOM–Label, BOM–Drawing, Label–Drawing, PCO–BOM, old/new labels and document coverage. |

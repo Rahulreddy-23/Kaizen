@@ -7,7 +7,7 @@ See [real-data validation](real-data-validation.md) for the scope of the local e
 ## Documents and extraction
 
 - Inputs are PDF, XLSX/XLSM and CSV in supported BOM/PCO layouts, plus PDF labels/drawings. Word is unsupported.
-- Scanned PDFs need an installed offline OCR engine. Missing/unreadable pages and uncertain values produce
+- Scanned PDFs use the bundled offline OCR engine (verify with `kaizen doctor`). Missing/unreadable pages and uncertain values produce
   warnings or review-required results. Native text can also be wrong; source pages remain authoritative.
 - Drawing text/callouts are extracted. Pictured component identity, leader endpoints, placement, orientation
   and cavity occupancy are not verified. Drawings are not a component quantity source.

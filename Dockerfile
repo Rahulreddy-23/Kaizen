@@ -13,6 +13,6 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir '.[api,ocr]'
 COPY --from=ui /build/ui/dist /app/ui/dist
 COPY scripts/serve_hosted.py /app/scripts/serve_hosted.py
-ENV KAIZEN_WORKSPACE=/var/data/kaizen KAIZEN_HOSTED=1 KAIZEN_SECURE_COOKIES=1 KAIZEN_CONFIDENTIAL=1 KAIZEN_AI_PROVIDER=null OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+ENV KAIZEN_WORKSPACE=/var/data/kaizen KAIZEN_HOSTED=1 KAIZEN_SECURE_COOKIES=1 KAIZEN_CONFIDENTIAL=1 KAIZEN_AI_PROVIDER=null OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 ORT_DISABLE_TELEMETRY=1
 EXPOSE 10000
 CMD ["python", "/app/scripts/serve_hosted.py"]

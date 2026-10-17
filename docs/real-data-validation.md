@@ -54,7 +54,19 @@ source evidence where not supplied. OCR confidence warnings are not source-docum
 
 Real-data precision, recall and false-clear rates require independently verified pairing/discrepancy
 truth and representative held-out SKU coverage. Golden accuracy and the targeted audit are not substitutes.
-Real PCOs, revision pairs, other layouts and OCR engines still need validation. Render deployment remains pending.
+Real PCOs, revision pairs and other layouts still need validation. The invite-only Render pilot is provisioned; see [launch checks](testing-launch.md).
+
+## OCR setup follow-up — 17 October 2026
+
+Local installs now include the offline OCR engine and bundled models. The same RapidOCR release is the
+default on desktop and hosted installations, with Tesseract as backup. The previous Tesseract-first
+selection returned nonempty but incomplete label text, preventing fallback. This is an extraction/setup
+issue, not evidence of defects in the source documents. Native BOM parsing and matching thresholds are unchanged.
+
+Use [automatic setup and diagnostics](pdf-ocr.md) after updating the checkout. Saved runs retain their
+original extraction; restart the server and upload a new run to use parser changes. The clean-label
+quantity and independent BOM-export checks are retained as local acceptance checks; they do not certify
+all scanned text or establish general defect accuracy.
 
 ## Reproduce without publishing sources
 

@@ -32,3 +32,6 @@ SKUs
 **/*.sqlite*
 **/*.ses
 **/*.ses-*
+
+.kaizen-tools
+.venv-backup-*

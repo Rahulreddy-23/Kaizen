@@ -14,12 +14,12 @@ from pathlib import Path
 import pymupdf
 
 from kaizen.ingest.hashing import document_id, sha256_file
-from kaizen.ingest.ocr import ocr_available, ocr_page, ocr_words
+from kaizen.ingest.ocr import OCR_SETUP_HELP, OcrError, ocr_available, ocr_page, ocr_words
 from kaizen.ingest.pdf_words import Word, extract_words, group_lines, line_bbox, line_text, split_line_by_gaps
 from kaizen.models import DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "drawing_pdf"
-PARSER_VERSION = "4"
+PARSER_VERSION = "5"
 
 ES_MARKERS = set(
     """CON DE DEL LA EL LOS LAS PARA SEGUN SI O Y EN UN UNA TUBO AGUJA JERINGA JERINGAS TIJERAS ALAMBRE GUIA CINTA METRICA
@@ -160,9 +160,20 @@ def parse_drawing_pdf(path: Path | str) -> Document:
             header.setdefault(k, v)
         words = extract_words(page)
         page_method = "pdf_text"
-        if not words:
+        native = words
+        native_lines = group_lines(native, y_tol=2.5)
+        native_body, _ = _split_notes(native_lines, page)
+        # A scanned drawing may carry only a searchable native title block. It
+        # still needs OCR for the callouts, just like a fully scanned sheet.
+        raster_body_only = bool(native) and bool(page.get_images()) and not any(
+            re.search(r"[A-Za-z]{2,}", line_text(line)) and not _NOISE_RE.search(line_text(line))
+            for line in native_body
+        )
+        if not words or raster_body_only:
             if not ocr_available():
-                warnings.append(f"page {page_no}: no extractable text and no OCR engine; install Tesseract or kaizen-crosscheck[ocr] — page skipped")
+                warnings.append(f"page {page_no}: no extractable text and no usable OCR engine; page skipped. {OCR_SETUP_HELP}")
+                if raster_body_only:
+                    warnings[-1] = f"page {page_no}: native title block found but raster callouts need OCR. {OCR_SETUP_HELP}"
                 page_methods.append("none")
                 continue
             try:
@@ -170,9 +181,10 @@ def parse_drawing_pdf(path: Path | str) -> Document:
                 words = ocr_words(result)
                 page_method = "ocr"
                 header["ocr_engine"] = result.engine
+                warnings.extend(f"page {page_no}: {notice}" for notice in result.notices)
                 warnings.append(f"page {page_no}: OCR ({result.engine}, {result.dpi} dpi), {len(words)} words — verify callouts against the image")
             except Exception as exc:
-                warnings.append(f"page {page_no}: OCR failed ({type(exc).__name__}); page skipped")
+                warnings.append(f"page {page_no}: OCR failed ({str(exc) if isinstance(exc, OcrError) else type(exc).__name__}); page skipped")
                 page_methods.append("none")
                 continue
         page_methods.append(page_method if words else "none")

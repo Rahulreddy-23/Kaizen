@@ -19,11 +19,34 @@ Read the [user tutorial](docs/user-guide.md) and [privacy/document-handling noti
 
 ## Quick start
 
-Requires **Python 3.12+** and **Node.js 20+**. From the repository root:
+**Automatic setup/repair** (after cloning or pulling the latest checkout):
+
+```powershell
+# Windows PowerShell
+.\scripts\setup-local.ps1
+```
+
+```bash
+# macOS / Linux
+bash scripts/setup-local.sh
+```
+
+The script checks versions, installs missing Python/Node runtimes locally where supported, installs the
+app with offline OCR, builds the website and tests scanned label/drawing extraction. Add `--check-only`
+to diagnose without installing. Send `out/setup-report.json` when reporting a setup problem; it contains
+versions and synthetic test results, without customer documents or credentials. Then start with
+`.venv/bin/kaizen serve` (Windows: `.\.venv\Scripts\kaizen.exe serve`).
+
+<details>
+<summary>Manual setup</summary>
+
+Use **Python 3.12 or 3.13** (tested) and **Node.js 20+**. From the repository root:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/kaizen doctor
 npm --prefix ui ci
 npm --prefix ui run build
 .venv/bin/kaizen serve
@@ -33,12 +56,16 @@ npm --prefix ui run build
 <summary>Windows PowerShell</summary>
 
 ```powershell
-py -3 -m venv .venv
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\kaizen.exe doctor
 npm --prefix ui ci
 npm --prefix ui run build
 .\.venv\Scripts\kaizen.exe serve
 ```
+
+</details>
 
 </details>
 
@@ -68,7 +95,11 @@ author’s account; other users opt in. Edits require deliberate version updates
 | PCO | FM00835 PDF, XLSX, XLSM, CSV |
 
 Keep each SKU's documents in its own subfolder when possible, with PCO files included in the upload.
-Word files are unsupported. Scanned PDFs need offline OCR: install Tesseract with English data or the optional Python extra (`.venv/bin/pip install -e ".[ocr]"`).
+Word files are unsupported. Offline OCR and its models are installed automatically, including for scanned
+labels and drawings. Tesseract with English data is an optional additional engine; it is not required.
+For an existing checkout, pull the changes, repeat the Python install command above, run `kaizen doctor`,
+then restart the server and create a new run (saved runs retain their original extraction).
+See [PDF/OCR setup](docs/pdf-ocr.md) if a dependency or scan cannot be read.
 
 The default workspace is `kaizen-workspace/`; change it with `--workspace <folder>` or `KAIZEN_WORKSPACE`.
 Real BD documents, review databases, credentials and generated reports stay in ignored local folders.

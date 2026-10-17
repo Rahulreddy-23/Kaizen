@@ -12,13 +12,13 @@ from pathlib import Path
 import pymupdf
 
 from kaizen.ingest.hashing import document_id, sha256_file
-from kaizen.ingest.ocr import correct_fused_label_words, correct_ocr_text, ocr_available, ocr_page, ocr_words
+from kaizen.ingest.ocr import OCR_SETUP_HELP, OcrError, correct_fused_label_words, correct_ocr_text, ocr_available, ocr_page, ocr_words
 from kaizen.ingest.pdf_words import Word, extract_words, group_lines, line_bbox, line_text
 from kaizen.ingest.quantity import parse_label_line
 from kaizen.models import BBox, DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "label_pdf"
-PARSER_VERSION = "3"
+PARSER_VERSION = "4"
 
 _REF_CODE_RE = re.compile(r"^[A-Z0-9]{5,12}$")
 _NUMBER_RE = re.compile(r"^\d+(?:\.\d+)?$")
@@ -119,35 +119,41 @@ def parse_label_pdf(path: Path | str) -> Document:
         words = native
         page_method = "pdf_text"
         has_images = bool(page.get_images(full=True))
-        native_ref = _find_ref(group_lines(native, y_tol=2.5))[0] if native else None
+        native_lines = group_lines(native, y_tol=2.5)
+        native_ref = _find_ref(native_lines)[0] if native else None
+        native_contents = any("contents" in line_text(line).lower() for line in native_lines)
+        native_entries = any(_is_entry_starter(line, i) for line in native_lines for i in range(len(line)))
         # Some released labels have a defective text layer (REF rendered as IAEFI, D as 0), so the page
         # image is re-read while the label's identity is still unknown. A continuation page, or a label
         # whose REF is artwork, keeps its native text when OCR is unavailable or reads nothing.
         reread_for_ref = bool(native) and has_images and not native_ref and "ref" not in header
+        # A native REF or footer does not mean the raster contents were extracted.
+        reread_for_contents = bool(native) and has_images and not (native_contents and native_entries)
         if not native and not has_images and not page.get_drawings():
             warnings.append(f"page {page_no}: blank page")
             continue
-        if not native or reread_for_ref:
-            if has_images and ocr_available():
+        if not native or reread_for_ref or reread_for_contents:
+            if ocr_available():
                 try:
                     result = ocr_page(page)
                     recognised = ocr_words(result)
                 except Exception as exc:
                     recognised = []
-                    warnings.append(f"page {page_no}: OCR failed ({type(exc).__name__}); " + ("native text kept" if native else "page unreadable"))
+                    warnings.append(f"page {page_no}: OCR failed ({str(exc) if isinstance(exc, OcrError) else type(exc).__name__}); " + ("native text kept" if native else "page unreadable"))
                 else:
                     if recognised:
                         words, page_method = recognised, "ocr"
                         header["ocr_engine"] = result.engine
-                        warnings.append(f"page {page_no}: {'unreadable native REF' if native else 'no native text'}; OCR ({result.engine}, {result.dpi} dpi) produced {len(words)} words; REF and contents confidence are recorded separately — verify extracted fields against the page image")
+                        warnings.extend(f"page {page_no}: {notice}" for notice in result.notices)
+                        warnings.append(f"page {page_no}: {'incomplete native text' if reread_for_contents else 'unreadable native REF' if native else 'no native text'}; OCR ({result.engine}, {result.dpi} dpi) produced {len(words)} words; REF and contents confidence are recorded separately — verify extracted fields against the page image")
                     elif native:
                         warnings.append(f"page {page_no}: OCR re-read of the page image found no text; native text kept")
             elif native:
-                warnings.append(f"page {page_no}: REF not found in the text layer and no OCR engine is installed to re-read the page image; native text used")
+                warnings.append(f"page {page_no}: Native label text is incomplete and no usable OCR engine to re-read the page image; native text used. {OCR_SETUP_HELP}")
             elif has_images:
-                warnings.append(f"page {page_no}: image-only page and no OCR engine installed (install Tesseract or kaizen-crosscheck[ocr]); nothing extracted")
+                warnings.append(f"page {page_no}: image-only page and no usable OCR engine; nothing extracted. {OCR_SETUP_HELP}")
             else:
-                warnings.append(f"page {page_no}: no text found (text may be drawn as outlines)")
+                warnings.append(f"page {page_no}: no text found (text may be drawn as outlines); no usable OCR engine. {OCR_SETUP_HELP}")
         if words:
             method = page_method if method in ("none", page_method) else "mixed"
         lines = group_lines(words, y_tol=2.5)

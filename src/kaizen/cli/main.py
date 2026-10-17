@@ -593,6 +593,23 @@ def runs_relationships(ctx: typer.Context, run_id: str) -> None:
 
 
 @app.command()
+def doctor() -> None:
+    """Verify installed offline OCR engines against a synthetic scan (no user files)."""
+    import platform
+
+    from kaizen.ingest.ocr import OCR_SETUP_HELP, ocr_diagnostics
+
+    typer.echo(f"Python {platform.python_version()} / {platform.system()} {platform.machine()}")
+    checks = ocr_diagnostics()
+    for check in checks:
+        typer.echo(f"{check['engine']}: {'READY' if check['ready'] else 'UNAVAILABLE'} — {check['detail']}")
+    if not any(check["ready"] for check in checks):
+        typer.echo(OCR_SETUP_HELP)
+        raise typer.Exit(code=1)
+    typer.echo("Offline OCR is ready. No documents were opened or sent to an external service.")
+
+
+@app.command()
 def serve(
     ctx: typer.Context,
     host: str = typer.Option("127.0.0.1", "--host", help="Bind address (local by default; no external exposure)."),
