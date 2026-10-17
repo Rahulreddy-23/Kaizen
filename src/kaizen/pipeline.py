@@ -225,7 +225,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         "check_label_drawing": LABEL_DRAWING_VERSION,
         "check_label_revision": LABEL_REVISION_VERSION,
     }
-    extracted = [{"sha256": d.sha256, "type": d.doc_type.value, "sku": d.sku, "header": d.header, "items": [{"description": i.description, "item_number": i.item_number, "quantity": str(i.quantity), "uom": i.uom, "confidence": i.extraction_confidence, "attributes": i.attributes, "page": i.evidence.page, "bbox": i.evidence.bbox.model_dump() if i.evidence.bbox else None, "method": i.evidence.extraction_method, "raw": i.evidence.raw_text} for i in d.items]} for d in documents]
+    extracted = [{"sha256": d.sha256, "type": d.doc_type.value, "sku": d.sku, "header": d.header, "text_lines": [{"text": i.evidence.raw_text, "confidence": i.extraction_confidence, "page": i.evidence.page, "bbox": i.evidence.bbox.model_dump() if i.evidence.bbox else None, "method": i.evidence.extraction_method} for i in d.text_lines], "items": [{"description": i.description, "item_number": i.item_number, "quantity": str(i.quantity), "uom": i.uom, "confidence": i.extraction_confidence, "attributes": i.attributes, "page": i.evidence.page, "bbox": i.evidence.bbox.model_dump() if i.evidence.bbox else None, "method": i.evidence.extraction_method, "raw": i.evidence.raw_text} for i in d.items]} for d in documents]
     extraction_signature = hashlib.sha256(json.dumps(extracted, sort_keys=True, default=str).encode()).hexdigest()
     matching_configuration = {}
     if structured or assembly_rules or learning_matchers or attribute_overrides:

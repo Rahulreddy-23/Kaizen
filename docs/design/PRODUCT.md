@@ -51,7 +51,7 @@ Routes below follow the `#` in the browser URL. All run destinations require acc
 | `/runs/:runId/review` | Review queue: filters, current findings and comparison selection. |
 | `/runs/:runId/rows/:rowId` | Evidence: explanations, source previews, decisions/history and enabled ground-truth forms. |
 | `/runs/:runId/documents` | Documents: grouped source list, filters and extraction warnings. |
-| `/runs/:runId/documents/:docId` | Document: extracted items, source pages and deep links. |
+| `/runs/:runId/documents/:docId` | Document: comparison entries, full recognized label/drawing text, source pages and deep links. |
 | `/runs/:runId/learning` | Closed testing: enrollment, drawing applicability, annotations and candidate reports. |
 | `/runs/:runId/mining` | Suggested matches: terminology worklist and approval eligibility. |
 | `/runs/:runId/diff` | Compare runs: new, resolved, still-open and missing comparisons. |

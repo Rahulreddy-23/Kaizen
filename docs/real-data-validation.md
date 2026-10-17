@@ -68,6 +68,23 @@ original extraction; restart the server and upload a new run to use parser chang
 quantity and independent BOM-export checks are retained as local acceptance checks; they do not certify
 all scanned text or establish general defect accuracy.
 
+## Missing and merged text follow-up — 17 October 2026
+
+A second extraction audit checked all four clean SKU sets against the source pages, beyond entry
+counts. It found an omitted label title, fused wording in a damaged native text layer, and whole
+drawing instruction/note lines missed by page OCR. Geometry-based recognition of outlined text now
+recovers those rows; matching native text can restore whitespace without changing OCR characters.
+Wrapped Spanish text stays with its callout. Instructions and text inside photographs do not become
+component comparisons.
+
+The local checklist passed 86 field/region checks, covering 140 label entries and quantities, the
+373 BOM rows against independent exports, and named callouts/instructions across ten drawing sheets.
+The four drawing copies are identical. These are targeted acceptance checks, not character-level OCR
+accuracy or an independent defect benchmark. Low-confidence spellings, symbols and identifiers still
+need source verification. An authenticated local run contains all twelve clean documents and lets
+reviewers inspect **All recognized text**, including notes and unparsed lines, with page highlights.
+Older saved runs retain their original extraction.
+
 ## Reproduce without publishing sources
 
 ```bash

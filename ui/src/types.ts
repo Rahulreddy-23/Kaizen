@@ -417,6 +417,7 @@ export interface DocumentItems {
   warnings: string[];
   pages: number;
   items: DocumentItem[];
+  text_lines?: DocumentItem[];
 }
 
 export interface Invitation {

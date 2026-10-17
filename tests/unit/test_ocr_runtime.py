@@ -77,3 +77,19 @@ def test_bundled_engine_is_preferred_even_when_tesseract_exists(monkeypatch):
     monkeypatch.setattr(ocr, '_rapid_module', lambda: object())
     monkeypatch.setattr(ocr.shutil, 'which', lambda name: '/optional/tesseract')
     assert ocr.available_engines() == ['rapidocr-onnxruntime', 'tesseract']
+
+
+def test_cache_distinguishes_a_flattened_scan_from_vector_recovery_geometry(monkeypatch):
+    monkeypatch.setattr(ocr, 'available_engines', lambda: ['rapidocr-onnxruntime'])
+    monkeypatch.setattr(ocr, 'outline_regions', lambda page: [pymupdf.Rect(10, 10, 60, 20)] if page.number else [])
+    calls = []
+    monkeypatch.setattr(ocr, '_recognize', lambda *args: calls.append(True) or [(10, 10, 60, 20, 'MASK', .9)])
+    monkeypatch.setattr(ocr, '_recover_outline_lines', lambda page, words, *, regions: (words, 0, [tuple(r) for r in regions]))
+    ocr._CACHE.clear()
+    with pymupdf.open() as pdf:
+        pdf.new_page(width=200, height=100)
+        pdf.new_page(width=200, height=100)
+        scan = ocr.ocr_page(pdf[0])
+        vector = ocr.ocr_page(pdf[1])
+    assert len(calls) == 2 and not scan.outlined and vector.outlined
+    ocr._CACHE.clear()

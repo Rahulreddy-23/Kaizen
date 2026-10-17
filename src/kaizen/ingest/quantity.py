@@ -18,6 +18,13 @@ _LINE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A unit explicitly separates quantity from description when the dash is absent.
+# Bare numbers/dimensions still require the original delimiter.
+_UNIT_LINE_RE = re.compile(
+    r"^\s*(?P<qty>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?P<uom>" + "|".join(_UOM_CANONICAL) + r")\b\s+(?P<desc>.+?)\s*$",
+    re.IGNORECASE,
+)
+
 
 def parse_decimal(text: str | None) -> Decimal | None:
     """Decimal from ERP/label text; tolerates thousands separators and stray spaces ('1,000.0000')."""
@@ -58,7 +65,7 @@ def _extract_sub_quantity(desc: str) -> tuple[str, SubQuantity | None]:
 
 
 def parse_label_line(text: str) -> ParsedLabelLine:
-    m = _LINE_RE.match(text)
+    m = _LINE_RE.match(text) or _UNIT_LINE_RE.match(text)
     if not m:
         return ParsedLabelLine(False, None, None, text.strip(), None)
     uom_raw = m.group("uom")

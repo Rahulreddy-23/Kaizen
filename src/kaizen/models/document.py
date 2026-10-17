@@ -44,6 +44,7 @@ class Document(BaseModel):
     sku: str | None = Field(default=None, description="BOM parent item, label REF, etc.")
     header: dict[str, Any] = Field(default_factory=dict)
     items: list[DocumentItem] = Field(default_factory=list)
+    text_lines: list[DocumentItem] = Field(default_factory=list, description="Recognized page text, including headers, notes and unparsed lines; excluded from component matching")
     parser_name: str
     parser_version: str
     warnings: list[str] = Field(default_factory=list)

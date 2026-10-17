@@ -66,3 +66,43 @@ it("keeps a recovery action available when a screen throws",async()=>{
  expect(screen.getByRole("button",{name:"Reload page"})).toBeTruthy();
  expect(screen.getByRole("link",{name:"All runs"}).getAttribute("href")).toBe("/");
 });
+
+describe('full source text coverage', () => {
+ const entry = (id: string, description: string, page = 1) => ({id,doc_id:'doc',doc_type:'DRAWING' as const,file:'drawing.pdf',file_name:'drawing.pdf',sha256:'abc',page,bbox:{x0:20,y0:30,x1:250,y1:42},locator:`page ${page}`,raw_text:description,sheet:null,item_number:null,description,quantity:null,uom:null,oper_seq:null,category:'DOCUMENT',category_reason:'Source text',confidence:.91,attributes:{},sub_quantity:null,is_active:true});
+ const open = () => render(<MemoryRouter initialEntries={['/runs/run/documents/doc']}><Routes><Route path='/runs/:runId/documents/:docId' element={<DocumentPage />} /></Routes></MemoryRouter>);
+ it('shows retained notes separately, filters them and opens their actual source page', async () => {
+  vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:'doc',doc_type:'DRAWING',file_name:'drawing.pdf',pages:2,header:{notes:[{page:2,text:'Verify the outer barrier'}]},warnings:[],items:[entry('component','Protective cover')],text_lines:[entry('text','Verify the outer barrier before shipping',2)]});
+  vi.mocked(api.pageImageUrl).mockImplementation((_run,_doc,p)=>`/pages/${p}`);
+  open();
+  await screen.findByText('Protective cover');
+  expect(screen.queryByText('Verify the outer barrier before shipping')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'All recognized text'}));
+  await screen.findByText('Verify the outer barrier before shipping');
+  fireEvent.change(screen.getByRole('textbox',{name:/Filter extracted lines/}),{target:{value:'outer barrier'}});
+  fireEvent.click(screen.getByRole('button',{name:'View extracted line 1'}));
+  await waitFor(()=>expect((screen.getByRole('combobox',{name:'Page'}) as HTMLSelectElement).value).toBe('2'));
+  expect((screen.getByRole('img') as HTMLImageElement).getAttribute('src')).toBe('/pages/2');
+  expect(screen.queryByText('[object Object]')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Comparison entries'}));
+  fireEvent.change(screen.getByRole('textbox',{name:/Filter extracted lines/}),{target:{value:''}});
+  expect(screen.getByText('Protective cover')).toBeTruthy();
+ });
+ it('explains that older runs need a new upload to retain all text',async()=>{
+  vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:'doc',doc_type:'LABEL',file_name:'label.pdf',pages:1,header:{},warnings:[],items:[]});
+  open();
+  fireEvent.click(await screen.findByRole('button',{name:'All recognized text'}));
+  expect(screen.getByText('Full text is unavailable in this saved run')).toBeTruthy();
+  expect(screen.getByText(/Existing reviews stay unchanged/)).toBeTruthy();
+ });
+ it('paginates long source text and resets pagination after a filter',async()=>{
+  vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:'doc',doc_type:'DRAWING',file_name:'drawing.pdf',pages:2,header:{},warnings:[],items:[],text_lines:Array.from({length:105},(_,n)=>entry(`t${n}`,`Source sentence ${n+1}`))});
+  open();
+  fireEvent.click(await screen.findByRole('button',{name:'All recognized text'}));
+  expect(screen.queryByText('Source sentence 105')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Next extracted lines page'}));
+  expect(screen.getByText('Source sentence 105')).toBeTruthy();
+  fireEvent.change(screen.getByRole('textbox',{name:/Filter extracted lines/}),{target:{value:'sentence 105'}});
+  expect(screen.getByText('Source sentence 105')).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'Next extracted lines page'})).toBeNull();
+ });
+});

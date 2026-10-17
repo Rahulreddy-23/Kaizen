@@ -16,10 +16,11 @@ import pymupdf
 from kaizen.ingest.hashing import document_id, sha256_file
 from kaizen.ingest.ocr import OCR_SETUP_HELP, OcrError, ocr_available, ocr_page, ocr_words
 from kaizen.ingest.pdf_words import Word, extract_words, group_lines, line_bbox, line_text, split_line_by_gaps
+from kaizen.ingest.text_lines import capture_text_lines
 from kaizen.models import DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "drawing_pdf"
-PARSER_VERSION = "5"
+PARSER_VERSION = "6"
 
 ES_MARKERS = set(
     """CON DE DEL LA EL LOS LAS PARA SEGUN SI O Y EN UN UNA TUBO AGUJA JERINGA JERINGAS TIJERAS ALAMBRE GUIA CINTA METRICA
@@ -115,7 +116,9 @@ def _clusters(lines: list[list[Word]]) -> list[list[list[Word]]]:
             # Centred and right-aligned bilingual callouts are common in real drawings.
             # A new English label after a Spanish translation starts another callout.
             current_text = _clean_ocr_line(line_text(line))
-            new_callout = is_spanish_line(line_text(last)) and not is_spanish_line(current_text) and not current_text.startswith(("(", '"', "'")) and not re.search(r'MATERIALES|BOM"?\)', current_text)
+            english = sum(t in EN_MARKERS | _EXTRA_EN for t in re.findall(r"[A-Z]+", current_text.upper()))
+            separate = y0 - last_y1 > .65 * h
+            new_callout = is_spanish_line(line_text(last)) and not is_spanish_line(current_text) and (english > 0 or separate) and not current_text.startswith(("(", '"', "'")) and not re.search(r'MATERIALES|BOM"?\)', current_text)
             if aligned and not new_callout and y0 > last_y0 and y0 - last_y1 <= 1.25 * h:
                 homes.append((center_delta, c))
         home = min(homes, key=lambda entry: entry[0])[1] if homes else None
@@ -149,6 +152,7 @@ def parse_drawing_pdf(path: Path | str) -> Document:
     pdf = pymupdf.open(path)
     header: dict = {}
     items: list[DocumentItem] = []
+    text_lines: list[DocumentItem] = []
     warnings: list[str] = []
     n_callouts = 0
     page_methods = []
@@ -160,6 +164,8 @@ def parse_drawing_pdf(path: Path | str) -> Document:
             header.setdefault(k, v)
         words = extract_words(page)
         page_method = "pdf_text"
+        outlined = False
+        outline_boxes = []
         native = words
         native_lines = group_lines(native, y_tol=2.5)
         native_body, _ = _split_notes(native_lines, page)
@@ -181,12 +187,24 @@ def parse_drawing_pdf(path: Path | str) -> Document:
                 words = ocr_words(result)
                 page_method = "ocr"
                 header["ocr_engine"] = result.engine
+                outlined = result.outlined
+                outline_boxes = result.outline_boxes
+                if result.outline_recovered:
+                    header["outline_rows_recovered"] = header.get("outline_rows_recovered", 0) + result.outline_recovered
                 warnings.extend(f"page {page_no}: {notice}" for notice in result.notices)
                 warnings.append(f"page {page_no}: OCR ({result.engine}, {result.dpi} dpi), {len(words)} words — verify callouts against the image")
             except Exception as exc:
                 warnings.append(f"page {page_no}: OCR failed ({str(exc) if isinstance(exc, OcrError) else type(exc).__name__}); page skipped")
                 page_methods.append("none")
                 continue
+        text_lines.extend(capture_text_lines(words, doc_id=doc_id, doc_type=DocType.DRAWING, file=str(path), sha=sha, page=page_no, method=page_method))
+        if outlined:
+            # Raster photos are evidence of placement, not drawing callout text.
+            # A full-page scan is kept: its callouts are part of the raster too.
+            photos = [rect * page.rotation_matrix for image in page.get_images() for rect in page.get_image_rects(image[0])
+                      if (rect * page.rotation_matrix).get_area() < .8 * page.rect.get_area()]
+            words = [w for w in words if not any(p.x0 <= w.cx <= p.x1 and p.y0 <= w.cy <= p.y1 for p in photos)
+                     or any(x0 <= w.cx <= x1 and y0 <= w.cy <= y1 for x0, y0, x1, y1 in outline_boxes)]
         page_methods.append(page_method if words else "none")
         raw_lines = group_lines(words, y_tol=2.5)
         heights = [max(w.y1 for w in l) - min(w.y0 for w in l) for l in raw_lines] or [7.0]
@@ -198,7 +216,7 @@ def parse_drawing_pdf(path: Path | str) -> Document:
         page_notes = [line_text(l) for l in note_lines]
         # OCR also reads the printing inside product photographs. On a bilingual sheet a real callout carries
         # its translation, so unpaired English is rejected there; an English-only sheet keeps its callouts.
-        bilingual = page_method == "ocr" and any(is_spanish_line(line_text(l)) for l in body)
+        bilingual = page_method == "ocr" and not outlined and any(is_spanish_line(line_text(l)) for l in body)
         if page_notes:
             header.setdefault("notes", []).append({"page": page_no, "text": "\n".join(page_notes)})
             if "IMAGESFORREFERENCEONLY" in re.sub(r"\W", "", " ".join(page_notes).upper()):
@@ -247,13 +265,14 @@ def parse_drawing_pdf(path: Path | str) -> Document:
                 if m := _PLACED_ON_TRAY_RE.search(en_text):
                     placement = m.group(1)
                     en_text = en_text[:m.start()].strip(" ,;")
+            instruction = _is_instruction(en_text)
             n_callouts += 1
             bbox = line_bbox([w for l in cluster for w in l])
             items.append(
                 DocumentItem(
                     id=f"{doc_id}:c{n_callouts}", doc_id=doc_id, doc_type=DocType.DRAWING, sku=header.get("drawing_number"), description=en_text, quantity=None,
-                    category=ItemCategory.PHYSICAL_COMPONENT, category_reason="drawing callout (presence only; the drawing is not a quantity source)",
-                    attributes={"kind": "instruction" if _is_instruction(en_text) else "callout", "es_text": es_text, "conditional": conditional, "placement": placement, "depicted_count": depicted_count, "callout_index": n_callouts, "sheet": page_no},
+                    category=ItemCategory.PROCESS if instruction else ItemCategory.PHYSICAL_COMPONENT, category_reason="drawing instruction; not a component comparison" if instruction else "drawing callout (presence only; the drawing is not a quantity source)",
+                    attributes={"kind": "instruction" if instruction else "callout", "es_text": es_text, "conditional": conditional, "placement": placement, "depicted_count": depicted_count, "callout_index": n_callouts, "sheet": page_no},
                     extraction_confidence=min(w.confidence for l in cluster for w in l),
                     evidence=Evidence(file=str(path), file_sha256=sha, page=page_no, bbox=bbox, raw_text=" / ".join(raw_texts), locator=f"sheet {page_no}, callout {n_callouts}", extraction_method=page_method),
                 )
@@ -265,7 +284,7 @@ def parse_drawing_pdf(path: Path | str) -> Document:
         warnings.append("no callouts found on the drawing")
     if "drawing_number" not in header:
         warnings.append("drawing number not found in title block")
-    return Document(id=doc_id, doc_type=DocType.DRAWING, path=str(path), sha256=sha, sku=header.get("drawing_number"), header=header, items=items, parser_name=PARSER_NAME, parser_version=PARSER_VERSION, warnings=warnings)
+    return Document(id=doc_id, doc_type=DocType.DRAWING, path=str(path), sha256=sha, sku=header.get("drawing_number"), header=header, items=items, text_lines=text_lines, parser_name=PARSER_NAME, parser_version=PARSER_VERSION, warnings=warnings)
 
 
 def _top(line: list[Word]) -> float:
@@ -305,7 +324,9 @@ def _split_notes(lines: list[list[Word]], page) -> tuple[list[list[Word]], list[
 
 
 def _is_instruction(text: str) -> bool:
-    return text.upper().startswith("ELECTRONIC LABELING NOTICE INSERT") or bool(re.match(r"^(?:PLACE|STEP|WRAP|FOR CORRECT|CORRECT PLACEMENT|FIRST FOLD|SECOND FOLD|TOP SIDE|LOWER SIDE|TRAY WRAPPED|WRAPPED GOWN|THREE KITS|ALL LITERATURE|GLOVE WALLET ITEMS|GOWN CSR WRAP|BAGGED DRESSING|DRESSING COMPONENTS|BAG WITH DRESSING|PICC OR POWERHOHN)", text, re.I))
+    # Drafting references can precede an instruction; retain them in source text.
+    text = re.sub(r"^(?:\[?\d{1,3}[\].)]?\s+)", "", text).strip()
+    return bool(re.match(r"^[*\s]*BOX\s*NOTE\b", text, re.I)) or text.upper().startswith("ELECTRONIC LABELING NOTICE INSERT") or bool(re.match(r"^(?:PLACE|STEP|WRAP|FOR CORRECT|CORRECT PLACEMENT|FIRST FOLD|SECOND FOLD|TOP SIDE|LOWER SIDE|TRAY WRAPPED|WRAPPED GOWN|THREE KITS|ALL LITERATURE|GLOVE WALLET ITEMS|GOWN CSR WRAP|BAGGED DRESSING|DRESSING COMPONENTS|BAG WITH DRESSING|PICC OR POWERHOHN)", text, re.I))
 
 
 def _spatial_header(page, lines, header, method, warnings):

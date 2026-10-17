@@ -7,21 +7,23 @@ define the columns; continuation (wrapped) lines are merged into the entry above
 import re
 import statistics
 from collections import Counter
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import pymupdf
 
 from kaizen.ingest.hashing import document_id, sha256_file
 from kaizen.ingest.ocr import OCR_SETUP_HELP, OcrError, correct_fused_label_words, correct_ocr_text, ocr_available, ocr_page, ocr_words
-from kaizen.ingest.pdf_words import Word, extract_words, group_lines, line_bbox, line_text
+from kaizen.ingest.pdf_words import Word, extract_words, group_lines, line_bbox, line_text, split_line_by_gaps
 from kaizen.ingest.quantity import parse_label_line
+from kaizen.ingest.text_lines import capture_text_lines, restore_supported_spacing
 from kaizen.models import BBox, DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "label_pdf"
-PARSER_VERSION = "4"
+PARSER_VERSION = "5"
 
 _REF_CODE_RE = re.compile(r"^[A-Z0-9]{5,12}$")
-_NUMBER_RE = re.compile(r"^\d+(?:\.\d+)?$")
+_NUMBER_RE = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
 _UOM_WORDS = {"EACH", "EA", "PAIR", "PAIRS", "PACK", "PACKS", "PKG", "PCS", "PC", "ROLL", "ROLLS", "SET", "SETS"}
 _FUSED_STARTER_RE = re.compile(r"^\d+(?:\.\d+)?(?:EACH|EA|PAIRS?|PACKS?|PKG|PCS|PC|ROLLS?|SETS?)$", re.IGNORECASE)
 _FUSED_STARTER_PREFIX_RE = re.compile(r"^(?P<head>\d+(?:\.\d+)?(?:EACH|EA|PAIRS?|PACKS?|PKG|PCS|PC|ROLLS?|SETS?))(?P<rest>.+)$", re.IGNORECASE)
@@ -110,6 +112,7 @@ def parse_label_pdf(path: Path | str) -> Document:
     pdf = pymupdf.open(path)
     header: dict = {}
     items: list[DocumentItem] = []
+    text_lines: list[DocumentItem] = []
     warnings: list[str] = []
     method = "none"
     unreadable: set[int] = set()
@@ -156,6 +159,7 @@ def parse_label_pdf(path: Path | str) -> Document:
                 warnings.append(f"page {page_no}: no text found (text may be drawn as outlines); no usable OCR engine. {OCR_SETUP_HELP}")
         if words:
             method = page_method if method in ("none", page_method) else "mixed"
+        text_lines.extend(capture_text_lines(words, doc_id=doc_id, doc_type=DocType.LABEL, file=str(path), sha=sha, page=page_no, method=page_method))
         lines = group_lines(words, y_tol=2.5)
         if not lines:
             unreadable.add(page_no)
@@ -169,22 +173,55 @@ def parse_label_pdf(path: Path | str) -> Document:
             header["identity_evidence"] = {"page": page_no, "bbox": line_bbox(ref_words).model_dump(), "raw_text": line_text(ref_words), "extraction_method": page_method}
             header["identity_confidence"] = min(w.confidence for w in ref_words)
         anchor = next((i for i, l in enumerate(lines) if "contents" in line_text(l).lower()), None)
+        if anchor is None and items and any(_is_entry_starter(line, i) for line in lines for i in range(len(line))):
+            anchor = -1  # A continuation sheet need not repeat the Contents heading.
+            header.setdefault("continuation_pages", []).append(page_no)
+            warnings.append(f"page {page_no}: Contents heading not repeated; quantity/unit rows retained as continuation — verify against the source")
         if anchor is None:
             warnings.append(f"page {page_no}: no 'Contents' heading found; no kit-content lines extracted")
             continue
         if "product_name" not in header:
-            start = (ref_line + 1) if ref_line is not None else 0
-            header["product_name"] = " ".join(line_text(l) for l in lines[start:anchor]).strip()
+            upper_ref = next((i for i, line in enumerate(lines[:anchor]) if any(w.text.upper().rstrip(":") == "REF" for w in line)), None)
+            start = upper_ref + 1 if upper_ref is not None else ref_line + 1 if ref_line is not None and ref_line < anchor else 0
+            title_lines = lines[start:anchor]
+            if page_method == "ocr" and title_lines:
+                left = min(w.x0 for w in lines[anchor])
+                fragments = [fragment for line in title_lines for fragment in split_line_by_gaps(line, 16)]
+                aligned = [line for line in fragments if abs(min(w.x0 for w in line) - left) < 30]
+                title_lines = aligned or title_lines
+            header["product_name"] = " ".join(line_text(l) for l in title_lines).strip()
         region = _contents_region(lines[anchor + 1 :])
         region = [_expand_fused_tokens(line) for line in region]
         starters = [w.x0 for line in region for i, w in enumerate(line) if _is_entry_starter(line, i)]
         columns = _cluster_columns(starters) if starters else [min(w.x0 for l in region for w in l)] if region else [0.0]
         entries = _build_entries(region, columns)
+        native_entries_for_spacing = []
+        if page_method == "ocr" and native_contents:
+            native_anchor = next(i for i, line in enumerate(native_lines) if "contents" in line_text(line).lower())
+            native_region = _contents_region(native_lines[native_anchor + 1:])
+            native_starters = [w.x0 for line in native_region for i, w in enumerate(line) if _is_entry_starter(line, i)]
+            if native_starters:
+                native_entries_for_spacing = [entry for col in _build_entries(native_region, _cluster_columns(native_starters)) for entry in col]
         for col_idx, col_entries in enumerate(entries):
             for k, entry_words in enumerate(col_entries, start=1):
                 raw_text = " ".join(w.source_text if w.source_text is not None else w.text for w in entry_words).strip()
                 structural_text = " ".join(w.text for w in entry_words)
-                text = correct_ocr_text(structural_text) if page_method == "ocr" else structural_text
+                spaced = structural_text
+                if native_entries_for_spacing:
+                    bounds = line_bbox(entry_words)
+                    candidates = []
+                    for entry in native_entries_for_spacing:
+                        box = line_bbox(entry)
+                        overlap = (pymupdf.Rect(**bounds.model_dump()) & pymupdf.Rect(**box.model_dump())).get_area()
+                        if overlap:
+                            reference = " ".join(w.text for w in entry)
+                            compact_text = "".join(structural_text.lower().split())
+                            compact_reference = "".join(reference.lower().split())
+                            similarity = SequenceMatcher(None, compact_text, compact_reference, autojunk=False).ratio()
+                            candidates.append((similarity, overlap, reference))
+                    if candidates:
+                        spaced = restore_supported_spacing(structural_text, max(candidates)[2])
+                text = correct_ocr_text(spaced) if page_method == "ocr" else structural_text
                 if page_method == "ocr":
                     text = correct_fused_label_words(text)
                 parsed = parse_label_line(text)
@@ -213,6 +250,7 @@ def parse_label_pdf(path: Path | str) -> Document:
                             "line_count": line_count,
                             "raw_line": raw_text,
                             "ocr_corrected_line": text if text != raw_text else None,
+                            "native_spacing_recovered": spaced != structural_text,
                         },
                         category=ItemCategory.PHYSICAL_COMPONENT,
                         category_reason="kit-contents line on the product label",
@@ -242,6 +280,7 @@ def parse_label_pdf(path: Path | str) -> Document:
         sku=header.get("ref"),
         header=header,
         items=items,
+        text_lines=text_lines,
         parser_name=PARSER_NAME,
         parser_version=PARSER_VERSION,
         warnings=warnings,

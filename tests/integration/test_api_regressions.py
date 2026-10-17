@@ -474,3 +474,19 @@ def test_restore_retains_existing_sharing_and_deleted_metadata_survives_restart(
         other.db.close()
     assert client.post(f'/api/runs/{rid}/restore').status_code == 200
     assert access.permission(rid, 'shared@bd.com') == 'edit'
+
+
+def test_document_text_is_retained_separately_and_keeps_run_access_controls(env):
+    ws, client, run, source = env
+    response = upload(client, source)
+    assert response.status_code == 200
+    rid = response.json()['run_id']
+    documents = client.get(f'/api/runs/{rid}/documents').json()
+    label = next(doc for doc in documents if doc['doc_type'] == 'LABEL')
+    route = f'/api/runs/{rid}/documents/{label["id"]}/items'
+    data = client.get(route).json()
+    assert len(data['items']) == 1 and len(data['text_lines']) > len(data['items'])
+    assert all(line['page'] == 1 and line['bbox'] and line['confidence'] > 0 for line in data['text_lines'])
+    assert all(line['quantity'] is None and line['attributes']['kind'] == 'source_text' for line in data['text_lines'])
+    assert any('Contents' in line['raw_text'] for line in data['text_lines'])
+    assert TestClient(client.app).get(route).status_code == 401

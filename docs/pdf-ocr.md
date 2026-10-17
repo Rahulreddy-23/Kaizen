@@ -74,3 +74,18 @@ OCR reads local page rasters with local models. ONNX Runtime telemetry is disabl
 No cloud OCR service is used. Source files are not modified. OCR confidence warnings remain visible for
 review; hiding them would not improve extraction accuracy. Leader-line endpoints, photographic placement,
 ambiguous text and engineering approval still require a reviewer.
+
+## Missing or merged lines
+
+Outlined drawing letters are re-read in tight row crops when full-page OCR misses a row or loses word
+spacing. This uses vector geometry rather than product-specific terms. Photo text is excluded from
+callouts when a separate outlined text layer is available; outlined instructions over photos are retained.
+English/Spanish continuations stay together. Labels retain continuation sheets without a repeated heading
+and explicit quantity/unit entries without a dash. A damaged native label layer may supply spacing where
+its characters agree with OCR; it cannot replace OCR characters or quantities.
+
+In a new run, open a label/drawing and select **All recognized text** to inspect headers, notes and text
+that did not become comparison entries. Filter by phrase or page, then select a line to highlight its
+source. This view is separate from component comparisons and never creates synonyms or approvals.
+Older runs retain their original extraction. Full-text capture is not a guarantee that every character was
+recognized correctly; unreadable scans and ambiguous identifiers still need source verification.

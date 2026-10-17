@@ -132,3 +132,11 @@ message is shown. Revoking a pending code does not change an already created acc
 ## Help and privacy
 
 Tutorial and Privacy are accessible from the sidebar footer and sign-in screen. The tutorial uses topic navigation on desktop, a topic selector on narrow screens, ordered task instructions, previous/next links and an all-topics view. Privacy shows the complete notice. Both offer Markdown downloads and use the same bundled typography and theme as the app. No customer screenshots or source documents are included.
+
+## Document text coverage
+
+Label/drawing detail offers **Comparison entries** and **All recognized text** as explicit choices.
+The latter includes headers, notes and unparsed text; these lines do not enter component matching.
+Both views retain search, source-page filters, confidence and clickable page highlights. Lists paginate
+at 100 rows. Structured header values expand as readable details. Older-run empty states explain that a
+new cross-check is needed; existing review evidence is never rewritten.

@@ -731,7 +731,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.get("/api/runs/{run_id}/documents/{doc_id}/items")
     def get_document_items(run_id: str, doc_id: str):
         d = _doc(cache.get(run_id), doc_id)
-        return {"doc_id": d.id, "doc_type": d.doc_type.value, "file_name": Path(d.path).name, "header": d.header, "warnings": d.warnings, "pages": _page_count(d.path), "items": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.items]}
+        return {"doc_id": d.id, "doc_type": d.doc_type.value, "file_name": Path(d.path).name, "header": d.header, "warnings": d.warnings, "pages": _page_count(d.path), "items": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.items], "text_lines": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.text_lines]}
 
     @app.get("/api/runs/{run_id}/documents/{doc_id}/pages/{page_no}")
     def get_page_image(run_id: str, doc_id: str, page_no: int, highlight: str | None = None, dpi: int = Query(110, ge=36, le=300)):

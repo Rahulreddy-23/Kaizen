@@ -6,6 +6,7 @@ Product-name OCR corrections are loaded from ``ocr_corrections.json`` (same dire
 edited without touching source code.  Structural spacing rules (digit/CM/X spacing) are kept in code."""
 
 import csv
+import difflib
 import hashlib
 import io
 import json
@@ -14,6 +15,7 @@ import re
 import shutil
 import subprocess
 import threading
+import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -21,6 +23,7 @@ from pathlib import Path
 
 import pymupdf
 
+from kaizen.ingest.outline_text import outline_regions
 from kaizen.ingest.pdf_words import Word
 
 # ---------------------------------------------------------------------------
@@ -116,6 +119,9 @@ class OcrResult:
     engine: str = ""
     dpi: int = 200
     notices: list[str] = field(default_factory=list)
+    outline_recovered: int = 0
+    outlined: bool = False
+    outline_boxes: list[tuple[float, float, float, float]] = field(default_factory=list)
 
 
 _LOCK = threading.RLock()
@@ -202,12 +208,19 @@ def ocr_page(page: pymupdf.Page, dpi: int = 240, *, clip: pymupdf.Rect | None = 
     rect = clip or page.rect
     pix = page.get_pixmap(dpi=dpi, clip=rect, colorspace=pymupdf.csRGB, alpha=False)
     png = pix.tobytes("png")
-    key = hashlib.sha256(png + str((dpi, tuple(rect), page.rotation, engines, single_line)).encode()).hexdigest()
+    try:
+        regions = outline_regions(page) if "rapidocr-onnxruntime" in engines and clip is None and not single_line else []
+    except Exception:
+        regions = []  # Page OCR remains usable when vector geometry is unavailable.
+    # Identical pixels can come from either vector letters or a flattened scan.
+    # Only the former has reliable row geometry for the recovery pass.
+    layout = [tuple(region) for region in regions]
+    key = hashlib.sha256(png + str((dpi, tuple(rect), page.rotation, engines, single_line, layout)).encode()).hexdigest()
     with _LOCK:
         if key in _CACHE:
             _CACHE.move_to_end(key)
             cached = _CACHE[key]
-            return OcrResult(words=list(cached.words), engine=cached.engine, dpi=dpi, notices=list(cached.notices))
+            return OcrResult(words=list(cached.words), engine=cached.engine, dpi=dpi, notices=list(cached.notices), outline_recovered=cached.outline_recovered, outlined=cached.outlined, outline_boxes=list(cached.outline_boxes))
         failures = []
         empty = []
         for engine in engines:
@@ -232,13 +245,69 @@ def ocr_page(page: pymupdf.Page, dpi: int = 240, *, clip: pymupdf.Rect | None = 
             box = pymupdf.Rect((x0 + pix.x) * 72 / dpi, (y0 + pix.y) * 72 / dpi, (x1 + pix.x) * 72 / dpi, (y1 + pix.y) * 72 / dpi)
             words.append((box.x0, box.y0, box.x1, box.y1, t, conf))
         notices = [f"OCR fallback used {engine} after {'; '.join(failures)}"] if failures and words else []
-        out = OcrResult(words=words, engine=engine, dpi=dpi, notices=notices)
+        recovered, boxes = 0, []
+        if engine == "rapidocr-onnxruntime" and clip is None and not single_line:
+            try:
+                words, recovered, boxes = _recover_outline_lines(page, words, regions=regions)
+            except Exception as exc:
+                notices.append(f"Vector text recovery failed ({type(exc).__name__}); page OCR retained")
+        out = OcrResult(words=words, engine=engine, dpi=dpi, notices=notices, outline_recovered=recovered, outlined=bool(boxes), outline_boxes=boxes)
         # Do not cache failed/empty recognition: repaired engines can retry immediately.
         if words:
             _CACHE[key] = out
             if len(_CACHE) > 32:
                 _CACHE.popitem(last=False)
-        return OcrResult(words=list(out.words), engine=out.engine, dpi=dpi, notices=list(out.notices))
+        return OcrResult(words=list(out.words), engine=out.engine, dpi=dpi, notices=list(out.notices), outline_recovered=out.outline_recovered, outlined=out.outlined, outline_boxes=list(out.outline_boxes))
+
+
+def _recover_outline_lines(page: pymupdf.Page, words: list[tuple], *, regions: list[pymupdf.Rect] | None = None) -> tuple[list[tuple], int, list[tuple[float, float, float, float]]]:
+    """Recover rows missed by the detector, using the actual vector-letter bounds.
+
+    Long, thin instructions are sometimes invisible to the page detector. The
+    recognizer can read them when given a tight row crop. Existing good text is
+    kept unless the crop recovers missing text or restores supported spacing.
+    """
+    if regions is None:
+        regions = outline_regions(page)
+    if not regions:
+        return words, 0, []
+    import numpy as np
+
+    pix = page.get_pixmap(dpi=400, colorspace=pymupdf.csRGB, alpha=False)
+    pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
+    crops = []
+    for rect in regions:
+        x0, y0, x1, y1 = (round(v * 400 / 72) for v in rect)
+        crops.append(pixels[y0:y1, x0:x1, ::-1].copy())
+    recognized, _ = _rapid_engine(single_line=True).text_recognizer(crops)
+    out = list(words)
+    recovered = 0
+    for rect, (raw, confidence) in zip(regions, recognized):
+        text = unicodedata.normalize("NFKC", str(raw)).strip()
+        if confidence < .7 or len(text) < 4 or not any(c.isalnum() for c in text):
+            continue
+        overlaps = [i for i, w in enumerate(out) if rect.x0 <= (w[0] + w[2]) / 2 <= rect.x1 and rect.y0 <= (w[1] + w[3]) / 2 <= rect.y1]
+        previous = " ".join(out[i][4] for i in sorted(overlaps, key=lambda i: out[i][0]))
+        def compact(value):
+            return "".join(c for c in value.upper() if c.isalnum())
+        a, b = compact(previous), compact(text)
+        # Keep a legible full-page reading if the crop disagrees with it. This is
+        # recovery, not a dictionary that silently rewrites an unfamiliar term.
+        same = difflib.SequenceMatcher(None, a, b, autojunk=False).ratio() >= .9
+        missing = not previous or (a in b and len(a) < .7 * len(b))
+        spacing = same and len(text.split()) > len(previous.split())
+        if not (missing or spacing):
+            continue
+        replaced = set(overlaps)
+        out = [w for i, w in enumerate(out) if i not in replaced]
+        total, cursor = len(text), 0
+        for token in text.split():
+            left = rect.x0 + rect.width * cursor / total
+            right = rect.x0 + rect.width * (cursor + len(token)) / total
+            out.append((left, rect.y0, right, rect.y1, token, float(confidence)))
+            cursor += len(token) + 1
+        recovered += 1
+    return out, recovered, [tuple(r) for r in regions]
 
 
 def ocr_diagnostics() -> list[dict[str, str | bool]]:
