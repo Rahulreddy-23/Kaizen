@@ -7,7 +7,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-NORMALIZER_VERSION = "3"
+NORMALIZER_VERSION = "5"
 
 _TRADEMARK_CHARS = "™®©℠"  # ™ ® © ℠ — stripped before NFKC (NFKC would turn ™ into "TM")
 # OCR writes the ™ sign as the letters TM, glued to the name (SherlockTM, 3CGTM) or as a separate word.
@@ -128,10 +128,15 @@ def _singularize(token: str) -> str:
 
 def normalize(text: str) -> NormalizedText:
     s = text.translate({ord(c): None for c in _TRADEMARK_CHARS})
+    s = re.sub(r"\b([A-Z][a-z][A-Za-z]+)TM(?=[A-Z])", r"\1 ", s)
     s = _TEXT_TRADEMARK_RE.sub(r"\1", s)
     s = unicodedata.normalize("NFKC", s)
+    s = s.replace("×", " X ")
     s = s.translate({ord(c): "-" for c in _DASHES})
     s = s.upper()
+    s = re.sub(r"\b(LIDOCAINE)(HCI?L?)(?=\d|\b)", r"\1 HCL ", s)
+    s = re.sub(r"(\d)(ML|CM|MM|FR|GA)(?=ODX?\b|IDX?\b|LENGTH\b|AMPULE\b|X\b|WITH\b)", r"\1\2 ", s)
+    s = re.sub(r"\b(OD|ID)X(?=\s*\d)", r"\1 X ", s)
     s = re.sub(r"\bW/O\b", "WITHOUT", s)
     s = re.sub(r"\bW/", "WITH ", s)
     s = _PERCENT_RE.sub(r"\1%", s)

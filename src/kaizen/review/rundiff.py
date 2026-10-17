@@ -71,10 +71,20 @@ def _rel(path: str, root: str) -> str:
 def _documents(before: Run, after: Run) -> dict[str, list[Any]]:
     b = {_rel(d.path, before.metadata.input_root): d.sha256 for d in before.documents}
     a = {_rel(d.path, after.metadata.input_root): d.sha256 for d in after.documents}
+    # Independent copies relocate files. An unchanged parsed document keeps its
+    # identity and content hash; moving it must not look like a replacement.
+    before_ids = {(d.id, d.sha256): _rel(d.path, before.metadata.input_root) for d in before.documents}
+    after_ids = {(d.id, d.sha256): _rel(d.path, after.metadata.input_root) for d in after.documents}
+    added, removed = set(a) - set(b), set(b) - set(a)
+    for identity in before_ids.keys() & after_ids.keys():
+        old, new = before_ids[identity], after_ids[identity]
+        if old in removed and new in added:
+            removed.remove(old)
+            added.remove(new)
     return {
         "changed": [{"path": p, "before_sha256": b[p], "after_sha256": a[p]} for p in sorted(set(a) & set(b)) if a[p] != b[p]],
-        "added": sorted(set(a) - set(b)),
-        "removed": sorted(set(b) - set(a)),
+        "added": sorted(added),
+        "removed": sorted(removed),
     }
 
 

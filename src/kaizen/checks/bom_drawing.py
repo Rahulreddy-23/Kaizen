@@ -7,11 +7,12 @@ from collections import defaultdict
 from kaizen.checks.base import RowIdFactory, header_item, pair_token, unparsed_bom_rows
 from kaizen.checks.bom_label import comparable_bom_items
 from kaizen.checks.pairing import CheckPolicy, disc, run_pairing_check
+from kaizen.matching.components import PACKAGING_KINDS, component
 from kaizen.matching.ladder import MatchLadder
 from kaizen.matching.normalize import normalize
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, DocType, Document, ItemCategory, MatchLevel, Severity, Thresholds
 
-CHECK_VERSION = "2"
+CHECK_VERSION = "4"
 POLICY = CheckPolicy(check_type=CheckType.BOM_DRAWING, row_letter="D", quantity_relevant=False, missing_a=DiscrepancyType.MISSING_IN_DRAWING, missing_b=DiscrepancyType.EXTRA_ON_DRAWING, a_label="BOM component", b_label="drawing callout", conditional_b_exempt=True, soft_a_categories=(ItemCategory.PACKAGING,), exempt_b_categories=(ItemCategory.LABEL, ItemCategory.DOCUMENT))
 
 
@@ -28,9 +29,26 @@ def callouts(drawing: Document):
     # Drawings repeat the same component on multiple assembly/packing sheets. Presence
     # comparisons consume one identity while preserving every occurrence for inspection.
     groups = defaultdict(list)
+    by_page = defaultdict(list)
     for item in drawing.items:
         if item.attributes.get("kind") == "callout":
-            groups[normalize(item.description).sorted_key].append(item)
+            by_page[item.evidence.page].append(item)
+    for items in by_page.values():
+        kinds = {component(normalize(i.description).normalized).kind for i in items}
+        # Only infer sealing tape on an exclusively packaging sheet. A mixed
+        # clinical/packing sheet cannot establish what an unqualified TAPE is.
+        shipping_only = ("shipping_case" in kinds and kinds <= PACKAGING_KINDS | {"tape", "document_or_label"}
+                         and all(component(normalize(i.description).normalized).kind != "tape" or normalize(i.description).sorted_key == "TAPE" for i in items))
+        for item in items:
+            kind = component(normalize(item.description).normalized).kind
+            if shipping_only and normalize(item.description).sorted_key == "TAPE":
+                item = item.model_copy(update={"attributes": {**item.attributes, "matching_description": "CASE SEALING TAPE", "context_reason": "unqualified tape on a sheet containing only shipping packaging callouts"}})
+                kind = "case_sealing_tape"
+            if kind in PACKAGING_KINDS:
+                item = item.model_copy(update={"category": ItemCategory.PACKAGING, "category_reason": "packaging object noun: " + kind})
+            # Keep identical words in different contexts separate.
+            key = normalize(item.attributes.get("matching_description", item.description)).sorted_key
+            groups[key].append(item)
     out = []
     for occurrences in groups.values():
         first = occurrences[0]
@@ -60,10 +78,25 @@ def reference_only_rows(rows: list[CheckResult], drawing: Document) -> list[Chec
     return rows
 
 
+def drawing_applicability(bom: Document, drawing: Document) -> bool | None:
+    number = (drawing.header.get("drawing_number") or "").upper()
+    referenced = {m for item in bom.items for m in re.findall(r"\bDWG\d+[A-Z]?\b", f"{item.item_number or ''} {item.description}".upper())}
+    return number in referenced if referenced and number else None
+
+
 def run_bom_drawing_check(bom: Document, drawing: Document, ladder: MatchLadder, thresholds: Thresholds) -> list[CheckResult]:
     sku = bom.sku or "UNKNOWN"
     ids = RowIdFactory(sku, "D", pair_token(bom.id, drawing.id))
     results = [_reference_row(bom, drawing, sku, ids)]
+    if drawing_applicability(bom, drawing) is False:
+        row = results[0]
+        detail = (f"DRAWING APPLICABILITY: supplied drawing {drawing.header.get('drawing_number')} is not referenced by BOM {sku}; "
+                  "the BOM references other drawings. Confirm the applicable released drawing before comparing components.")
+        row.explanation = detail
+        row.discrepancies = [disc(DiscrepancyType.DRAWING_APPLICABILITY_UNCONFIRMED, Severity.MAJOR, detail)]
+        row.classification = Classification.POTENTIAL
+        row.requires_validation = True
+        return results
     drawing_callouts = callouts(drawing)
     if not drawing_callouts or drawing.header.get("unreadable_pages"):
         results.append(extraction_blocker(drawing, CheckType.BOM_DRAWING, sku, ids))

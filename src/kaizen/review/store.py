@@ -199,7 +199,7 @@ class ReviewStore:
         existing = self.all_decisions(run_id)
         n = 0
         for r in results:
-            if r.requires_validation or slot in existing.get(r.row_id, {}):
+            if r.role == 'exempt' or r.requires_validation or slot in existing.get(r.row_id, {}):
                 continue
             self.decide(run_id, r.row_id, slot, reviewer, "ACCEPT", comment="bulk accept: exact/equivalent with no discrepancy", timed=False)
             n += 1

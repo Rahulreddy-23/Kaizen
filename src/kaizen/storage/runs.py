@@ -22,9 +22,13 @@ class RunIndex:
         self.conn.execute("INSERT INTO audit (at, actor, action, detail) VALUES (?,?,?,?)", (datetime.now(timezone.utc).isoformat(), "system", "run.registered", f"{run.metadata.run_id} → {json_path}"))
         self.conn.commit()
 
-    def list(self) -> list[dict]:
-        return [dict(r) | {"summary": json.loads(r["summary"])} for r in self.conn.execute("SELECT * FROM runs ORDER BY created_at DESC")]
+    def list(self, *, deleted: bool = False) -> list[dict]:
+        where = "deleted_at != ''" if deleted else "deleted_at = ''"
+        order = "deleted_at" if deleted else "created_at"
+        return [dict(r) | {"summary": json.loads(r["summary"])} for r in self.conn.execute(f"SELECT * FROM runs WHERE {where} ORDER BY {order} DESC")]
 
-    def get(self, run_id: str) -> dict | None:
+    def get(self, run_id: str, *, include_deleted: bool = False) -> dict | None:
         r = self.conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        if r and r['deleted_at'] and not include_deleted:
+            return None
         return dict(r) | {"summary": json.loads(r["summary"])} if r else None

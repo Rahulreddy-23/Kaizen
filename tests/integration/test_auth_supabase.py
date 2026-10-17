@@ -16,6 +16,7 @@ from kaizen.api.app import create_app
 from kaizen.cli.main import app as cli
 from kaizen.review.access import AccessStore
 from kaizen.review.auth import AuthError, LocalAccounts, SupabaseAccounts, accounts_for, is_secret_key, save_config, validate
+from kaizen.review.invitations import InvitationStore
 from kaizen.workspace import Workspace
 
 BD = "dharma.reddy@bd.com"
@@ -75,10 +76,18 @@ def client(tmp_path, fake, monkeypatch):
 
 
 def signup(client, email=BD, password=PW):
-    response = client.post("/api/auth/signup", json={"email": email, "password": password})
-    if response.status_code == 200 and hasattr(client, 'ws'):
-        AccessStore(client.ws.db).update(email, 'test administrator', 'approved', False)
-    return response
+    ws = client.ws
+    access = AccessStore(ws.db)
+    access.bootstrap('invite-admin@bd.com', PW)
+    if not hasattr(client, 'invites'):
+        client.invites = {}
+    normalized = email.strip().lower()
+    try:
+        code = InvitationStore(ws.db).create(normalized, 'invite-admin@bd.com')['code']
+        client.invites[normalized] = code
+    except ValueError:
+        code = client.invites.get(normalized, '')
+    return client.post("/api/auth/signup", json={"email": email, "password": password, "invitation": code})
 
 
 def signin(client, email=BD, password=PW, slot=1):
@@ -90,9 +99,9 @@ def signin(client, email=BD, password=PW, slot=1):
 
 def test_sign_up_stores_the_account_in_supabase_not_the_workspace(client, fake):
     r = signup(client)
-    assert r.status_code == 200 and r.json() == {"ok": True, "email": BD, "status": "pending"}
+    assert r.status_code == 200 and r.json() == {"ok": True, "email": BD, "status": "approved"}
     assert BD in fake.users
-    assert client.ws.db.conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"] == 0, "no password is kept locally"
+    assert client.ws.db.conn.execute("SELECT COUNT(*) AS n FROM users WHERE email=?", (BD,)).fetchone()["n"] == 0, "no password is kept locally"
 
 
 def test_only_bd_addresses_reach_supabase(client, fake):
@@ -109,20 +118,22 @@ def test_a_short_password_is_refused_without_calling_supabase(client, fake):
 def test_an_address_cannot_be_registered_twice(client):
     signup(client)
     again = signup(client, BD, "another-password-1")
-    assert again.status_code == 409 and "Kaizen admin" in again.json()["detail"]
+    assert again.status_code == 403
     assert signin(client, BD, PW).status_code == 200, "the original password is untouched"
 
 
 def test_confirm_email_left_on_in_supabase_is_explained(tmp_path):
     """BD mail never receives Supabase's confirmation link, so the admin must switch the setting off."""
     fake = FakeSupabase(confirm_email=True)
-    c = TestClient(create_app(Workspace(tmp_path / "ws"), accounts=SupabaseAccounts(URL, KEY, http=fake)))
+    ws = Workspace(tmp_path / "ws")
+    c = TestClient(create_app(ws, accounts=SupabaseAccounts(URL, KEY, http=fake)))
+    c.ws = ws
     r = signup(c)
     assert r.status_code == 503 and "Confirm email" in r.json()["detail"]
     s = signin(c)
     assert s.status_code == 403 and "Kaizen admin" in s.json()["detail"], "the stuck account is explained too"
     fake.confirm(BD)
-    assert signin(c).status_code == 403, "Provider confirmation does not grant Kaizen approval"
+    assert signin(c).status_code == 403, "A provider account alone does not grant workspace membership"
 
 
 # ---- signing in ---------------------------------------------------------------------------------
@@ -135,12 +146,21 @@ def test_sign_in_opens_a_user_session(client, fake):
     assert client.ws.db.conn.execute("SELECT reviewer FROM sessions").fetchone()["reviewer"] == BD
 
 
-def test_provider_account_does_not_bypass_workspace_approval(tmp_path, fake):
+@pytest.mark.parametrize("pending", [False, True])
+def test_provider_account_requires_membership_on_each_workspace(tmp_path, fake, pending):
     """Two laptops, one Supabase project: sign up on one, sign in on the other."""
-    laptop_a = TestClient(create_app(Workspace(tmp_path / "a"), accounts=SupabaseAccounts(URL, KEY, http=fake)))
-    laptop_b = TestClient(create_app(Workspace(tmp_path / "b"), accounts=SupabaseAccounts(URL, KEY, http=fake)))
+    workspace_a = Workspace(tmp_path / "a")
+    laptop_a = TestClient(create_app(workspace_a, accounts=SupabaseAccounts(URL, KEY, http=fake)))
+    laptop_a.ws = workspace_a
+    workspace_b = Workspace(tmp_path / "b")
+    laptop_b = TestClient(create_app(workspace_b, accounts=SupabaseAccounts(URL, KEY, http=fake)))
     signup(laptop_a)
+    if pending:
+        access = AccessStore(workspace_b.db)
+        access.register(BD)
+        access.update(BD, 'test administrator', 'pending', False)
     assert signin(laptop_b).status_code == 403
+    assert laptop_b.get('/api/sessions/current').json()['session'] is None
 
 
 def test_wrong_password_and_unknown_account_look_the_same(client, fake):
@@ -179,7 +199,9 @@ def test_supabase_unreachable_is_a_clear_503(client, fake):
 )
 def test_supabase_failures_become_readable_errors(tmp_path, status, body, expected):
     backend = SupabaseAccounts(URL, KEY, http=lambda *a: (status, body))
-    c = TestClient(create_app(Workspace(tmp_path / "ws"), accounts=backend))
+    ws = Workspace(tmp_path / "ws")
+    c = TestClient(create_app(ws, accounts=backend))
+    c.ws = ws
     r = signup(c)
     assert r.status_code == expected and r.json()["detail"]
 

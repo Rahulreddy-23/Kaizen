@@ -12,6 +12,25 @@ class Credentials(Payload):
     password: str = Field(max_length=1024)
 
 
+class Registration(Credentials):
+    invitation: str = Field(default="", max_length=200)
+
+
+class InvitationInput(Payload):
+    email: str = Field(max_length=320)
+    expires_hours: int = Field(default=72, ge=1, le=168)
+
+
+class TerminologyChoice(Payload):
+    id: str = Field(min_length=1, max_length=100)
+    version: int = Field(ge=1)
+
+
+class TerminologySelection(Payload):
+    entries: list[TerminologyChoice] = Field(min_length=1, max_length=5000)
+    selected: bool = True
+
+
 class RunPath(Payload):
     path: str = Field(min_length=1)
     name: str = ""

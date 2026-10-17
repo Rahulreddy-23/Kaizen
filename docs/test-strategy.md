@@ -1,61 +1,75 @@
 # Test strategy
 
-Every layer has tests, and extraction failures found in the real BD delivery have hermetic regression
-fixtures. Run the offline suite with `.venv/bin/pytest`; private-source/OCR tests run when their prerequisites
-are available and otherwise skip. Runtime depends on the installed OCR engine and local hardware.
+Use synthetic fixtures for public regression tests and isolated workspaces for manual changes.
+Private BD files, screenshots, review databases and detailed adjudications remain local and ignored.
 
-## Layers and what is asserted
+## Commands
 
-| Layer | Tests | What is asserted |
-|---|---|---|
-| Canonical model | `tests/unit/test_models.py` | Validation (confidence 0–1, ordered bboxes, evidence required, non-empty explanations), enum coverage of the discrepancy taxonomy. |
-| Normalisation | `test_normalize.py`, `test_hardening.py` | Table-driven: ™/®, `W/`, units, plurals, `.0`, `%`, dimensions, token order; determinism and idempotence. |
-| Quantities | `test_quantity.py`, `test_quantity_compare.py` | `N Each -` parsing, `(3 per)`, `(1 pair)`, per-pouch idioms; unit-aware comparison and idiom reconciliation. |
-| BOM categorisation | `test_bom_categorize.py` | Every category rule, zero and unreadable quantities, reasons are explanatory. |
-| PDF primitives | `test_pdf_words.py` | Word boxes, line grouping (with sub-pixel jitter), column bands, gap splitting, annotation capture and exclusion. |
-| Parsers | `test_bom_pdf.py`, `test_bom_table.py`, `test_label_pdf.py`, `test_pco.py`, `test_drawing.py`, `test_ocr_and_extraction_method.py` | Rendered fixtures designed to break naive extraction: multi-page BOMs, blank quantities, XLSX/CSV aliases, two/three-column labels, wrapped lines, decoy REFs, PCO XLSX and PDF forms, EN/ES callouts, conditional callouts, noise, image-only pages with and without an OCR engine (mocked). |
-| Terminology | `test_terminology_store.py`, `test_terminology_repository.py`, `test_terminology_exchange.py` | Scope (global/family/SKU), item anchors (incl. the over-matching regression), versioning, history survives delete, historical run reconstruction, Excel/CSV round trips, `sync-defaults` never touching edited rows. |
-| Matching | `test_fuzzy.py`, `test_ladder.py`, `test_assignment.py`, `test_semantic.py`, `test_providers.py` | Numeric guard, single-token guard, stopwords, level order, fuzzy never EXACT, ambiguity delta, contested candidates, semantic and AI layers can only yield POTENTIAL/weak outcomes. |
-| Checks | `test_bom_label_check.py`, `test_pairing_engine.py`, `test_pco_bom_check.py`, `test_label_revision.py`, `test_adversarial.py` | Every classification and discrepancy type per check, REF/parent, duplicate BOM rows, unreadable label blocker, conditional/packaging exemptions, PCO ADD/DELETE/SUBSTITUTE/MODIFY with redlines, coverage blockers, expected vs unexpected label changes. |
-| Review layer | `test_review_store.py`, `test_action_items.py`, `test_mining_and_business.py` | State machine, blind mode, disagreement, finalisation history, bulk accept, action items linked to rows, verify & close via comparison keys, mining evidence counts, business case honesty. |
-| Reporting | `test_excel_report.py`, `test_excel_review_export.py`, `test_annotated_bom.py` | Sheet set and column order, conditional formatting and validations, metadata answers "where did this come from", decisions merged without touching engine columns, marks never over printed text, spreadsheet fallback. |
-| Pipeline / CLI / API | `test_pipeline.py`, `test_detect_grouping.py`, `tests/integration/test_cli.py`, `test_cli_terminology.py`, `test_api.py` | Deterministic run ids, document-id uniqueness, grouping strategies, every CLI command, the full API contract including blind mode, save-as-relationship feeding the next run, mining, action items, exports, uploads and the demo loader. |
-| Golden accuracy | `tests/golden/test_accuracy.py`, `tests/unit/test_dataset_build.py` | Floors on precision/recall/pairing/classification per check against a deterministic, byte-stable dataset whose ground truth is generated from the same scenario definitions. |
-| Performance | `test_perf.py` (+ `kaizen perf`) | The harness builds N-SKU datasets and times ingest / matching / report. |
+From an installed checkout ([setup](../README.md)):
 
-## Fixtures
-Documents are rendered, not hand-drawn: `kaizen.datasets` produces JDE-style BOM prints (with FreeText redline
-annotations), two-column labels, multi-sheet drawings and FM00835 PCO forms, all byte-stable. When a parser bug
-is found, the failing fragment becomes a fixture (see `test_hardening.py`, `test_adversarial.py`).
+```bash
+KAIZEN_WORKSPACE="$PWD/out/test-workspace" .venv/bin/pytest tests/unit tests/integration tests/golden
+KAIZEN_WORKSPACE="$PWD/out/eval-workspace" .venv/bin/kaizen eval datasets/golden --fail-under 1.0 --out out/eval
+npm --prefix ui test
+npm --prefix ui run build
+```
 
-## What is deliberately not mocked
-Parsers, matching, checks, storage and the API execute in tests. Hermetic extraction tests mock OCR output
-to exercise failure and geometry handling. `tests/integration/test_offline_ocr.py` also executes an installed engine
-on a scanned JDE fixture; `tests/real/test_bd_delivery.py` runs OCR on the private source labels and drawing; it stays local and is ignored by Git because it holds values transcribed from BD documents.
+For lint parity with CI, install `ruff` in the virtual environment and run `.venv/bin/ruff check src tests`.
+Windows uses the corresponding `.venv\Scripts\` executables and PowerShell environment assignment.
+The full Python suite can take several minutes; runtime depends on hardware and the installed OCR engine.
+CI runs Python 3.12/3.13 lint, tests and the synthetic precision/recall gate, plus UI tests and build.
+It does not deploy or validate a live Render service.
 
-## Real-data validation
+## Regression coverage
 
-`tests/unit/test_real_layouts.py` covers indented JDE headings, joined OCR starters, original evidence,
-rotated page boxes and marks, encrypted/corrupt input handling, duplicate drawing occurrences, shared
-drawings, inferred identities, low-confidence headers, incomplete extraction blockers, source parity
-and run identity when extraction output changes. These fixtures contain no customer PDF pages.
+Test paths below are relative to `tests/` unless prefixed with `ui/`.
 
-The optional private suite validates four BOM PDFs against independently parsed JDE exports (all 373 rows,
-including duplicate components, quantities, units, operation sequences and effective dates). Label
-quantities and pack idioms were transcribed from the page images. Drawing assertions are named visual
-probes on every sheet, plus identity, revision, conditionality and presence-only behavior.
+| Area | Representative tests | Assertions |
+| --- | --- | --- |
+| Models and normalization | `unit/test_models.py`, `test_normalize.py`, `test_hardening.py` | Valid evidence/quantities, preserved raw text, deterministic matching keys and fused-word/unit handling. |
+| Extraction | `unit/test_bom_pdf.py`, `test_bom_table.py`, `test_label_pdf.py`, `test_drawing.py`, `test_pco.py`, `test_real_layouts.py` | JDE columns, wrapped/multi-column labels, rotated boxes, PCO tables, duplicates, malformed/encrypted inputs and warnings. |
+| OCR | `unit/test_ocr_and_extraction_method.py`, `integration/test_offline_ocr.py`, `integration/test_pdf_ocr_layouts.py`, `unit/test_ocr_runtime.py`, `integration/test_outline_text_recovery.py`, `unit/test_label_text_coverage.py`, `unit/test_text_layout.py` | Engine failure/fallback/confidence/geometry paths; portable OCR on native/raster/outlined labels and raster drawings, partial text layers, column boundaries, raw-evidence preservation and bilingual captions beside notes. |
+| Matching and quantities | `unit/test_component_candidates.py`, `test_ladder.py`, `test_assignment.py`, `test_quantity_compare.py` | Unseen item codes/wording, reversed callout order, object/accessory distinctions, conflicting specifications, alternatives, ambiguity and pack/pair bases. |
+| Check policies | `unit/test_bom_label_check.py`, `test_pco_bom_check.py`, `test_label_revision.py`, `test_check_sweep_regressions.py` | Applicable sources, PCO/revision changes, coverage, exemptions and uncertainty rather than false auto-clears. |
+| SKU Quick view | `unit/test_quick_view.py`, `integration/test_quick_view_api.py`, UI QuickViewPage/PageImage tests | Saved pairings, no false green for missing/exempt sources, shared-SKU isolation, complete source text, merged rows, filtering, run access, zoom geometry and reading-workspace keyboard recovery. |
+| Accounts and collaboration | `integration/test_auth_password.py`, `test_auth_supabase.py`, `test_collaboration.py`, `test_api_regressions.py` | Sign-in, revocation, grants, admin boundaries, same-origin changes, stale revisions, uploads and copies. |
+| Learning and terminology | `unit/test_learning.py`, `test_worklist.py`, `test_terminology_source_import.py`, `integration/test_learning_api.py`, `test_learning_defaults.py` | Automatic collection/backfill, immutable splits, independent verification, stale-label invalidation, learning eligibility and atomic imports. |
+| Excel and PDF reporting | `unit/test_sku_excel.py`, `test_excel_review_export.py`, `test_excel_roundtrip.py`, `test_annotated_bom.py` | Per-SKU Summary/Complete layouts, safe sheet names/text, current review state, stable row IDs, imports/conflicts and source geometry. |
+| Run comparison and follow-up | `unit/test_rundiff.py`, `test_action_items.py` | Relocated unchanged copies, actual content changes, disappeared comparisons and conservative verification. |
+| Pipeline and evaluation | `unit/test_pipeline.py`, `test_dataset_build.py`, `golden/test_accuracy.py`, `integration/test_cli.py` | Saved metadata, reproducible synthetic documents, CLI workflows and declared accuracy floors. |
+| UI controls/navigation | `ui/src/components/ChoiceList.test.tsx`, `ui/src/lib/neighbors.test.ts`, `ui/src/lib/uiLists.test.tsx`, `ui/src/pages/UIPass.test.tsx` | Selection survives search, unique document grouping, paging, validation, permissions and screen recovery. |
+| Excel UI | `ui/src/components/ExcelExport.test.tsx`, `ui/src/pages/DashboardPage.test.tsx` | Download choices, focus/dismissal and overview integration. |
+
+Short test filenames in a row use the same directory as its first Python test.
+Parsers, checks, storage, exports and the API execute in regression tests; optional remote providers are
+replaced with controlled responses. No real credentials or customer document pages belong in fixtures.
+
+## Manual UI verification
+
+Use synthetic data for saves, approvals, copies, imports and account-role checks. Exercise:
+
+1. New cross-check: folder/individual uploads, selected-file paths, unsupported files and pending controls.
+2. Lists: filtering, no matches, page boundaries, long descriptions and run/row changes without stale drafts.
+3. Evidence: correct source pages, review save/reload, ground-truth search/chips and preserved selections.
+4. Exports: Summary and Complete details per-SKU workbooks, import preview/conflicts, PDFs and ZIPs.
+5. Permissions: viewer cannot mutate/export; owner sharing and admin-only controls remain distinct.
+6. Quick view: SKU selection, green/orange actual source boxes, full-text limitations, independent pages/zoom, expanded reading and previous/next navigation.
+7. Desktop/narrow layouts, both themes, keyboard ownership, drawer/dialog focus and error recovery.
+
+A viewport emulation check does not certify a physical mobile device or another browser engine.
+Keep evidence under ignored `out/`, with the tested revision and source hashes where applicable.
+
+## Real-data acceptance
+
+An optional local audit compares BOM PDFs with independent spreadsheet exports:
 
 ```bash
 .venv/bin/python scripts/audit_real_data.py trainingdataset --out out/real-bd
 .venv/bin/pytest tests/real tests/unit/test_real_layouts.py
 ```
 
-The audit forces the offline provider, retains all source copies, avoids duplicate comparisons and writes
-a reviewable workbook, JSON run and extraction report. Source files and generated output are ignored by
-Git. See [real-data validation](real-data-validation.md) for the distinction between extraction evidence
-and matching accuracy.
-
-## Known gaps
-Real pairing/discrepancy accuracy cannot be measured without independently reviewed ground truth. The
-encrypted relationship workbook remains unavailable, and there are no real PCO, revision-pair or case-label
-fixtures in this delivery. Golden accuracy floors remain unchanged; they are not a real-data acceptance gate.
+Run the private suite only when its source fixtures are present. Use clean PDFs and readable spreadsheet
+counterparts; the marked-up attachment batch and Word documents are outside the agreed validation scope.
+A passing extraction check or improved mapping coverage is not measured defect accuracy. Independently
+verified pairing/discrepancy truth, drawing applicability and held-out SKU coverage remain necessary.
+See [real-data validation](real-data-validation.md) and [closed testing](closed-testing.md).

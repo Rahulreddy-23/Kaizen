@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
+from openpyxl.utils import range_boundaries
 
 from kaizen.models import Classification, Run
 from kaizen.review.store import ReviewStore
@@ -84,13 +85,22 @@ def read_metadata(wb) -> dict[str, str]:
         raise ValueError("this workbook has no Run_Metadata sheet; it was not exported by Kaizen Cross-Check")
     out: dict[str, str] = {}
     for row in wb["Run_Metadata"].iter_rows(min_row=1, max_row=40, max_col=2):
-        if row[0].value in ("Run ID", "Exported at") and row[1].value is not None:
+        if row[0].value in ("Run ID", "Exported at", "Export layout") and row[1].value is not None:
             out[str(row[0].value)] = str(row[1].value)
     return out
 
 
-def _column_map(sheet) -> dict[str, int]:
-    return {str(c.value): i + 1 for i, c in enumerate(sheet[1]) if c.value is not None}
+def _result_header(sheet, sku_layout: bool) -> tuple[int, dict[str, int]]:
+    if sku_layout and sheet.auto_filter.ref:
+        header = range_boundaries(sheet.auto_filter.ref)[1]
+        columns = {str(c.value): c.column for c in sheet[header] if c.value is not None}
+        if "Row ID" in columns and "Reviewer Decision" in columns:
+            return header, columns
+    for row in sheet.iter_rows(min_row=1, max_row=min(sheet.max_row, 80) if sku_layout else 1):
+        columns = {str(c.value): c.column for c in row if c.value is not None}
+        if "Row ID" in columns and "Reviewer Decision" in columns:
+            return row[0].row, columns
+    return 1, {}
 
 
 def import_decisions(workspace, run: Run, path: Path | str, slot: int, reviewer: str, *, dry_run: bool = False, force: bool = False, review_store: ReviewStore | None = None) -> RoundTripResult:
@@ -116,14 +126,15 @@ def import_decisions(workspace, run: Run, path: Path | str, slot: int, reviewer:
             finalized = set(review.finals(run_id))
             decision_col, comment_col = SLOT_COLUMNS[slot]
 
-            for name in CHECK_SHEETS:
+            sku_layout = meta.get("Export layout") == "sku"
+            for name in wb.sheetnames if sku_layout else CHECK_SHEETS:
                 if name not in wb.sheetnames:
                     continue
                 sheet = wb[name]
-                cols = _column_map(sheet)
+                header, cols = _result_header(sheet, sku_layout)
                 if "Row ID" not in cols or decision_col not in cols:
                     continue
-                for r in range(2, sheet.max_row + 1):
+                for r in range(header + 1, sheet.max_row + 1):
                     rid = sheet.cell(row=r, column=cols["Row ID"]).value
                     if rid is None or str(rid).strip() == "":
                         continue

@@ -67,3 +67,26 @@ describe("ground-truth review", () => {
     await waitFor(() => expect(api.learning.annotate).toHaveBeenCalledWith("run", "row", expect.objectContaining({attributes: expect.objectContaining({"bom-mask": expect.objectContaining({dimensions_mm: [101.6, 101.6]})})})));
   });
 });
+
+it("shows readable issue names while saving the exact discrepancy codes", async () => {
+  show();
+  await screen.findByRole("group", {name:"Verified discrepancy types"});
+  expect(screen.queryByRole("listbox")).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox",{name:"Drawing applicability unconfirmed"}));
+  fireEvent.click(screen.getByRole("checkbox",{name:"Label reference mismatch"}));
+  fireEvent.change(screen.getByLabelText("Evidence and reason"),{target:{value:"Verified source reference and applicability."}});
+  fireEvent.click(screen.getByRole("button",{name:"Save annotation"}));
+  await waitFor(()=>expect(api.learning.annotate).toHaveBeenCalledWith("run","row",expect.objectContaining({discrepancies:["DRAWING_APPLICABILITY_UNCONFIRMED","REF_PARENT_MISMATCH"]})));
+});
+
+it("requires assembly quantities without discarding the reviewer's selections", async () => {
+  vi.mocked(api.learning.row).mockResolvedValue({...data,a_options:[...data.a_options,{...data.a_options[0],id:"second",item_number:"200",description:"Second assembly member"}]});
+  show();
+  await screen.findByRole("checkbox",{name:/Second assembly member/});
+  fireEvent.click(screen.getByRole("checkbox",{name:/Second assembly member/}));
+  fireEvent.change(screen.getByLabelText("Evidence and reason"),{target:{value:"Assembly identified from source."}});
+  fireEvent.click(screen.getByRole("button",{name:"Save annotation"}));
+  await screen.findByText("Enter a positive quantity for every selected assembly member.");
+  expect(api.learning.annotate).not.toHaveBeenCalled();
+  expect((screen.getByRole("checkbox",{name:/Second assembly member/}) as HTMLInputElement).checked).toBe(true);
+});

@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Badge, DocTypeBadge } from "../components/Badges";
 import { ErrorBox, Notice } from "../components/Feedback";
+import { Pagination } from "../components/Pagination";
 import { PageImage } from "../components/PageImage";
 import { AnchorButton, Button, Card, CardHead, EmptyState, PageHeader, Skeleton, TableSkeleton } from "../components/ui";
 import { enc, fmtQty, isPdf } from "../lib/format";
@@ -49,7 +50,10 @@ function columns(t: DocType): Col[] {
               <span className={i.category === "PHYSICAL_COMPONENT" ? "font-medium text-ink" : "text-ink-3"} title={i.category}>
                 {words(i.category)}
               </span>
-              {i.category_reason && <div className="text-xs text-ink-3">{i.category_reason}</div>}
+              {i.category_reason && <details className="category-explanation" onClick={event => event.stopPropagation()}>
+                <summary>Why this category</summary>
+                <p>{i.category_reason}</p>
+              </details>}
             </>
           ),
         },
@@ -68,6 +72,7 @@ function columns(t: DocType): Col[] {
       return [
         { h: "Callout", cell: (i) => str(i.attributes.callout_index), cls: "num text-right", head: "text-right" },
         { h: "Sheet", cell: (i) => str(i.attributes.sheet), cls: "num text-right", head: "text-right" },
+        { h: "Kind", cell: (i) => i.attributes.kind === "instruction" ? "Instruction" : "Callout", cls: "text-ink-3 whitespace-nowrap" },
         { h: "Text (English)", cell: (i) => i.description, cls: "min-w-[14rem]" },
         { h: "Text (Spanish)", cell: (i) => str(i.attributes.es_text), cls: "text-ink-2" },
         { h: "Conditional", cell: (i) => (i.attributes.conditional ? <Badge tone="warn">Conditional</Badge> : <span className="text-ink-4">No</span>) },
@@ -104,9 +109,12 @@ export default function DocumentPage() {
   const doc = useAsync(() => api.getDocumentItems(runId, docId), [runId, docId]);
   const [filter, setFilter] = useState("");
   const [pageOnly, setPageOnly] = useState(false);
-  const page = Math.max(1, Number(sp.get("page") || 1) || 1);
+  const [offset, setOffset] = useState(0);
+  const allText = sp.get("view") === "text";
+  const requestedPage = Number(sp.get("page") || 1);
+  const page = Math.min(doc.data?.pages || 1, Number.isFinite(requestedPage) ? Math.max(1, Math.floor(requestedPage)) : 1);
   const selectedId = sp.get("item");
-  const selected = useMemo(() => doc.data?.items.find((i) => i.id === selectedId) ?? null, [doc.data, selectedId]);
+  const selected = useMemo(() => (allText ? doc.data?.text_lines : doc.data?.items)?.find((i) => i.id === selectedId) ?? null, [doc.data, selectedId, allText]);
 
   const setParam = (k: string, v: string | null) => {
     const n = new URLSearchParams(sp);
@@ -134,15 +142,19 @@ export default function DocumentPage() {
   const d = doc.data;
   const pdf = isPdf(d.file_name) && d.pages > 0;
   const src = pdf ? api.pageImageUrl(runId, docId, page) : null;
-  const cols = columns(d.doc_type);
-  const lowConf = d.items.filter((i) => i.confidence < LOW_CONFIDENCE).length;
+  const sourceRows = allText ? d.text_lines ?? [] : d.items;
+  const cols: Col[] = allText ? [{ h: "Recognized text", cell: (i) => i.description, cls: "min-w-[18rem] whitespace-pre-wrap" }] : columns(d.doc_type);
+  const lowConf = sourceRows.filter((i) => i.confidence < LOW_CONFIDENCE).length;
   const header = Object.entries(d.header);
   const needle = filter.trim().toLowerCase();
   const filtering = needle.length > 0 || pageOnly;
-  const rows = d.items
+  const rows = sourceRows
     .map((item, n) => ({ item, n: n + 1 }))
     .filter(({ item }) => (!pageOnly || item.page === page) && (!needle || [item.item_number ?? "", item.description, item.locator ?? "", item.raw_text].some((s) => s.toLowerCase().includes(needle))));
+  const safeOffset = Math.min(offset, Math.max(0, Math.ceil(rows.length / 100) - 1) * 100);
+  const visibleRows = rows.slice(safeOffset, safeOffset + 100);
   const clearFilters = () => {
+    setOffset(0);
     setFilter("");
     setPageOnly(false);
   };
@@ -155,13 +167,14 @@ export default function DocumentPage() {
         title={
           <>
             <DocTypeBadge value={d.doc_type} />
-            <span className="mono text-xl">{d.file_name}</span>
+            <span className="document-title">{d.file_name}</span>
           </>
         }
         description="Select an extracted line to see its location in the source document."
         meta={
           <>
-            <span>{plural(d.items.length, "extracted line")}</span>
+            <span>{plural(d.items.length, "comparison entry", "comparison entries")}</span>
+            {!!d.text_lines?.length && <span>{plural(d.text_lines.length, "recognized text line")}</span>}
             <span>{pdf ? plural(d.pages, "page") : "Spreadsheet source, no page images"}</span>
             {lowConf > 0 && <span className="text-warn-strong">{lowConf} below the confidence threshold</span>}
             {d.warnings.length > 0 && <span className="text-warn-strong">{plural(d.warnings.length, "parser warning")}</span>}
@@ -249,11 +262,11 @@ export default function DocumentPage() {
                     {selected.sheet && <span className="text-ink-3"> · sheet {selected.sheet}</span>}
                     {selected.page !== null && <span className="text-ink-3"> · page {selected.page}</span>}
                   </dd>
-                  <dt>Item number</dt>
+                  {!allText && <><dt>Item number</dt>
                   <dd className="mono">{selected.item_number ?? "—"}</dd>
-                  <dt>Description</dt>
+                  </>}<dt>{allText ? "Recognized text" : "Description"}</dt>
                   <dd className="font-medium">{selected.description}</dd>
-                  <dt>Quantity</dt>
+                  {!allText && <><dt>Quantity</dt>
                   <dd className="num">
                     {fmtQty(selected.quantity)} {selected.uom ?? ""}
                     {selected.sub_quantity && <span className="text-ink-3"> · sub-quantity {selected.sub_quantity.raw}</span>}
@@ -264,7 +277,7 @@ export default function DocumentPage() {
                     <span title={selected.category}>{words(selected.category)}</span>
                     {selected.category_reason && <span className="text-ink-3"> — {selected.category_reason}</span>}
                   </dd>
-                  <dt>Confidence</dt>
+                  </>}<dt>Confidence</dt>
                   <dd>{selected.confidence < LOW_CONFIDENCE ? <Badge tone="warn">{pct(selected.confidence)} — verify against the page</Badge> : <span className="num">{pct(selected.confidence)}</span>}</dd>
                   <dt>Raw text</dt>
                   <dd>
@@ -283,7 +296,9 @@ export default function DocumentPage() {
                   {header.map(([k, v]) => (
                     <div key={k} className="contents">
                       <dt title={k}>{words(k)}</dt>
-                      <dd>{Array.isArray(v) ? v.join(", ") : str(v)}</dd>
+                      <dd>{v && typeof v === "object" && (!Array.isArray(v) || v.some(item => typeof item === "object")) ? (
+                        <details><summary className="cursor-pointer">View details</summary><pre className="text-xs whitespace-pre-wrap break-words mt-2">{JSON.stringify(v, null, 2)}</pre></details>
+                      ) : Array.isArray(v) ? v.join(", ") || "—" : str(v)}</dd>
                     </div>
                   ))}
                 </dl>
@@ -294,28 +309,32 @@ export default function DocumentPage() {
           {/* ---- the extraction: every line the parser produced */}
           <Card>
             <CardHead
-              title="Extracted lines"
-              description="Select a line to view its source."
+              title={allText ? "All recognized text" : "Comparison entries"}
+              description={allText ? "Headers, notes and unparsed text, with source locations. These lines are not component comparisons." : "Parsed components and instructions. Select a line to view its source."}
               icon={<Rows size={18} />}
-              count={filtering ? `${rows.length} of ${d.items.length}` : d.items.length}
+              count={filtering ? `${rows.length} of ${sourceRows.length}` : sourceRows.length}
               actions={
                 <>
+                  {(d.doc_type === "LABEL" || d.doc_type === "DRAWING") && <div role="group" aria-label="Extraction view" className="flex flex-wrap gap-1">
+                    <Button size="sm" variant={allText ? "ghost" : "secondary"} aria-pressed={!allText} onClick={() => {setParam("view", null); setOffset(0);}}>Comparison entries</Button>
+                    <Button size="sm" variant={allText ? "secondary" : "ghost"} aria-pressed={allText} onClick={() => {setParam("view", "text"); setOffset(0);}}>All recognized text</Button>
+                  </div>}
                   {pdf && (
-                    <Button size="sm" aria-pressed={pageOnly} className={pageOnly ? "bg-brand-100 border-brand-600 text-brand-700" : ""} onClick={() => setPageOnly(!pageOnly)} icon={<FileText size={16} />} title="Show only the lines read from the page on the left">
+                    <Button size="sm" aria-pressed={pageOnly} className={pageOnly ? "bg-brand-100 border-brand-600 text-brand-700" : ""} onClick={() => {setPageOnly(!pageOnly); setOffset(0);}} icon={<FileText size={16} />} title="Show only the lines read from the page on the left">
                       This page
                     </Button>
                   )}
                   <div className="relative">
                     <MagnifyingGlass size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" aria-hidden />
-                    <input className="input input-sm pl-8 w-44" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter lines" aria-label="Filter extracted lines by item number, description, locator or raw text" />
+                    <input className="input input-sm pl-8 w-44" value={filter} onChange={(e) => {setFilter(e.target.value); setOffset(0);}} placeholder="Filter lines" aria-label="Filter extracted lines by item number, description, locator or raw text" />
                   </div>
                 </>
               }
             />
-            {d.items.length === 0 ? (
-              <EmptyState icon={<Rows size={36} />} title="Nothing was extracted from this document" description="Check the extraction warnings or open the source file." />
+            {sourceRows.length === 0 ? (
+              <EmptyState icon={<Rows size={36} />} title={allText ? "Full text is unavailable in this saved run" : "No comparison entries were extracted"} description={allText ? "Check the warnings and source file. Older runs need a new cross-check to retain full text. Existing reviews stay unchanged." : "Check the extraction warnings, all recognized text or the source file."} />
             ) : rows.length === 0 ? (
-              <EmptyState icon={<MagnifyingGlass size={36} />} title="No line matches" description={`Clear the filter to see all ${plural(d.items.length, "extracted line")}.`} action={<Button onClick={clearFilters}>Clear filter</Button>} />
+              <EmptyState icon={<MagnifyingGlass size={36} />} title="No line matches" description={`Clear the filter to see all ${plural(sourceRows.length, "extracted line")}.`} action={<Button onClick={clearFilters}>Clear filter</Button>} />
             ) : (
               <div className="overflow-auto max-h-[76vh]">
                 <div className="overflow-x-auto">
@@ -333,7 +352,7 @@ export default function DocumentPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map(({ item, n }) => (
+                      {visibleRows.map(({ item, n }) => (
                         <tr key={item.id} className={`clickable ${item.is_active ? "" : "text-ink-4"}`} data-selected={item.id === selectedId ? "true" : undefined} onClick={() => select(item)}>
                           <td className="num text-right"><button type="button" className="text-brand-600 underline underline-offset-2" aria-label={`View extracted line ${n}`} aria-pressed={item.id === selectedId} onClick={e => { e.stopPropagation(); select(item); }}>{n}</button></td>
                           {pdf && <td className={`num text-right ${item.page === page ? "text-ink-2" : "text-ink-4"}`}>{item.page ?? "—"}</td>}
@@ -350,6 +369,7 @@ export default function DocumentPage() {
                 </div>
               </div>
             )}
+            <Pagination offset={safeOffset} size={100} total={rows.length} onChange={setOffset} label="Extracted lines" />
           </Card>
         </div>
       </div>

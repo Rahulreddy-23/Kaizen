@@ -27,11 +27,14 @@ class AccessStore:
         return dict(row) if row else None
 
     def register(self, email: str) -> dict:
+        """Record membership without granting access. Only invitations or an admin grant it."""
         email = bd_email(email)
-        with self.db.lock:
-            self.conn.execute("INSERT OR IGNORE INTO profiles (email, status, is_admin, created_at) VALUES (?, 'pending', 0, ?)", (email, now()))
-            self.conn.commit()
-        return self.profile(email)
+        with self.db.transaction():
+            self.conn.execute(
+                "INSERT OR IGNORE INTO profiles (email, status, is_admin, created_at) VALUES (?, 'pending', 0, ?)",
+                (email, now()),
+            )
+            return self.profile(email)
 
     def bootstrap(self, email: str, password: str | None = None) -> None:
         """Operator-only initial setup. Never promotes users merely because they register first."""
@@ -75,7 +78,7 @@ class AccessStore:
         return self.profile(email)
 
     def permission(self, run_id: str, email: str) -> str | None:
-        row = self.conn.execute('SELECT owner FROM runs WHERE run_id = ?', (run_id,)).fetchone()
+        row = self.conn.execute("SELECT owner FROM runs WHERE run_id = ? AND deleted_at = ''", (run_id,)).fetchone()
         if not row:
             return None
         if row['owner'] == email:

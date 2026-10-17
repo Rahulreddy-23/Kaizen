@@ -10,7 +10,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Geist Variable", "Geist", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
+        sans: ['"Source Sans 3 Variable"', '"Source Sans 3"', "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
         mono: ["Geist Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       colors: {
@@ -58,10 +58,10 @@ export default {
         sev: { blocker: v("sev-blocker"), major: v("sev-major"), minor: v("sev-minor"), info: v("sev-info") },
       },
       fontSize: {
-        "2xs": ["0.6875rem", { lineHeight: "1.0625rem" }],
-        xs: ["0.75rem", { lineHeight: "1.125rem" }],
-        sm: ["0.8125rem", { lineHeight: "1.25rem" }],
-        base: ["0.875rem", { lineHeight: "1.375rem" }],
+        "2xs": ["0.75rem", { lineHeight: "1.125rem" }],
+        xs: ["0.8125rem", { lineHeight: "1.25rem" }],
+        sm: ["0.875rem", { lineHeight: "1.375rem" }],
+        base: ["0.9375rem", { lineHeight: "1.5rem" }],
         md: ["1rem", { lineHeight: "1.625rem" }],
         lg: ["1.125rem", { lineHeight: "1.75rem" }],
         xl: ["1.25rem", { lineHeight: "1.75rem" }],

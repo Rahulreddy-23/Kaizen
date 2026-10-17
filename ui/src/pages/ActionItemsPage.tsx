@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { SeverityBadge, StatusBadge } from "../components/Badges";
+import { Pagination } from "../components/Pagination";
+import { usePagedList } from "../lib/pagination";
 import { ErrorBox } from "../components/Feedback";
 import { Button, Card, CardHead, EmptyState, Field, PageHeader, TableSkeleton } from "../components/ui";
 import { enc, fmtDate, issueLabel } from "../lib/format";
@@ -20,7 +22,10 @@ export default function ActionItemsPage() {
   const status = sp.get("status") ?? "";
   const runFilter = sp.get("run_id") ?? "";
   const highlight = sp.get("id");
+  const runs = useAsync(api.listRuns, []);
   const list = useAsync(() => api.listActionItems({ status: status || undefined, run_id: runFilter || undefined }), [status, runFilter]);
+  const highlightedIndex = (list.data ?? []).findIndex(item => item.id === highlight);
+  const pagination = usePagedList(list.data ?? [], `${status}:${runFilter}:${highlight ?? ""}:${highlightedIndex}`, 25, Math.max(0, Math.floor(highlightedIndex / 25) * 25));
   const set = (k: string, v: string) => {
     const n = new URLSearchParams(sp);
     if (v) n.set(k, v);
@@ -48,7 +53,7 @@ export default function ActionItemsPage() {
       />
 
       <div className="space-y-5 stagger">
-        {list.error && <ErrorBox error={list.error} onRetry={list.reload} />}
+        {(list.error || runs.error) && <ErrorBox error={list.error || runs.error || ""} onRetry={() => {list.reload(); runs.reload();}} />}
 
         <Card>
           <CardHead title="Findings" count={list.data ? `${list.data.length} item${list.data.length === 1 ? "" : "s"}${filtered ? " matching" : ""}` : undefined} description="" />
@@ -65,7 +70,7 @@ export default function ActionItemsPage() {
               </select>
             </Field>
             <Field label="Run" htmlFor="ai-run">
-              <input id="ai-run" className="input mono w-56" placeholder="Run id" value={runFilter} onChange={(e) => set("run_id", e.target.value)} />
+              <select id="ai-run" className="input w-64 max-w-full" value={runFilter} onChange={e => set("run_id", e.target.value)} disabled={runs.loading}><option value="">All accessible runs</option>{runs.data?.map(run => <option key={run.run_id} value={run.run_id}>{run.name || run.run_id}</option>)}{runFilter && !runs.data?.some(run => run.run_id === runFilter) && <option value={runFilter}>{runFilter}</option>}</select>
             </Field>
             {filtered && (
               <Button variant="ghost" onClick={clearFilters} icon={<X size={16} />}>
@@ -121,13 +126,14 @@ export default function ActionItemsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {list.data.map((a) => (
+                    {pagination.rows.map((a) => (
                       <Row key={a.id} a={a} highlighted={a.id === highlight} onChanged={(n) => list.setData(list.data!.map((x) => (x.id === n.id ? n : x)))} />
                     ))}
                   </tbody>
                 </table>
               </div>
             ))}
+          <Pagination {...pagination} onChange={pagination.setOffset} label="Action items" />
         </Card>
       </div>
     </div>

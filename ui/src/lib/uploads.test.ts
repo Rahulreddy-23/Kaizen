@@ -57,3 +57,11 @@ describe("upload selection", () => {
     expect(uploadProblem([...big(MAX_RUN_BYTES), { ...big(MAX_RUN_BYTES)[0], name: "Kit 2" }])).toBeNull();  // the limit is per run, and each folder is a run
   });
 });
+
+it('keeps separate identical same-named sibling kits within one parent selection', () => {
+  expect(addFolders([], [...three('Batch/First/Kit'), ...three('Batch/Second/Kit')]).map(f => f.name)).toEqual(['Batch/First/Kit', 'Batch/Second/Kit']);
+});
+
+it('rejects loose files with colliding upload paths', () => {
+  expect(addFileSet([], [new File(['a'], 'doc.pdf'), new File(['b'], 'doc.pdf'), new File(['c'], 'bom.xlsx')]).problem).toContain('duplicate names');
+});

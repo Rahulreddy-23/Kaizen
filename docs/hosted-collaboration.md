@@ -1,31 +1,119 @@
-# Shared Kaizen app
+# Accounts, sharing and deployment
 
-## Accounts and permissions
+Kaizen supports local use and an invite-only Render pilot in Singapore. The Dockerfile and
+`render.yaml` define the hosted configuration. The [pilot plan](testing-launch.md) targets a $27.50
+monthly base before tax and extra usage. GitHub CI validates the app and deployment image; Render controls deployment.
 
-Only `@bd.com` registrations are accepted. Registration creates a pending profile; an application administrator approves it in **Manage users**. Approved users sign in without selecting a reviewer role. Administrators can appoint other administrators and revoke accounts. Revocation ends active sessions. The last approved administrator cannot be removed.
+## Accounts and access
 
-The uploader owns each run. **Share and rename** grants approved profiles View or Edit access. Owners manage sharing and names. Editors can record decisions, approve, download, create action items, import workbooks, and make independent copies. Viewers can browse results and source previews but cannot change, approve, copy, or export the run. Application administrator status does not grant access to other people's private runs. Shared terminology is an application-wide library managed by application administrators; it does not alter existing run snapshots.
+Registration is invite-only and restricted to `@bd.com`. Local salted-scrypt accounts require no external
+identity service. A password never promotes pending or revoked membership. Existing approved accounts remain
+approved; administrators should review their existing membership before a shared deployment.
 
-Each saved decision records the signed-in user's identity in append-only history. Approval uses the displayed row revision; concurrent changes require a refresh. An uploader or the author of the current decision must explicitly confirm self-approval, which is recorded as **Self-approved**. A subsequent edit clears the approval and retains the old approval in history.
+1. Bootstrap the first administrator using `KAIZEN_ADMIN_EMAIL` and a private `KAIZEN_ADMIN_PASSWORD`.
+   Remove the bootstrap password after successful setup. Operator bootstrap is the only first-admin path.
+2. Open **Manage users → Invite a reviewer**, enter the intended BD address and create an invitation.
+3. Check the recipient’s identity and deliver the displayed code privately through a trusted BD channel.
+   The app does not send email. Codes appear once, expire after 72 hours, and are bound to that address.
+4. The recipient uses **Accept invitation** to choose a password. Registration consumes the code exactly once.
+   A failed password validation does not consume it. Only code hashes are stored; codes never enter the audit log.
+5. Revoke unused codes under **Pending invitations**. Reissuing invalidates older codes for the same address.
+   Codes from a revoked/demoted inviter are invalid. Manage account roles/revocations separately; the last
+   approved administrator is protected. Revoking an accepted invitation does not revoke its account.
 
-**Make a copy** creates a private run owned by the copier, with independent source documents, working decisions and action items. Sharing and approvals do not carry over. **Download independent copy** includes source files, portable run JSON, history and an editable workbook. For round-trip work, make the in-app copy first, download its workbook, edit offline, then import into that copy. Workbooks are bound to their run IDs to prevent accidental changes to the original.
+Invite-only access relies on trusted delivery; it is not automatic email ownership verification or BD SSO.
+Hosted/confidential sessions expire after eight hours. Hosting approval, retention and backup policy remain operator work.
 
-## Deploy on Render
+| Access | Run capabilities |
+| --- | --- |
+| Owner | Review, approve, import/export, copy and manage action items; rename/delete/restore, share. Closed-testing collection is automatic. |
+| Edit | Review, approve, import/export, copy and manage action items. |
+| View | Browse comparisons and source previews; no changes, approvals, copies or review exports. |
 
-This application uses Python, Tesseract, SQLite and document files. The supplied Dockerfile serves the React frontend and API on the same origin. A single Render web service with a persistent disk preserves the workspace across deployments. See [Render disks](https://render.com/docs/disks) and [Docker services](https://render.com/docs/docker).
+Owners use **Share run** under Overview’s run settings to grant approved profiles View/Edit access or revoke a grant.
+Application administrator status does not grant access to private runs. Reviewers can explicitly approve new one-to-one terminology; administrators manage shared edits, imports and
+revocations. Ground-truth verification/evaluation/exports also need Edit access to that run.
 
-1. Push the application changes to the GitHub repository.
-2. In Render, create a Blueprint from that repository using `render.yaml`.
-3. Set the secret `KAIZEN_ADMIN_PASSWORD` to the initial administrator password. The configured email is `rahulreddy.basireddy@bd.com`. No password is embedded in the repository or image.
-4. Deploy. The first start creates the administrator account with a salted scrypt hash. Subsequent starts preserve accounts, passwords, approvals and run grants. Remove the bootstrap password environment variable after the first successful setup. Keep the persistent disk attached.
-5. Open the Render HTTPS URL, sign in, and use **Manage users** for registrations and admin appointments.
+Owners can rename/delete from All runs or Overview. Deleted runs are hidden from active lists and all
+shared access. Restore from **All runs → Deleted runs** retains sources, review history and existing
+sharing; only the owner can see or restore deleted runs. Independent copies remain separate.
 
-Use one instance and one worker with this SQLite deployment. Back up the complete `/var/data/kaizen` directory, including SQLite and document files; stop writes or use SQLite's backup API for a consistent database backup. Move to a shared database and object storage before scaling across instances. A persistent disk requires a paid Render service; this configuration does not deploy or purchase a service automatically.
+A saved decision records the signed-in actor and revision. Approval is separate; an author or run owner
+explicitly confirms self-approval. Edits remove the old approval while retaining history. Independent
+verification of ground truth still requires a different administrator.
 
-The hosted app disables arbitrary server-path imports; users upload files through the browser. Secure cookies are enabled in the deployment configuration. For local development, run `kaizen serve` without `KAIZEN_SECURE_COOKIES=1` on HTTP.
+## Excel downloads and independent work
 
-## Existing workspace
+**Download Excel** on Overview offers **Summary** (totals, current status and attention rows) and
+**Complete details** (all comparisons/evidence plus supporting audit sheets). Each uses SKU worksheets
+with importable reviewer decisions/comments. On the review queue, use **Import from Excel**, preview,
+then apply. Run IDs and row IDs bind the workbook to its originating run; stale decisions are conflicts.
+Engine/source columns are not imported and changed decisions invalidate approvals.
 
-The schema migration preserves legacy review data. Run the operator-only bootstrap once with `KAIZEN_ADMIN_EMAIL` and `KAIZEN_ADMIN_PASSWORD`; existing runs without ownership are assigned to that administrator because their original uploader was not stored. Existing accounts require administrator approval on their next sign-in. Historical two-reviewer records remain readable; new work uses one shared review and an explicit approval.
+**Make a copy** creates a private run with independent sources, working decisions and action items.
+Sharing/approvals do not transfer. To preserve the original, make the copy first, download that copy's
+workbook, then import into the same copy. **Download independent copy** supplies source files, portable
+run JSON, history and an editable workbook; downloading alone does not register a new in-app run.
 
-The optional Supabase password provider remains supported. Bootstrap the initial local administrator before enabling it and ensure the same administrator address exists in the provider. Kaizen's approval and sharing database must still be hosted centrally. Supabase credentials alone do not synchronize runs.
+## Shared terminology and account choices
+
+**Terminology → Shared library** lists approved entries with the approving account, timestamp, scope,
+item anchors and version. Reviewers can explicitly approve an eligible evidence pair or a new relationship.
+This publishes the equivalence to the application’s approved users and adds it to the approver’s account.
+Ordinary review decisions do not automatically publish synonyms. Ambiguous matches, assemblies,
+configuration changes and held-out examples retain their existing eligibility restrictions.
+
+Use **Approved by** to browse a person’s list. **Add entire list** adds the active entries in the current
+search/scope/reviewer filters. Alternatively select any subset, then **Add selected to my account**.
+Selections are saved per account, apply on any device using the same workspace, and never follow future
+additions automatically. **My terminology** shows included rules; selected additions can be removed anytime.
+Packaged defaults remain included. On migration, authors retain their own existing active terms once.
+
+Uploads use that uploader’s selected versions plus packaged defaults. Copies retain their source run’s
+snapshot. Shared runs keep the uploader’s snapshot; a collaborator’s preferences never rewrite that run.
+Edits show an update notice, preserving selected versions until the user reviews and adds the new version.
+Administrator deactivation/deletion immediately excludes the rule from future runs for all accounts;
+existing evidence snapshots remain intact. Removing an adopted override of a packaged default returns
+to its packaged version. Shared usage counts only include runs accessible to the requesting account.
+
+Administrators retain import/edit/deactivate/delete controls. A completed import also adopts those active
+entries for its importer; other accounts choose whether to use them. Approval attribution is server-derived
+from version history, never from an uploaded author field or a client-supplied account name.
+
+## Legacy external password provider
+
+Local accounts are sufficient for this app; no new Supabase credentials are needed. The existing optional
+provider adapter remains compatible for installations already using it. It checks passwords only: workspace
+membership, invitations, roles, files and account terminology remain local to that installation. A provider
+account alone cannot sign in to a new workspace. Return to local accounts with `kaizen auth local` only after
+ensuring the local administrator can sign in; remove any `KAIZEN_SUPABASE_URL` / `KAIZEN_SUPABASE_KEY`
+environment overrides and restart. Password records are not migrated between providers automatically.
+
+For a forgotten local password, the operator runs `kaizen users reset <email>`, then an administrator issues
+a new invitation. Prior decisions retain their recorded identity. Provider password recovery remains an
+operator task. No reset or confirmation email is sent by Kaizen.
+
+## Future Render setup
+
+1. Create a Render Blueprint from this repository using `render.yaml`.
+2. Confirm `KAIZEN_ADMIN_EMAIL` and set `KAIZEN_ADMIN_PASSWORD` as a secret for initial bootstrap.
+3. Deploy the single Docker web service with its persistent disk. The initial setup creates the local
+   administrator; later starts retain the workspace. Remove the bootstrap password after successful setup.
+4. Validate the HTTPS URL, sign-in, upload/OCR, source previews, permissions, Excel round trips and backups
+   before inviting testers. Deployment does not establish accuracy on new document layouts.
+
+The manifest prepares one instance/worker, `/var/data/kaizen` storage, hosted mode and Secure cookies.
+Hosted mode disables arbitrary server-path imports. Local HTTP development should not enable Secure
+cookies. Keep the persistent disk attached; see [Render disks](https://render.com/docs/disks) and
+[Docker services](https://render.com/docs/docker). The manifest does not create or purchase hosting by itself.
+
+Back up the entire workspace, including database, source files and learning artifacts. Stop writes or
+use SQLite's backup API for a consistent database snapshot. Multiple instances require a shared database
+and object-storage design. Retention, restoration and production identity/session policies remain operator work.
+
+## Existing workspaces
+
+Additive schema initialization preserves legacy records. Operator bootstrap uses `KAIZEN_ADMIN_EMAIL`
+and `KAIZEN_ADMIN_PASSWORD`; historical runs without an owner are assigned to that administrator because
+the uploader was not previously stored. Historical two-reviewer CLI data remains readable; current web
+work uses one shared decision and explicit approval. Keep real source/review data out of Git and Docker context.

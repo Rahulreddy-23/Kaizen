@@ -5,6 +5,7 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from kaizen import __version__
 from kaizen.ai.matcher import AiAdjudicationMatcher
 from kaizen.ai.providers import AdjudicationProvider, NullProvider, get_provider
 from kaizen.checks.bom_drawing import CHECK_VERSION as BOM_DRAWING_VERSION
-from kaizen.checks.bom_drawing import run_bom_drawing_check
+from kaizen.checks.bom_drawing import drawing_applicability, run_bom_drawing_check
 from kaizen.checks.bom_label import CHECK_VERSION, run_bom_label_check
 from kaizen.checks.label_drawing import CHECK_VERSION as LABEL_DRAWING_VERSION
 from kaizen.checks.label_drawing import run_label_drawing_check
@@ -31,6 +32,7 @@ from kaizen.matching.assignment import ASSIGNMENT_VERSION
 from kaizen.matching.ladder import MatchLadder
 from kaizen.matching.normalize import NORMALIZER_VERSION
 from kaizen.models import AuditEvent, CoverageFinding, DiscrepancyType, DocType, InputFile, Run, RunMetadata, Thresholds
+from kaizen.security import confidential_mode
 from kaizen.terminology.store import RelationshipStore
 
 SUPPORTED_SUFFIXES = {".pdf", ".xlsx", ".xlsm", ".csv"}
@@ -94,11 +96,14 @@ class Ingested:
     audit: list[AuditEvent] = field(default_factory=list)
 
 
-def ingest_folder(root: Path | str) -> Ingested:
+def ingest_folder(root: Path | str, *, files: list[Path] | None = None, progress: Callable[[int, str], None] | None = None) -> Ingested:
     root = Path(root)
     ing = Ingested(root=root, audit=[AuditEvent(action="run.started", detail=f"input root {root}")])
     inputs, documents, warnings, audit = ing.inputs, ing.documents, ing.warnings, ing.audit
-    for f in discover_files(root):
+    selected = discover_files(root) if files is None else files
+    for index, f in enumerate(selected):
+        if progress:
+            progress(5 + int(65 * index / max(1, len(selected))), f"Reading document {index + 1} of {len(selected)}")
         rel = _rel(f, root)
         try:
             outcome = parse_document(f)
@@ -142,7 +147,7 @@ def _infer_unreadable_label_refs(documents: list, audit: list[AuditEvent]) -> No
 def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds = Thresholds(), provider: AdjudicationProvider | None = None, *, structured: bool = False, assembly_rules: list | None = None, learning_matchers: list | None = None, attribute_overrides: dict | None = None) -> Run:
     root, documents, inputs = ing.root, list(ing.documents), list(ing.inputs)
     warnings, audit = list(ing.warnings), list(ing.audit)
-    provider = provider or get_provider()
+    provider = NullProvider("External AI is blocked in confidential mode") if confidential_mode() else provider or get_provider()
     extra = [] if isinstance(provider, NullProvider) else [AiAdjudicationMatcher(provider)]
     groups = group_by_sku(documents)
     docs_by_id = {d.id: d for d in documents}
@@ -170,7 +175,8 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
                 audit.append(AuditEvent(action="check.completed", detail=f"BOM_DRAWING {g.sku}: {len(res)} rows ({_rel(Path(bom.path), root)} vs {_rel(Path(drawing.path), root)})"))
         for label in labels:
             for drawing in drawings:
-                res = run_label_drawing_check(label, drawing, ladder, thresholds, sku=g.sku)
+                applicable = False if boms and all(drawing_applicability(b, drawing) is False for b in boms) else None
+                res = run_label_drawing_check(label, drawing, ladder, thresholds, sku=g.sku, applicable=applicable)
                 results.extend(res)
                 audit.append(AuditEvent(action="check.completed", detail=f"LABEL_DRAWING {g.sku}: {len(res)} rows ({_rel(Path(label.path), root)} vs {_rel(Path(drawing.path), root)})"))
         if old_labels and labels:
@@ -213,6 +219,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         "label_pdf": label_pdf.PARSER_VERSION,
         "normalizer": NORMALIZER_VERSION,
         "assignment": ASSIGNMENT_VERSION,
+        "component_candidates": "2",
         "categorizer_rules": CATEGORIZER_VERSION,
         "check_bom_label": CHECK_VERSION,
         "pco": pco_parser.PARSER_VERSION,
@@ -222,7 +229,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         "check_label_drawing": LABEL_DRAWING_VERSION,
         "check_label_revision": LABEL_REVISION_VERSION,
     }
-    extracted = [{"sha256": d.sha256, "type": d.doc_type.value, "sku": d.sku, "header": d.header, "items": [{"description": i.description, "item_number": i.item_number, "quantity": str(i.quantity), "uom": i.uom, "confidence": i.extraction_confidence, "attributes": i.attributes, "page": i.evidence.page, "bbox": i.evidence.bbox.model_dump() if i.evidence.bbox else None, "method": i.evidence.extraction_method, "raw": i.evidence.raw_text} for i in d.items]} for d in documents]
+    extracted = [{"sha256": d.sha256, "type": d.doc_type.value, "sku": d.sku, "header": d.header, "text_lines": [{"text": i.evidence.raw_text, "confidence": i.extraction_confidence, "page": i.evidence.page, "bbox": i.evidence.bbox.model_dump() if i.evidence.bbox else None, "method": i.evidence.extraction_method} for i in d.text_lines], "items": [{"description": i.description, "item_number": i.item_number, "quantity": str(i.quantity), "uom": i.uom, "confidence": i.extraction_confidence, "attributes": i.attributes, "page": i.evidence.page, "bbox": i.evidence.bbox.model_dump() if i.evidence.bbox else None, "method": i.evidence.extraction_method, "raw": i.evidence.raw_text} for i in d.items]} for d in documents]
     extraction_signature = hashlib.sha256(json.dumps(extracted, sort_keys=True, default=str).encode()).hexdigest()
     matching_configuration = {}
     if structured or assembly_rules or learning_matchers or attribute_overrides:
@@ -289,5 +296,11 @@ def load_run(path: Path | str) -> Run:
     return Run.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
 
-def run_folder(root: Path | str, store: RelationshipStore, thresholds: Thresholds = Thresholds(), provider: AdjudicationProvider | None = None) -> Run:
-    return run_checks(ingest_folder(root), store, thresholds, provider)
+def run_folder(root: Path | str, store: RelationshipStore, thresholds: Thresholds = Thresholds(), provider: AdjudicationProvider | None = None, *, files: list[Path] | None = None, progress: Callable[[int, str], None] | None = None) -> Run:
+    ingested = ingest_folder(root, files=files, progress=progress)
+    if progress:
+        progress(70, "Comparing documents")
+    result = run_checks(ingested, store, thresholds, provider)
+    if progress:
+        progress(90, "Saving cross-check")
+    return result

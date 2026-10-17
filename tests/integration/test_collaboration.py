@@ -12,6 +12,7 @@ from kaizen.datasets.build import build_golden
 from kaizen.pipeline import run_folder
 from kaizen.review.access import AccessStore
 from kaizen.review.auth import LocalAccounts
+from kaizen.review.invitations import InvitationStore
 from kaizen.workspace import Workspace
 
 ADMIN = 'admin@bd.com'
@@ -39,7 +40,7 @@ def env(tmp_path, sample):
     for email in (ADMIN, EDITOR, VIEWER, OUTSIDER):
         c = TestClient(app)
         if email != ADMIN:
-            assert c.post('/api/auth/signup', json={'email': email, 'password': PW}).status_code == 200
+            assert c.post('/api/auth/signup', json={'email': email, 'password': PW, 'invitation': InvitationStore(ws.db).create(email, ADMIN)['code']}).status_code == 200
             access.update(email, ADMIN, 'approved', False)
         assert c.post('/api/auth/signin', json={'email': email, 'password': PW}).status_code == 200
         clients[email] = c
@@ -53,14 +54,13 @@ def env(tmp_path, sample):
     ws.db.close()
 
 
-def test_registration_requires_admin_approval(env):
+def test_invited_registration_has_no_admin_access(env):
     ws, access, clients, rid, row = env
     c = TestClient(clients[ADMIN].app)
-    assert c.post('/api/auth/signup', json={'email':'pending@bd.com', 'password': PW}).json()['status'] == 'pending'
-    assert c.post('/api/auth/signin', json={'email':'pending@bd.com', 'password': PW}).status_code == 403
+    assert c.post('/api/auth/signup', json={'email':'new-user@bd.com', 'password': PW, 'invitation': InvitationStore(ws.db).create('new-user@bd.com', ADMIN)['code']}).json()['status'] == 'approved'
     assert c.get('/api/runs').status_code == 401
-    assert clients[ADMIN].patch('/api/admin/users/pending@bd.com', json={'status':'approved'}).status_code == 200
-    assert c.post('/api/auth/signin', json={'email':'pending@bd.com', 'password': PW, 'slot':2}).json()['blind'] is False
+    assert c.post('/api/auth/signin', json={'email':'new-user@bd.com', 'password': PW, 'slot':2}).json()['blind'] is False
+    assert c.get('/api/admin/users').status_code == 403
     assert c.get('/api/runs').json() == []
 
 
@@ -141,6 +141,7 @@ def test_copy_is_private_and_independent(env):
     response = c[EDITOR].post(f'/api/runs/{rid}/copy')
     assert response.status_code == 200, response.text
     copied = response.json()['run_id']
+    assert ws.db.conn.execute('SELECT 1 FROM learning_enrollments WHERE run_id=?', (copied,)).fetchone()
     assert copied != rid and response.json()['owner'] == EDITOR
     assert c[ADMIN].get(f'/api/runs/{copied}').status_code == 404
     save(c[EDITOR], copied, row, 'Independent change')
@@ -177,7 +178,7 @@ def test_approval_by_another_editor_and_export_history(env):
     assert c[EDITOR].get(f'/api/runs/{rid}/results/{row}').json()['final']['self_approved'] is False
     detail = save(c[EDITOR], rid, row, 'My own edit')
     assert c[EDITOR].post(f'/api/runs/{rid}/finalize', json={'row_id':row,'final_decision':'ACCEPT','expected_revision':detail['revision'],'confirm_self_approval':True}).status_code == 200
-    wb = openpyxl.load_workbook(io.BytesIO(c[EDITOR].get(f'/api/runs/{rid}/export.xlsx').content))
+    wb = openpyxl.load_workbook(io.BytesIO(c[EDITOR].get(f'/api/runs/{rid}/export.xlsx?detail=complete').content))
     events = list(wb['Approval history'].values)
     assert events[-1][-1] == 'Yes' and events[-1][2] == EDITOR
     clone = c[EDITOR].post(f'/api/runs/{rid}/copy').json()['run_id']

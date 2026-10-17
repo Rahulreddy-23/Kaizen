@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 // follow light and dark like everything else.
 const c = (name: string) => `rgb(var(--c-${name}))`;
 export const CLASS_COLORS: Record<string, string> = { EXACT: c("cls-exact"), EQUIVALENT: c("cls-equivalent"), POTENTIAL: c("cls-potential"), MISMATCH: c("cls-mismatch"), MISSING: c("cls-missing") };
-export const SEV_COLORS: Record<string, string> = { BLOCKER: c("sev-blocker"), MAJOR: c("sev-major"), MINOR: c("sev-minor"), INFO: c("sev-info") };
 export const BRAND_COLOR = c("brand-600");
 export const BAD_COLOR = c("bad");
 

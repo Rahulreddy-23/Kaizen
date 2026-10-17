@@ -1,7 +1,8 @@
 # Import an authorized relationship export
 
-The supplied Relationship Input WorkBook is protected by Microsoft rights management. Kaizen can import
-a readable export; it cannot obtain the organization's access rights or remove protection itself.
+Kaizen imports readable XLSX/XLSM/CSV relationship tables. The supplied relationship workbook is
+rights-managed; an authorized owner must provide a permitted readable export. Kaizen does not remove
+organizational protection.
 
 An authorized document owner opens the original in Excel using their organization account and, where
 the document policy permits it, exports the relationship table as a readable XLSX or CSV. If export is
@@ -11,7 +12,11 @@ Preserve item numbers as text, including their leading zeros. Convert formulas t
 
 ## Use the app
 
-On Terminology → Import and export:
+An application administrator opens **Terminology → Import and export**. This imports terminology,
+not the decisions from Overview's Summary/Complete details workbooks; use **Import from Excel** on the
+review queue for those.
+
+For terminology:
 
 1. Select the readable export and its header row, then choose Read columns.
 2. Select the relationship worksheet if needed and read its columns again.
@@ -52,7 +57,7 @@ actual names. A canonical row represents one component; aliases must refer to th
   --sheet "Approved pairs" --header-row 2 \
   --canonical-column "Label Wording" \
   --alias-column "ERP Description" --alias-column "Drawing Wording" \
-  --anchor-column "Component" --default-scope sku:1175108DNS \
+  --anchor-column "Component" --default-scope sku:EXAMPLE-KIT \
   --by quality --dry-run
 ```
 

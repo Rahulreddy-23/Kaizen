@@ -1,18 +1,18 @@
-import { CaretLeft, CaretRight, ChartBar, ClipboardText, Files, Folder, Folders, GitDiff, Lightbulb, ListChecks, List, X, ArrowRight, SignOut, SquaresFour, TextAa, UserCircle } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, ChartBar, ClipboardText, Files, Folder, Folders, GitDiff, Lightbulb, ListChecks, List, X, ArrowRight, SquaresFour, TextAa, UserCircle, BookOpen, ShieldCheck } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { displayName, enc } from "../lib/format";
+import { enc } from "../lib/format";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
 import { backendProblem } from "../lib/backend";
 import { useDataRefresh } from "../lib/dataRefresh";
 import { ErrorBox } from "./Feedback";
+import { ScreenBoundary } from "./ScreenBoundary";
 import { ScrollMemory } from "./ScrollMemory";
 import { SignIn } from "./SignIn";
-import { ThemeToggle } from "./ThemeToggle";
+import { AccountMenu } from "./AccountMenu";
 import { SidebarSection } from "./SidebarSection";
-import { Button } from "./ui";
 
 const LAST_RUN_KEY = "kaizen.lastRun";
 const RAIL_KEY = "kaizen.railCollapsed";
@@ -24,26 +24,19 @@ const SECTIONS: [RegExp, string][] = [
   [/^\/runs\/[^/]+\/rows\//, "Evidence"],
   [/^\/runs\/[^/]+\/documents\//, "Document"],
   [/^\/runs\/[^/]+\/documents$/, "Documents"],
+  [/^\/runs\/[^/]+\/quick-view$/, "Quick view"],
   [/^\/runs\/[^/]+\/mining$/, "Suggested matches"],
   [/^\/runs\/[^/]+\/learning$/, "Closed testing"],
-  [/^\/runs\/[^/]+\/business$/, "Business case"],
   [/^\/runs\/[^/]+\/diff$/, "Compare runs"],
   [/^\/runs\/[^/]+$/, "Overview"],
   [/^\/terminology$/, "Terminology"],
   [/^\/action-items$/, "Action items"],
   [/^\/admin$/, "Manage users"],
   [/^\/profile$/, "Profile"],
+  [/^\/tutorial$/, "Tutorial"],
+  [/^\/privacy$/, "Privacy"],
   [/^\/$/, "All runs"],
 ];
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 export function Layout() {
   const loc = useLocation();
@@ -74,7 +67,15 @@ export function Layout() {
     if (!mobileOpen) return;
     const first = [...(sidebar.current?.querySelectorAll<HTMLElement>('button, a[href]') ?? [])].find(element => element.getClientRects().length > 0);
     first?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const close = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const controls = [...(sidebar.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') ?? [])].filter(element => element.getClientRects().length > 0);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         setMobileOpen(false);
@@ -82,14 +83,14 @@ export function Layout() {
       }
     };
     document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
+    return () => { document.removeEventListener("keydown", close); document.body.style.overflow = previousOverflow; };
   }, [mobileOpen]);
   useEffect(() => { setMobileOpen(false); }, [loc.pathname]);
   useEffect(() => {
     const section = SECTIONS.find(([re]) => re.test(loc.pathname))?.[1];
     document.title = [section, routeRun, "Kaizen Cross-Check"].filter(Boolean).join(" · ");
   }, [loc.pathname, routeRun]);
-  const { session, loading, signOut } = useReviewer();
+  const { session, loading } = useReviewer();
   const health = useAsync(api.health, []);
   useEffect(() => {
     const refresh = () => health.reload();
@@ -99,6 +100,12 @@ export function Layout() {
   }, [health.reload]);
   const runs = useAsync(() => session ? api.listRuns() : Promise.resolve([]), [loc.pathname, session?.reviewer]);
   useDataRefresh(runs.reload);
+  useEffect(() => {
+    if (session && runs.data && lastRun && !runs.data.some(run => run.run_id === lastRun)) {
+      setLastRun(null);
+      try { localStorage.removeItem(LAST_RUN_KEY); } catch { /* optional navigation memory */ }
+    }
+  }, [runs.data, lastRun, session?.reviewer]);
   // The rail collapses two ways: by hand (remembered per browser) and, below lg, because there is
   // no room. Collapsing by hand only removes the wide state; the narrow one is the same either way.
   const [railCollapsed, setRailCollapsed] = useState<boolean>(() => {
@@ -123,7 +130,13 @@ export function Layout() {
   const problem = health.data && backendProblem(health.data);
   if (problem) return <div className="p-6"><ErrorBox error={problem} onRetry={() => window.location.reload()} /></div>;
   if (loading || !health.data) return <div className="p-6 text-sm text-ink-3">Loading…</div>;
-  if (!session) return <SignIn />;
+  if (!session) {
+    if (loc.pathname === "/tutorial" || loc.pathname === "/privacy") return <div className="public-guide-shell">
+      <header><Link to="/" className="public-guide-brand"><img src="/bd-logo.png" alt="BD" /><strong>Kaizen Cross-Check</strong></Link><Link to="/">Sign in</Link></header>
+      <main id="main" tabIndex={-1}><ScreenBoundary><Outlet /></ScreenBoundary></main>
+    </div>;
+    return <SignIn />;
+  }
 
   const currentRun = runs.data?.find(x => x.run_id === runId);
   const section = SECTIONS.find(([re]) => re.test(loc.pathname))?.[1] ?? "Workspace";
@@ -167,12 +180,10 @@ export function Layout() {
                   {item(base, "Overview", <SquaresFour size={18} />, true)}
                   {item(`${base}/review`, "Review queue", <ListChecks size={18} />)}
                   {item(`${base}/documents`, "Documents", <Files size={18} />)}
+                  {item(`${base}/quick-view`, "Quick view", <SquaresFour size={18} />)}
                   {item(`${base}/learning`, "Closed testing", <ChartBar size={18} />)}
-                  <SidebarSection label="Analysis" className="sidebar-analysis" storageKey={disclosureKey(`analysis.${run.run_id}`)} activePath={active && /\/(mining|diff|business)$/.test(active) ? active : undefined} defaultOpen={false}>
-                    {item(`${base}/mining`, "Suggested matches", <Lightbulb size={18} />)}
-                    {item(`${base}/diff`, "Compare runs", <GitDiff size={18} />)}
-                    {item(`${base}/business`, "Business case", <ChartBar size={18} />)}
-                  </SidebarSection>
+                  {item(`${base}/mining`, "Suggested matches", <Lightbulb size={18} />)}
+                  {item(`${base}/diff`, "Compare runs", <GitDiff size={18} />)}
                 </div>
               </SidebarSection>;
             })}
@@ -187,26 +198,24 @@ export function Layout() {
             {item(r(""), "Overview", <SquaresFour size={20} />, true)}
             {item(r("/review"), "Review queue", <ListChecks size={20} />)}
             {item(r("/documents"), "Documents", <Files size={20} />)}
+            {item(r("/quick-view"), "Quick view", <SquaresFour size={20} />)}
             {item(r("/learning"), "Closed testing", <ChartBar size={20} />)}
             {item(r("/mining"), "Suggested matches", <Lightbulb size={20} />)}
             {item(r("/diff"), "Compare runs", <GitDiff size={20} />)}
-            {item(r("/business"), "Business case", <ChartBar size={20} />)}
             </div>}
             {session.is_admin && item("/admin", "Manage users", <ClipboardText size={20} />)}
           </div>
         </nav>
-        <div className="sidebar-footer">{item("/profile", "Profile", <UserCircle size={20} />)}</div>
+        <div className="sidebar-footer">{item("/tutorial", "Tutorial", <BookOpen size={20} />)}{item("/privacy", "Privacy", <ShieldCheck size={20} />)}{item("/profile", "Profile", <UserCircle size={20} />)}</div>
       </aside>
+      {mobileOpen && <button className="navigation-backdrop" aria-label="Close navigation overlay" tabIndex={-1} onClick={() => { setMobileOpen(false); menuButton.current?.focus(); }} />}
       <div className="app-body">
         <header className="app-topbar">
           <button type="button" ref={menuButton} className="btn btn-ghost btn-icon mobile-menu" aria-label={mobileOpen ? "Close navigation" : "Open navigation"} aria-expanded={mobileOpen} aria-controls="app-navigation" onClick={() => setMobileOpen(!mobileOpen)} >{mobileOpen ? <X size={20} /> : <List size={20} />}</button>
           <nav aria-label="Breadcrumb" className="breadcrumbs"><Link to="/">Workspace</Link><CaretRight size={14} /><span aria-current="page">{section}</span></nav>
           <div className="topbar-account">
-            <ThemeToggle />
-            <Link to="/profile" className="account-avatar" aria-label="Open your profile" title="Your profile">{initials(displayName(session.reviewer))}</Link>
-            <span className="account-name">{displayName(session.reviewer)}<small>{session.is_admin ? "Administrator" : "Reviewer"}</small></span>
             {session.blind && <span className="chip bg-brand-100 text-brand-700 border-brand-200">Blind</span>}
-            <Button variant="ghost" size="sm" iconOnly aria-label="Sign out" onClick={() => void signOut()} icon={<SignOut size={18} />} />
+            <AccountMenu />
           </div>
         </header>
         {routeRun && <div className="run-context">
@@ -217,7 +226,7 @@ export function Layout() {
           </select>
           <Link to="/">All runs <ArrowRight size={14} /></Link>
         </div>}
-        <main id="main" tabIndex={-1} className="app-main"><Outlet /></main>
+        <main id="main" tabIndex={-1} className="app-main"><ScreenBoundary key={loc.pathname}><Outlet /></ScreenBoundary></main>
       </div>
     </div>
   );

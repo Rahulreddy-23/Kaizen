@@ -7,7 +7,7 @@ with the rows each approval would auto-clear and the cumulative effect.
 import pytest
 
 from kaizen.datasets.build import build_golden
-from kaizen.models import Thresholds
+from kaizen.models import Discrepancy, DiscrepancyType, Severity, Thresholds
 from kaizen.pipeline import run_folder
 from kaizen.review.mining import approve_suggestion, terminology_worklist
 from kaizen.review.store import ReviewStore
@@ -37,13 +37,26 @@ def test_worklist_ranks_pairings_by_the_rows_they_would_clear(env):
     assert chlora.sku_count == chlora.would_clear + chlora.still_review
 
 
-def test_rows_with_a_discrepancy_still_need_review_after_confirmation(env):
+def test_ambiguous_pairings_cannot_become_terminology_suggestions(env):
     _, ws, run = env
     wl = terminology_worklist(run, ReviewStore(ws.db), ws.repository)
-    # The terse "NEEDLE 21G" line fits two label lines equally well: that row is AMBIGUOUS and stays with a
-    # reviewer even if the wording pairing is approved.
-    needles = [i for i in wl.items if i.a_text.upper() == "NEEDLE 21G"]
-    assert needles and any(i.still_review >= 1 for i in needles)
+    needles = [r for r in run.results if r.source_a and r.source_a.description.upper() == "NEEDLE 21G"]
+    assert any(any(d.type is DiscrepancyType.AMBIGUOUS_MATCH for d in r.discrepancies) for r in needles)
+    assert not any(i.a_text.upper() == "NEEDLE 21G" for i in wl.items)
+
+
+def test_quantity_discrepancy_still_needs_review_after_identity_confirmation(env):
+    _, ws, original = env
+    run = original.model_copy(deep=True)
+    # A quantity disagreement does not imply the two names identify different
+    # objects. Learning their wording must leave the quantity question open.
+    row = next(r for r in run.results if r.source_a and r.source_b and "CHLORAPREP" in r.source_a.description.upper() and not r.discrepancies)
+    row.discrepancies = [Discrepancy(type=DiscrepancyType.QTY_MISMATCH, severity=Severity.MAJOR, detail="Printed quantities disagree; confirm the quantity after identity review.")]
+    row.requires_validation = True
+    wl = terminology_worklist(run, ReviewStore(ws.db), ws.repository)
+    suggestion = next(i for i in wl.items if row.row_id in i.row_ids)
+    assert suggestion.still_review >= 1
+    assert suggestion.would_clear < len(suggestion.row_ids)
     assert all(i.would_clear + i.still_review == len(i.row_ids) for i in wl.items)
 
 

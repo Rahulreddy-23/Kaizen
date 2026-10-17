@@ -5,7 +5,7 @@
 #                on Python 3.12 and 3.13, then the golden-dataset accuracy gate.
 #   2. ui      - unit tests (vitest), TypeScript type-check and production build of the reviewer UI.
 #
-# There is no deployment stage: the tool is a local/offline application.
+# render.yaml prepares a future deployment; this CI workflow does not deploy.
 name: CI
 
 on:
@@ -25,7 +25,7 @@ jobs:
   python:
     name: Python ${{ matrix.python-version }} - lint, tests, accuracy gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +57,30 @@ jobs:
           KAIZEN_WORKSPACE: ${{ runner.temp }}/eval-workspace
         run: kaizen eval datasets/golden --fail-under 1.0
 
+  desktop-ocr:
+    name: Desktop OCR - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            setup: '.\scripts\setup-local.ps1'
+          - os: macos-latest
+            setup: 'bash scripts/setup-local.sh'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Run the same setup/repair script used by reviewers
+        run: ${{ matrix.setup }}
+      - name: Recheck without installing or changing dependencies
+        run: ${{ matrix.setup }} --check-only
+
   ui:
     name: Reviewer UI - type-check and build
     runs-on: ubuntu-latest
@@ -81,3 +105,19 @@ jobs:
 
       - name: Type-check and build
         run: npm run build
+
+  container:
+    name: Hosted image - build and offline OCR smoke test
+    runs-on: ubuntu-latest
+    needs: [python, desktop-ocr, ui]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the deployment image
+        run: docker build -t kaizen-pilot:ci .
+      - name: Verify image using only synthetic content
+        run: >-
+          docker run --rm
+          --network none
+          -v "${{ github.workspace }}/scripts/smoke_container.py:/tmp/smoke_container.py:ro"
+          --entrypoint python kaizen-pilot:ci /tmp/smoke_container.py

@@ -40,6 +40,15 @@ CREATE TABLE IF NOT EXISTS learning_jobs (
     state TEXT NOT NULL, requested_by TEXT NOT NULL,
     error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS account_invitations (
+    id TEXT PRIMARY KEY, email TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+    invited_by TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+    consumed_at TEXT NOT NULL DEFAULT '', revoked_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS terminology_selections (
+    email TEXT NOT NULL, relationship_id TEXT NOT NULL, version INTEGER NOT NULL,
+    selected_at TEXT NOT NULL, PRIMARY KEY(email, relationship_id)
+);
 CREATE TABLE IF NOT EXISTS profiles (
     email TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending',
     is_admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
@@ -296,6 +305,8 @@ class Database:
         self._ensure_column("runs", "name", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("runs", "owner", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("runs", "copied_from", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("runs", "deleted_at", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("runs", "deleted_by", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("finals", "self_approved", "INTEGER NOT NULL DEFAULT 0")
         self.conn.execute("INSERT OR IGNORE INTO profiles (email,status,is_admin,created_at) SELECT email,'pending',0,created_at FROM users")
         self.conn.execute("UPDATE runs SET name = 'BOM review · ' || substr(created_at,1,10) WHERE name = ''")

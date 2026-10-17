@@ -101,8 +101,13 @@ export default function ReviewQueuePage() {
   };
 
   const offset = query.offset ?? 0;
+  useEffect(() => {
+    if (!page.data || page.loading || offset === 0 || page.data.rows.length) return;
+    const last = Math.max(0, Math.floor((page.data.total - 1) / PAGE_SIZE) * PAGE_SIZE);
+    if (offset > last) set("offset", String(last));
+  }, [page.data, page.loading, offset]);
   const total = page.data?.total ?? 0;
-  const from = total === 0 ? 0 : offset + 1;
+  const from = total === 0 ? 0 : Math.min(offset + 1, total);
   const to = Math.min(offset + PAGE_SIZE, total);
   const nvOn = sp.get("nv") !== "0";
 
@@ -130,14 +135,14 @@ export default function ReviewQueuePage() {
         meta={<HotkeyHint />}
         actions={
           <>
-            {run.data?.permission !== "view" && <ImportDecisions
+            {run.data && run.data.permission !== "view" && <ImportDecisions
               runId={runId}
               onApplied={() => {
                 page.reload();
                 run.reload();
               }}
             />}
-            <Button onClick={openBulk} disabled={!name || run.data?.permission === "view"} icon={<CheckSquare size={16} />} title={name ? "" : "Sign in first"}>
+            <Button onClick={openBulk} disabled={!name || !run.data || run.data.permission === "view"} icon={<CheckSquare size={16} />} title={name ? "" : "Sign in first"}>
               Accept all clean rows
             </Button>
           </>
@@ -145,7 +150,7 @@ export default function ReviewQueuePage() {
       />
 
       <div className="space-y-4">
-        <Card className="px-4 py-3">
+        <Card className="queue-filter-panel">
           <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
             {sel("sku", "SKU", (run.data?.groups ?? []).map((g) => g.sku))}
             {sel("check", "Check", CHECK_TYPES, (c) => CHECK_LABEL[c] ?? c)}
@@ -180,7 +185,7 @@ export default function ReviewQueuePage() {
             {sp.get("engine_classification") && <Button size="sm" variant="ghost" onClick={() => set("engine_classification", "")} icon={<X size={14} />}>Engine: {sp.get("engine_classification")}</Button>}
             {sp.get("unresolved") === "1" && <Button size="sm" variant="ghost" onClick={() => set("unresolved", "")} icon={<X size={14} />}>Unresolved findings</Button>}
             {viewerParams.blind && (
-              <Badge tone="info" dot={false} className="ml-auto">
+              <Badge tone="info" dot={false} className="ml-auto badge-wrap">
                 <EyeSlash size={14} /> Blind: reviewer 1 decisions hidden until you decide
               </Badge>
             )}
@@ -189,7 +194,7 @@ export default function ReviewQueuePage() {
             <summary>More filters{["discrepancy", "severity", "classification", "role"].some(k => sp.get(k)) ? " · active" : ""}</summary>
             <div className="flex flex-wrap gap-3 pt-3">            {sel("discrepancy", "Discrepancy", DISCREPANCY_TYPES, issueLabel)}
             {sel("severity", "Severity", SEVERITIES, title)}
-            {sel("classification", "Classification", CLASSIFICATIONS, title)}
+            {sel("classification", "Classification", CLASSIFICATIONS, c => c === "MISSING" ? "Unmapped" : title(c))}
             {sel("role", "Role", ROLES, title)}
 </div>
           </details>
@@ -210,8 +215,8 @@ export default function ReviewQueuePage() {
               {page.loading && page.data && <span className="text-ink-3"> · refreshing</span>}
             </span>
             <div className="ml-auto flex items-center gap-1">
-              <Button size="sm" variant="ghost" iconOnly aria-label={`Previous ${PAGE_SIZE}`} disabled={offset === 0} onClick={() => set("offset", String(Math.max(0, offset - PAGE_SIZE)))} icon={<CaretLeft size={16} />} />
-              <Button size="sm" variant="ghost" iconOnly aria-label={`Next ${PAGE_SIZE}`} disabled={to >= total} onClick={() => set("offset", String(offset + PAGE_SIZE))} icon={<CaretRight size={16} />} />
+              <Button size="sm" variant="ghost" iconOnly aria-label={`Previous ${PAGE_SIZE}`} disabled={page.loading || offset === 0} onClick={() => set("offset", String(Math.max(0, offset - PAGE_SIZE)))} icon={<CaretLeft size={16} />} />
+              <Button size="sm" variant="ghost" iconOnly aria-label={`Next ${PAGE_SIZE}`} disabled={page.loading || to >= total} onClick={() => set("offset", String(offset + PAGE_SIZE))} icon={<CaretRight size={16} />} />
             </div>
           </div>
           {page.loading && !page.data && <TableSkeleton rows={8} cols={7} />}
@@ -251,10 +256,10 @@ export default function ReviewQueuePage() {
                         <Side s={row.b} />
                       </td>
                       <td className="whitespace-nowrap">
-                        <ClassificationBadge value={row.effective_classification} title="Current review classification" />
+                        <ClassificationBadge value={row.effective_classification} role={row.role} title="Current review classification" />
                         {row.effective_classification !== row.engine.classification && (
                           <div className="text-xs text-ink-3 mt-1 flex items-center gap-1">
-                            engine <ClassificationBadge value={row.engine.classification} />
+                            engine <ClassificationBadge value={row.engine.classification} role={row.role} />
                           </div>
                         )}
                         {row.engine.relationship_id && <div className="text-xs text-ink-3 mono mt-1">{row.engine.relationship_id}</div>}
@@ -308,9 +313,9 @@ export default function ReviewQueuePage() {
 function Side({ s }: { s: SideSummary | null }) {
   if (!s) return <span className="text-ink-4">No counterpart</span>;
   return (
-    <div>
+    <div className="comparison-side">
       <div className="text-sm">
-        {s.item_number && <span className="mono text-ink-2 mr-1.5">{s.item_number}</span>}
+        {s.item_number && <span className="comparison-item-number mono text-ink-2">{s.item_number}</span>}
         <span className="text-ink">{s.description}</span>
         {s.quantity !== null && <span className="text-ink-3 num"> × {fmtQty(s.quantity)}</span>}
       </div>

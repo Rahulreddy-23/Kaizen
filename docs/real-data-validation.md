@@ -1,98 +1,100 @@
-# Real BD documents: extraction validation and remaining work
+# Real-data validation
 
-On 30 September 2026 the problem owners' delivery of four real SKU sets was run through Kaizen locally.
-The source files, the detailed findings (which name BD documents) and the private regression suite stay on
-the team's machines and are ignored by Git: `trainingdataset/`, `docs/private/` and `tests/real/`. This page
-is the public summary. The audit forces the offline provider, so no page is sent to an AI service.
+This public summary reflects the clean-document audit and subsequent matching verification completed
+on 15 October 2026. Source files, detailed row assessments, screenshots, manifests and review databases
+remain local under ignored source/workspace/output folders. No customer documents are included here.
 
-## What the delivery contains
+## Scope
 
-Four SKU sets, each with a JDE BOM report (PDF), a unit label and one ten-sheet packaging drawing, plus a
-second copy of every file in type folders, the four BOMs as JDE spreadsheet exports, and an encrypted
-relationship workbook protected by a BD sensitivity label. The labels and every drawing sheet are image scans rotated by 270 degrees; one label
-also carries a damaged text layer whose REF cannot be read. There is no PCO, no old/new label pair and no
-case label, so those checks cannot be validated from this delivery.
+The latest clean upload used 26 files from the SKU and BOM cross-check folders: clean PDFs, duplicate
+source copies, independent JDE spreadsheet exports and a protected relationship workbook. It produced
+25 parsed documents across four SKU groups. The rights-managed workbook remained unreadable and warned
+about; no terminology was imported from it.
 
-## Where the application was, and what changed
+The 30 unique PDF pages were inspected locally: 16 BOM pages, four label pages and ten drawing sheets.
+The marked-up attachment folder, its ticks/strikeouts and Word files were excluded. Source documents
+were preserved. This delivery did not supply a real PCO/revision pair or standalone case-label source.
 
-Before this work the tool recognised the four BOMs but skipped every label and drawing, because the released
-file names carry BD document numbers rather than words such as "label", and scanned drawings had no OCR path.
-The BOM parser also lost 129 of 373 rows, because JDE indents its column headings
-independently of the row data.
+## Evidence established
 
-The changes wire offline OCR (RapidOCR, or Tesseract where installed) into the BOM, label and drawing
-parsers; keep every box in the page's displayed orientation so highlights land on rotated scans; align JDE
-columns from the rows themselves; read bilingual callouts, instructions, conditional notes and the revision
-cell on drawings; compare identical copies once; and make run identity depend on what was extracted, so a
-different OCR result is never mistaken for the same run.
+| Check | Local evidence and limit |
+| --- | --- |
+| BOM extraction | All 373 rows agreed with independently parsed spreadsheet exports, including quantities, units, sequence and other compared fields. This establishes extraction parity, not specification approval. |
+| Labels | 140 label entries/quantities were manually checked; pack/pair markers remain explicit rather than guessed from equal numbers. |
+| Drawings | Named callouts across all ten sheets were inspected. A later complete-output audit caught incorrect component/accessory pairings and false presence warnings missed by the earlier label-focused checklist. |
+| Source retention | Source/upload hashes agreed; extraction text, quantities, categories and page references were retained through the matching correction. |
+| Correction replay | All 58 definite pairing/presence-warning errors identified in that audit were resolved as candidates or appropriate exemptions. Six scoped-identity and six ambiguity checks also passed: 70 targeted acceptance checks in total. |
 
-## What the validation establishes
+These counts describe one reviewed delivery and repeated comparison rows, not unique physical defects
+or universal recall. Earlier September/October comparison totals are historical and are superseded by
+this follow-up; do not use them as current product accuracy figures.
 
-- **BOM extraction parity.** The four BOM PDFs agree with their independently parsed JDE exports on every
-  compared field (item, description, quantity, unit, operation sequence, effective dates) for all
-  373 rows: yes. This proves extraction, not that either source is the
-  approved specification.
-- **Labels.** Every label yields 35 entries. The private suite checks each primary quantity and the pack
-  idioms (such as "3 per pouch" and "1 pair") against values transcribed from the page images.
-- **Drawing.** All ten sheets are read, with named components checked on every sheet. The revision is read
-  with low confidence and stays review-required. OCR reads the text on a drawing; it cannot yet prove which
-  pictured object a leader points at, cavity occupancy or placement.
+## General changes now in the app
 
-## Current comparison result
+- Recover terse/noun-first component wording with typed candidate guards, without SKU/item-specific mappings.
+- Match the primary object before accessories; separate catheters from drapes, gloves from containers,
+  and needles from holders. Preserve dimensional, gauge, volume, lumen and other explicit conflicts.
+- Keep inferred assembly members and allocations review-required. Do not save assembly membership,
+  overlabel configuration or ambiguous alternatives as equivalent terminology.
+- Distinguish printed quantity equality from an unverified pack/pair basis and base artwork from final overlays.
+- Withhold component findings for explicitly conflicting drawing references and preserve applicability questions.
+- Reuse approved identities only within their scope/document types/item anchors; shorter wording stays a candidate.
+- Display MISSING as Unmapped and uncertain rows as requiring review rather than asserting physical absence.
 
-Counts from the 1 October local audit with the default relationship store, after the assignment and
-normalization improvements. Exempt rows
-are shown separately and are not part of the classification counts. **MISSING means no accepted pairing was
-found**; it is not a verified product defect, and none of these figures is a measured matching accuracy.
+Thresholds were not relaxed. The private verification retained source hashes and compared the website
+upload with a replay. Regression cases use changed wording/codes, reversed order, conflicting attributes,
+explicit alternatives and mixed clinical/packaging contexts to protect behavior beyond this delivery.
 
-| Check | EXACT | EQUIVALENT | POTENTIAL | MISSING | Needs review | Exempt |
-|---|---:|---:|---:|---:|---:|---:|
-| BOM ↔ Label | 11 | 24 | 34 | 160 | 194 | 223 |
-| BOM ↔ Drawing | 8 | 8 | 188 | 86 | 274 | 138 |
-| Label ↔ Drawing | 40 | 5 | 130 | 63 | 197 | 85 |
+## What remains unproven
 
-665 rows need review across the three checks. Extraction is now dependable on this delivery;
-matching is the limit. JDE descriptions are terse and noun-first ("MASK, VAPOR BARRIER"), while labels are
-customer wording ("Mask"), so most real pairings need approved terminology before they can clear.
+The verified follow-up still had 385 comparisons awaiting review. No physical product defect was
+conclusively established by that verification. Component identities/specifications, assembly allocations,
+pack contents, final overlays, applicable work orders and a component-level IFU requirement need approved
+source evidence where not supplied. OCR confidence warnings are not source-document defects.
 
-## Review follow-ups (30 September)
+Real-data precision, recall and false-clear rates require independently verified pairing/discrepancy
+truth and representative held-out SKU coverage. Golden accuracy and the targeted audit are not substitutes.
+Real PCOs, revision pairs and other layouts still need validation. The invite-only Render pilot is provisioned; see [launch checks](testing-launch.md).
 
-A review of the real-data work found and fixed these before commit:
+## OCR setup follow-up — 17 October 2026
 
-- A single unparsed label line, or a BOM page without a table (for example "End of Report"), no longer
-  replaces a whole SKU's comparison with one blocker. Only pages from which nothing could be read block;
-  a BOM row that looks like a component but does not parse becomes its own blocker row while the rest of
-  the BOM is compared.
-- A label page whose REF is missing from the text layer is re-read by OCR only while the label's identity
-  is unknown, and its native text is kept when OCR is unavailable or reads nothing.
-- Words such as REFERENCE or REFRIGERATE are no longer read as a REF catalogue number.
-- Tesseract output is parsed as plain TSV, so an inch mark cannot swallow the rest of a page.
-- A NOTES block high on a drawing sheet no longer hides the callouts beneath it, and an English-only scanned
-  drawing keeps its callouts.
-- A trademark suffix glued to a product name by OCR ("SherlockTM") is removed, so approved relationships
-  such as the sensor holder match.
+Local installs now include the offline OCR engine and bundled models. The same RapidOCR release is the
+default on desktop and hosted installations, with Tesseract as backup. The previous Tesseract-first
+selection returned nonempty but incomplete label text, preventing fallback. This is an extraction/setup
+issue, not evidence of defects in the source documents. Native BOM parsing and matching thresholds are unchanged.
 
-## What is still missing
+Use [automatic setup and diagnostics](pdf-ocr.md) after updating the checkout. Saved runs retain their
+original extraction; restart the server and upload a new run to use parser changes. The clean-label
+quantity and independent BOM-export checks are retained as local acceptance checks; they do not certify
+all scanned text or establish general defect accuracy.
 
-| Priority | Gap | What resolves it |
-|---|---|---|
-| 1 | Approved terminology | The relationship workbook is protected by a BD sensitivity label with rights management. An authorized owner supplies a readable export where policy permits it. The [import workflow](relationship-import.md) supports column mapping, preview, versioned rules and a baseline coverage comparison. |
-| 1 | Real ground truth | A reviewer marks the true pairings, quantities, exclusions and discrepancies on these four sets. Only then can real precision, recall and false-clear rates be measured. |
-| 1 | Drawing applicability | None of the four BOMs references the supplied drawing's number; they reference a different assembly drawing. The owners need to confirm the released drawing for each SKU. |
-| 2 | Noun-first matching | One-word label lines ("Mask", "Gown", "Gloves") score zero against noun-first JDE descriptions. A rule that proposes such pairs as POTENTIAL would turn about 25 unpaired pairs on this delivery into review suggestions. |
-| 2 | Compound assemblies and dimensions | The catheter label line covers a catheter with its stylet assembly that the BOM lists separately, and gauze sizes appear in inches on one side and centimetres on the other. Both need approved rules. |
-| 2 | OCR engine in the hosted image | Real scans were validated with RapidOCR. The Docker image ships Tesseract only; install the `ocr` extra there or validate Tesseract on this delivery. |
-| 3 | Other document types | A real PCO, an old/new label pair and a case label are needed to validate those checks. |
+## Missing and merged text follow-up — 17 October 2026
 
-## Reproduce
+A second extraction audit checked all four clean SKU sets against the source pages, beyond entry
+counts. It found an omitted label title, fused wording in a damaged native text layer, and whole
+drawing instruction/note lines missed by page OCR. Geometry-based recognition of outlined text now
+recovers those rows; matching native text can restore whitespace without changing OCR characters.
+Wrapped Spanish text stays with its callout. Instructions and text inside photographs do not become
+component comparisons.
+
+The local checklist passed 86 field/region checks, covering 140 label entries and quantities, the
+373 BOM rows against independent exports, and named callouts/instructions across ten drawing sheets.
+The four drawing copies are identical. These are targeted acceptance checks, not character-level OCR
+accuracy or an independent defect benchmark. Low-confidence spellings, symbols and identifiers still
+need source verification. An authenticated local run contains all twelve clean documents and lets
+reviewers inspect **All recognized text**, including notes and unparsed lines, with page highlights.
+Older saved runs retain their original extraction.
+
+## Reproduce without publishing sources
 
 ```bash
 .venv/bin/pip install -e ".[dev,ocr]"
 .venv/bin/python scripts/audit_real_data.py trainingdataset --out out/real-bd
 .venv/bin/pytest tests/real tests/unit/test_real_layouts.py tests/unit/test_extraction_robustness.py
-.venv/bin/kaizen eval datasets/golden --fail-under 1.0
+.venv/bin/kaizen eval datasets/golden --fail-under 1.0 --out out/eval
 ```
 
-The audit writes `validation.md`, `validation.json`, `run.json` and `report.xlsx` under `out/`, which Git
-ignores. The golden gate remains a synthetic benchmark: it still finds all seeded discrepancies with no false
-positives or negatives.
+The private test suite requires local sources. The audit writes `validation.md`, `validation.json`,
+`run.json` and `report.xlsx` under ignored `out/`. For other local folders, substitute the input path.
+Use [closed testing](closed-testing.md) to curate independent truth and
+[relationship imports](relationship-import.md) for permitted readable terminology exports.

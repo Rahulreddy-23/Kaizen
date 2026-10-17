@@ -2,14 +2,14 @@
 
 Closed testing collects evidence while testers do their normal review. It does not assume that accepting
 a recommendation makes it correct. Review decisions, changes, approvals and plausible review timing are
-already recorded. The new **Ground truth** form captures the true counterpart, genuine discrepancies,
+already recorded. The **Ground truth** form captures the true counterpart, genuine discrepancies,
 structured attributes and assembly quantities; another application administrator verifies that evidence.
 
 ## Start the test
 
-1. Upload the four SKU sets into one run and share Edit access with the testers and verifying administrator.
-2. The owner opens **Closed testing** and selects **Enable closed testing** before anyone creates learned
-   terminology from these examples. The first four distinct SKU identities reserve one SKU for evaluation.
+1. Upload representative SKU sets into one run and share Edit access with the testers and verifying administrator.
+2. Closed testing starts automatically when the run is created. Existing active owned runs are enrolled
+   when the app starts; copies and restored runs retain immutable assignments. No Enable step is needed. A first batch of four distinct SKU identities normally reserves one SKU for evaluation; existing immutable assignments and identical sources are respected.
 3. Confirm the correct released drawing for each SKU using the drawing selector, released revision, release
    record reference and evidence note. A different administrator verifies the applicability record. If the
    supplied drawing does not apply, record that and upload a new run with the correct released drawing.
@@ -34,6 +34,11 @@ Pairing annotations currently cover component rows in BOM–Label, BOM–Drawing
 PCO, revision, header and exempt rows retain normal review history; extending their curated ground-truth
 schema requires representative source documents. Reviewer notes are not automatically transformed into facts.
 
+The Ground truth form uses searchable source/discrepancy checkbox lists. Selected chips remain visible
+when filtering; select multiple sources for an assembly, or clear a side for an absent counterpart.
+Record an unresolved verdict when identity, unit basis or applicability is unproven. Explicit allocation
+quantities are positive per-label-unit values, not the whole BOM quantity.
+
 ## What happens automatically
 
 Verification queues an offline candidate rebuild. The durable SQLite job coalesces additional approvals
@@ -45,9 +50,9 @@ eligible data and schedules another rebuild. A normal approval of the unchanged 
 The candidate learns explainable terminology rules from verified positive pairings, negative pair rules
 from verified incorrect pairings, reusable corrected attribute patterns and approved assembly membership.
 A quantity discrepancy can still establish component identity; quantity checking remains independent.
-Structured extraction adds conservative proposals for short descriptions such as Mask, compares explicit
-dimensions across units, and guards against incompatible gauge, concentration, component type and pack
-quantity. Approximate dimensional equivalents remain review-required. Conflicting attribute patterns
+The live engine already makes conservative typed component proposals; independently verified
+attributes and assembly rules belong to the separate candidate configuration. It compares explicit
+dimensions across units and guards incompatible gauge, concentration, component type and pack quantity. Approximate dimensional equivalents remain review-required. Conflicting attribute patterns
 are not reused. Assemblies check each member's allocation and flag missing, changed or wrongly quantified members.
 
 Candidate changes are saved separately and evaluated against the original run on identical parsed sources.
@@ -61,8 +66,9 @@ SKU assignments are immutable in the workspace. Numeric identity variants, repea
 keep their assignment. Identical BOM/label content cannot cross training/evaluation splits, even under a
 renamed SKU. Shared packaging drawings are governed by per-SKU applicability; they are not an independent
 held-out document corpus. A first run with just one SKU has training data only; accuracy is unmeasured until
-another distinct SKU is reserved. With small deliveries, the 20% allocation is rounded up. Enable testing
-before learned terminology is created, and keep the same workspace across deployments.
+another distinct SKU is reserved. With small deliveries, the 20% allocation is rounded up. Automatic setup reserves identities before the new run can supply learned terminology. Keep the same
+workspace across deployments. Previously learned terminology can affect historical data; inspect its provenance
+before treating a historical example as independent evaluation evidence.
 
 Only the latest independently verified annotation is eligible. Unresolved, rejected, stale and unverified
 records stay out of both datasets. Drawing examples also require independently verified released
@@ -95,8 +101,10 @@ Each evaluation writes frozen `train.json`, `evaluation.json`, `candidate.json`,
 Datasets have content versions; configurations include the terminology snapshot, structured matching,
 negative pairs, attribute overrides and assembly rules. Annotation versions remain in SQLite.
 
-The existing hosted deployment uses one server worker and a persistent disk. Back up the full workspace,
-including `kaizen.db`, source files and candidate artifacts. The new tables are created idempotently when
-the workspace opens. Closed testing is disabled per run until its owner enables it. Learning artifacts stay
+The Render pilot uses one server worker and a persistent disk. Back up the full workspace,
+including `kaizen.db`, source files and candidate artifacts. Learning tables are created idempotently when
+the workspace opens. Closed testing is on by default for eligible owned runs. Unknown SKU identities or
+conflicting source splits defer verified learning and show an actionable explanation; normal review events
+continue to be collected. Setup is idempotent and never changes an existing split or creates approved labels. Learning artifacts stay
 in the workspace and its backups; an administrator exports them explicitly. Retention and deletion remain
 operator-managed through workspace backups/storage; there is no new automatic deletion policy.

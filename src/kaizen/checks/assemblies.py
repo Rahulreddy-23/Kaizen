@@ -3,6 +3,8 @@
 from decimal import Decimal
 
 from kaizen.checks.pairing import disc
+from kaizen.matching.components import compatible
+from kaizen.matching.components import component as describe_component
 from kaizen.matching.normalize import normalize
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, MatchLevel, Severity
 
@@ -55,3 +57,45 @@ def apply_assemblies(a_items, b_items, rules, sku, ids, thresholds):
         claimed_a.update(member_ids)
         claimed_b.add(label.id)
     return [a for a in a_items if a.id not in claimed_a], [b for b in b_items if b.id not in claimed_b], results
+
+
+def propose_assemblies(a_items, b_items, sku, ids):
+    """Keep explicitly described assemblies together as review-only proposals.
+
+    An inferred member never establishes an approved allocation or consumes a
+    complete assembly as a one-to-one match for just a funnel or stylet.
+    """
+    claimed_a, claimed_b, rows = set(), set(), []
+    for label in b_items:
+        text = normalize(label.description).normalized
+        if describe_component(text).kind != "picc" or "WITH" not in text or "STYLET" not in text:
+            continue
+        required = ["picc", "stylet"] + (["funnel"] if "FUNNEL" in text else [])
+        members = {}
+        for kind in required:
+            hits = [a for a in a_items if a.id not in claimed_a and describe_component(normalize(a.description).normalized).kind == kind]
+            if kind == "picc":
+                hits = [a for a in hits if not compatible(describe_component(normalize(a.description).normalized), describe_component(text))[0]]
+            if len(hits) == 1:
+                members[kind] = hits[0]
+        if "picc" not in members or "stylet" not in members:
+            continue
+        missing = [kind for kind in required if kind not in members]
+        for kind, item in members.items():
+            detail = (f"ASSEMBLY CANDIDATE: label '{label.description}' explicitly includes a PICC and stylet"
+                      f"{' and funnel' if 'funnel' in required else ''}; BOM {item.item_number} '{item.description}' is a possible {kind} member. "
+                      "Confirm membership, specification and quantity per assembly before approval.")
+            if missing:
+                detail += f" No unique BOM candidate for: {', '.join(missing)}; an integrated component or missing member needs confirmation."
+            differences = []
+            if item.quantity is None or label.quantity is None or item.quantity != label.quantity:
+                differences.append(disc(DiscrepancyType.QTY_MISMATCH, Severity.MINOR,
+                                        f"Possible assembly allocation: BOM {item.quantity} versus label {label.quantity}; per-unit membership is unverified."))
+            rows.append(CheckResult(row_id=ids.next(), sku=sku, check=CheckType.BOM_LABEL,
+                        source_a=item.model_copy(update={"attributes": {**item.attributes, "assembly_candidate": True,
+                            "assembly_member_ids": sorted(x.id for x in members.values()), "assembly_missing_member_types": missing}}),
+                        source_b=label, classification=Classification.POTENTIAL, match_level=MatchLevel.FUZZY,
+                        score=.9, candidate_score=.9, explanation=detail, discrepancies=differences, requires_validation=True))
+            claimed_a.add(item.id)
+        claimed_b.add(label.id)
+    return [a for a in a_items if a.id not in claimed_a], [b for b in b_items if b.id not in claimed_b], rows

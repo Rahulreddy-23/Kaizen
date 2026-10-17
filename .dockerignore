@@ -9,4 +9,29 @@ output
 tmp
 datasets
 docs/reference
+docs/private
+tests/real
 .env*
+**/.env*
+.claude
+.codex
+.agents
+.hallmark
+skills-lock.json
+trainingdataset
+Attachment I- BOM
+BOM cross check Folder
+SKUs
+*.db
+*.db-*
+*.sqlite*
+*.ses
+*.ses-*
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*.ses
+**/*.ses-*
+
+.kaizen-tools
+.venv-backup-*

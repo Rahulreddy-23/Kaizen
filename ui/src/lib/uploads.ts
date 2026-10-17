@@ -40,7 +40,6 @@ export function addFolders(current: UploadFolder[], picked: File[]): UploadFolde
   for (const [dir, files] of [...byDir].sort(([a], [b]) => a.localeCompare(b))) {
     const folder = { name: dir, files };
     if (seen.has(signature(folder))) continue;
-    seen.add(signature(folder));
     next.push({ name: uniqueName(next, dir), files });
   }
   return next;
@@ -49,6 +48,7 @@ export function addFolders(current: UploadFolder[], picked: File[]): UploadFolde
 /** Adds one pick of individual files as one run. They must be chosen together, exactly 3 at once. */
 export function addFileSet(current: UploadFolder[], picked: File[]): { folders: UploadFolder[]; problem: string | null } {
   const files = supportedRunFiles(picked);
+  if (new Set(files.map(f => f.name)).size !== files.length) return {folders: current, problem: "The selected files have duplicate names. Rename them or choose their folders separately."};
   if (files.length !== FILES_PER_FOLDER) return { folders: current, problem: `Select exactly 3 files at once: a BOM, a label and a drawing. You selected ${files.length} supported file${files.length === 1 ? "" : "s"}.` };
   const set = { name: "", files };
   if (current.some(f => signature(f) === signature(set))) return { folders: current, problem: "Those files are already added." };

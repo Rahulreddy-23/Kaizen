@@ -99,10 +99,11 @@ def test_bulk_accept_clean_rows(ws_and_run, store):
     ws, run = ws_and_run
     rid = run.metadata.run_id
     n = store.bulk_accept_clean(rid, run.results, slot=1, reviewer="Dharma")
-    clean = [r for r in run.results if not r.requires_validation]
+    clean = [r for r in run.results if r.role != 'exempt' and not r.requires_validation]
     assert n == len(clean) > 0
     assert store.row_state(rid, clean[0].row_id).decisions[1].decision == "ACCEPT"
     assert store.row_state(rid, _row(run, Classification.MISMATCH).row_id).state == "ENGINE_RECOMMENDED"
+    assert all(not store.decisions(rid, r.row_id) for r in run.results if r.role == 'exempt')
 
 
 def test_summary_counts_by_state(ws_and_run, store):

@@ -43,6 +43,7 @@ export interface LearningOption {
   suggested_attributes: AttributeLabel;
 }
 export interface LearningRow {
+  setup_issue?: string | null;
   enabled: boolean;
   split: "train" | "evaluation" | null;
   annotation: Annotation | null;
@@ -95,6 +96,8 @@ export interface LearningReport {
   stale?: boolean;
 }
 export interface LearningSummary {
+  collection_mode?: "automatic";
+  setup_issue?: string | null;
   automatic_learning?: {state: "idle" | "queued" | "running" | "complete" | "failed"; error: string | null};
   enabled: boolean;
   review_events: number;

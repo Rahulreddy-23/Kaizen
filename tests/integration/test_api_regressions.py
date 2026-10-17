@@ -17,6 +17,31 @@ EMAIL = 'regression@bd.com'
 PASSWORD = 'regression-password'
 
 
+def test_exemption_is_not_an_exact_match_or_a_bulk_accept_candidate(env):
+    from kaizen.models import Classification
+    from kaizen.pipeline import save_run
+
+    ws, client, run, _ = env
+    paired = next(r for r in run.results if r.role == 'item' and r.source_a and r.source_b)
+    matched = paired.model_copy(deep=True, update=dict(row_id='matched', classification=Classification.EXACT, requires_validation=False, discrepancies=[]))
+    exempt = matched.model_copy(deep=True, update=dict(row_id='exempt', role='exempt', source_b=None, explanation='Packaging is not required on the drawing.'))
+    missing = matched.model_copy(deep=True, update=dict(row_id='missing', source_b=None, classification=Classification.MISSING, requires_validation=True))
+    run.results.extend([matched, exempt, missing])
+    save_run(run, ws.runs.get(run.metadata.run_id)['json_path'])
+    base = f'/api/runs/{run.metadata.run_id}'
+    for params in ({'engine_classification': 'EXACT'}, {'classification': 'EXACT'}, {'needs_validation': False}):
+        ids = {r['row_id'] for r in client.get(f'{base}/results', params=params).json()['rows']}
+        assert 'matched' in ids and 'exempt' not in ids and 'missing' not in ids
+    assert client.get(f'{base}/results/exempt').json()['result']['source_b'] is None
+    assert 'exempt' in {r['row_id'] for r in client.get(f'{base}/results', params={'role': 'exempt'}).json()['rows']}
+    assert 'missing' in {r['row_id'] for r in client.get(f'{base}/results', params={'needs_validation': True}).json()['rows']}
+    summary = client.get(base).json()
+    assert summary['auto_cleared'] == sum(r.role in ('item', 'change') and not r.requires_validation for r in run.results)
+    assert client.post(f'{base}/bulk-accept', json={}).status_code == 200
+    assert client.get(f'{base}/results/exempt').json()['state'] == 'ENGINE_RECOMMENDED'
+    assert client.get(f'{base}/results/matched').json()['state'] == 'REVIEWED'
+
+
 @pytest.fixture
 def env(tmp_path):
     source = tmp_path / 'source'
@@ -46,6 +71,36 @@ def upload(client, source, names=SET, **kwargs):
     return client.post('/api/runs/upload', files=[('files', (name, _source_file(source, name).read_bytes(), 'application/pdf')) for name in names], **kwargs)
 
 
+@pytest.mark.parametrize('kind', ['assembly_candidate', 'assembly_rule', 'configuration', 'reference', 'type_conflict', 'alternatives', 'ambiguous'])
+def test_configuration_and_assembly_members_cannot_teach_one_to_one_identity(env, kind):
+    from kaizen.models import Discrepancy, DiscrepancyType, Severity
+    from kaizen.pipeline import save_run
+
+    ws, client, run, _ = env
+    row = next(r for r in run.results if r.role == 'item' and r.source_a and r.source_b)
+    if kind.startswith('assembly_'):
+        row.source_a.attributes[kind] = True
+    elif kind == 'configuration':
+        row.discrepancies = [Discrepancy(type=DiscrepancyType.LABEL_CONFIGURATION_REVIEW, severity=Severity.MAJOR, detail='Overlabel configuration needs review.')]
+    elif kind == 'ambiguous':
+        row.discrepancies = [Discrepancy(type=DiscrepancyType.AMBIGUOUS_MATCH, severity=Severity.MAJOR, detail='More than one variant fits.')]
+    elif kind == 'type_conflict':
+        row.source_a.description = 'Needle 23 G'
+        row.source_b.description = 'Needle holder with protective tube'
+    elif kind == 'alternatives':
+        row.source_a.description = 'Scissors'
+        row.source_b.description = 'Scissors OR catheter trimming device'
+    else:
+        row.role = 'reference'
+    save_run(run, ws.runs.get(run.metadata.run_id)['json_path'])
+    before = len(ws.repository.list())
+    detail = client.get(f'/api/runs/{run.metadata.run_id}/results/{row.row_id}')
+    assert detail.status_code == 200 and detail.json()['can_save_relationship'] is False
+    response = client.post(f'/api/runs/{run.metadata.run_id}/relationships/from-row', json={'row_id': row.row_id})
+    assert response.status_code == 400 and 'not a one-to-one' in response.json()['detail']
+    assert len(ws.repository.list()) == before
+
+
 def test_upload_on_migrated_database_preserves_existing_run(env):
     ws, client, existing, source = env
     # This reproduces the migrated, ten-column schema that the old running server could not insert into.
@@ -55,7 +110,7 @@ def test_upload_on_migrated_database_preserves_existing_run(env):
     assert response.json()['owner'] == EMAIL and response.json()['name'] == 'Fresh upload'
     assert response.json()['documents'] == 3 and response.json()['rows'] > 0
     assert client.get(f'/api/runs/{existing.metadata.run_id}').json()['name'] == 'Existing run'
-    assert client.get('/api/health').json()['api_contract'] == 3
+    assert client.get('/api/health').json()['api_contract'] == 4
 
 
 @pytest.mark.parametrize('names', [
@@ -92,11 +147,11 @@ def test_unrelated_folder_files_are_not_stored(env):
 
 def test_folders_with_free_form_names_are_identified_by_content(env):
     ws, client, run, source = env
-    files = [('files', (f'{folder}/{name}', _source_file(source, kind).read_bytes())) for folder in ('Kit A', 'Batch 7/kit b') for name, kind in zip(('x1.pdf', 'scan.pdf', 'doc 3.pdf'), SET)]
+    files = [('files', (f'{folder}/{name}', _source_file(source, kind).read_bytes())) for folder in ('Batch 7/kit b',) for name, kind in zip(('x1.pdf', 'scan.pdf', 'doc 3.pdf'), SET)]
     response = client.post('/api/runs/upload', files=files)
     assert response.status_code == 200, response.text
-    assert response.json()['documents'] == 6
-    assert response.json()['name'].startswith('Kit A')
+    assert response.json()['documents'] == 3
+    assert response.json()['name'].startswith('Batch 7')
 
 
 @pytest.mark.parametrize('names,message', [
@@ -104,7 +159,7 @@ def test_folders_with_free_form_names_are_identified_by_content(env):
     (SET + ('Project/label copy.pdf',), "Folder 'Project' has 4 documents"),
     (('Project/a.pdf', 'Project/b.pdf', 'Project/label.pdf'), "found a.pdf (BOM), b.pdf (BOM), label.pdf (LABEL)"),
     (('bom.pdf', 'label.pdf', 'drawing.pdf'), 'not inside a folder'),
-    (SET + ('Other/bom.pdf',), "Folder 'Other' has 1 document;"),
+    (SET + ('Other/bom.pdf',), 'Send one document folder per run'),
 ])
 def test_each_folder_must_hold_one_bom_label_and_drawing(env, names, message):
     ws, client, run, source = env
@@ -267,7 +322,7 @@ def test_local_path_with_several_sets_makes_one_run_per_folder(env, tmp_path):
             (batch / folder / f'{folder} {kind}').write_bytes((source / kind).read_bytes())
     response = client.post('/api/runs/from-path', json={'path': str(batch), 'name': 'Batch'})
     assert response.status_code == 200, response.text
-    assert sorted((r['name'], r['documents']) for r in response.json()) == [('Batch · Batch 7', 3), ('Batch · Kit A', 3)]
+    assert sorted((r['name'], r['documents']) for r in response.json()['runs']) == [('Batch · Batch 7', 3), ('Batch · Kit A', 3)]
 
 
 def test_local_path_follows_the_upload_rule(env, tmp_path):
@@ -428,3 +483,170 @@ def test_reviewer_finding_on_a_clean_row_is_counted_filtered_and_prioritized(env
     assert results[0]['engine']['requires_validation'] is False
     filtered = client.get(f'{base}/results', params={'unresolved': True, 'discrepancy': 'REVIEWER_FINDING', 'severity': 'BLOCKER'}).json()
     assert filtered['total'] == 1 and filtered['rows'][0]['row_id'] == clean.row_id
+
+
+def test_deleted_runs_are_hidden_even_after_cache_was_primed_and_can_be_restored(env):
+    from kaizen.review.action_items import ActionItemStore
+    ws, client, run, source = env
+    rid = run.metadata.run_id
+    row = next(row for row in run.results if row.discrepancies)
+    action = ActionItemStore(ws.db).create_from_result(run, row, EMAIL)
+    assert client.get(f'/api/runs/{rid}').status_code == 200
+    assert client.patch(f'/api/runs/{rid}', json={'name': 'Renamed run'}).status_code == 200
+    before = (source / 'bom.pdf').read_bytes()
+    assert client.delete(f'/api/runs/{rid}').json()['deleted'] is True
+    assert client.get('/api/runs').json() == []
+    assert client.get('/api/action-items').json() == []
+    for suffix in ('', '/results', '/documents', '/export.xlsx', '/learning'):
+        assert client.get(f'/api/runs/{rid}{suffix}').status_code == 404
+    assert ws.runs.get(rid) is None
+    record = client.get('/api/runs?deleted=true').json()[0]
+    assert record['run_id'] == rid and record['name'] == 'Renamed run' and record['deleted_by'] == EMAIL
+    assert record['permission'] == 'owner' and record['deleted_at']
+    assert (source / 'bom.pdf').read_bytes() == before
+    assert Path(record['json_path']).is_file()
+    assert client.post(f'/api/runs/{rid}/restore').json()['restored'] is True
+    assert client.get('/api/runs?deleted=true').json() == []
+    assert client.get(f'/api/runs/{rid}').json()['name'] == 'Renamed run'
+    assert any(item['id'] == action.id for item in client.get('/api/action-items').json())
+    events = [row['action'] for row in ws.db.conn.execute("SELECT action FROM audit WHERE actor=?", (EMAIL,))]
+    assert 'run.deleted' in events and 'run.restored' in events
+
+
+@pytest.mark.parametrize('permission', ['view', 'edit', None])
+def test_only_owner_can_rename_delete_restore_or_list_deleted_run(env, permission):
+    ws, client, run, _ = env
+    rid = run.metadata.run_id
+    # The current actor is an administrator, which must not bypass private run ownership.
+    ws.db.conn.execute('UPDATE runs SET owner=? WHERE run_id=?', ('owner@bd.com', rid))
+    ws.db.conn.commit()
+    if permission:
+        AccessStore(ws.db).share(rid, EMAIL, permission, 'owner@bd.com')
+    expected = 403 if permission else 404
+    assert client.patch(f'/api/runs/{rid}', json={'name': 'Unauthorized'}).status_code == expected
+    assert client.delete(f'/api/runs/{rid}').status_code == expected
+    ws.db.conn.execute("UPDATE runs SET deleted_at='2026-01-01',deleted_by='owner@bd.com' WHERE run_id=?", (rid,))
+    ws.db.conn.commit()
+    assert client.get('/api/runs?deleted=true').json() == []
+    assert client.post(f'/api/runs/{rid}/restore').status_code == 404
+    assert client.get(f'/api/runs/{rid}').status_code == 404
+
+
+def test_deleting_original_keeps_independent_copy_and_its_documents(env):
+    ws, client, run, _ = env
+    rid = run.metadata.run_id
+    copied = client.post(f'/api/runs/{rid}/copy').json()['run_id']
+    copy_documents = client.get(f'/api/runs/{copied}/documents').json()
+    assert client.delete(f'/api/runs/{rid}').status_code == 200
+    assert [entry['run_id'] for entry in client.get('/api/runs').json()] == [copied]
+    assert client.get(f'/api/runs/{copied}').status_code == 200
+    assert client.get(f'/api/runs/{copied}/documents').json() == copy_documents
+    for doc in copy_documents:
+        assert Path(doc['file']).is_file()
+    assert client.post(f'/api/runs/{rid}/restore').status_code == 200
+    assert len(client.get('/api/runs').json()) == 2
+
+
+def test_restore_retains_existing_sharing_and_deleted_metadata_survives_restart(env):
+    ws, client, run, _ = env
+    rid = run.metadata.run_id
+    access = AccessStore(ws.db)
+    access.register('shared@bd.com')
+    access.update('shared@bd.com', EMAIL, 'approved', False)
+    access.share(rid, 'shared@bd.com', 'edit', EMAIL)
+    assert client.delete(f'/api/runs/{rid}').status_code == 200
+    assert access.permission(rid, 'shared@bd.com') is None
+    other = Workspace(ws.path)
+    try:
+        assert other.runs.get(rid) is None
+        assert other.runs.get(rid, include_deleted=True)['deleted_by'] == EMAIL
+        assert other.runs.list() == [] and len(other.runs.list(deleted=True)) == 1
+    finally:
+        other.db.close()
+    assert client.post(f'/api/runs/{rid}/restore').status_code == 200
+    assert access.permission(rid, 'shared@bd.com') == 'edit'
+
+
+def test_document_text_is_retained_separately_and_keeps_run_access_controls(env):
+    ws, client, run, source = env
+    response = upload(client, source)
+    assert response.status_code == 200
+    rid = response.json()['run_id']
+    documents = client.get(f'/api/runs/{rid}/documents').json()
+    label = next(doc for doc in documents if doc['doc_type'] == 'LABEL')
+    route = f'/api/runs/{rid}/documents/{label["id"]}/items'
+    data = client.get(route).json()
+    assert len(data['items']) == 1 and len(data['text_lines']) > len(data['items'])
+    assert all(line['page'] == 1 and line['bbox'] and line['confidence'] > 0 for line in data['text_lines'])
+    assert all(line['quantity'] is None and line['attributes']['kind'] == 'source_text' for line in data['text_lines'])
+    assert any('Contents' in line['raw_text'] for line in data['text_lines'])
+    assert TestClient(client.app).get(route).status_code == 401
+
+
+def test_nested_local_sets_do_not_include_descendant_documents_twice(env, tmp_path):
+    ws, client, run, source = env
+    root = tmp_path / 'parent'
+    for folder in (root, root / 'child'):
+        folder.mkdir(parents=True, exist_ok=True)
+        for file in source.iterdir():
+            (folder / file.name).write_bytes(file.read_bytes())
+    result = client.post('/api/runs/from-path', json={'path': str(root)}).json()
+    assert not result['failures']
+    assert len(result['runs']) == 2
+    assert [r['documents'] for r in result['runs']] == [3, 3]
+
+
+def test_local_runtime_failure_reports_saved_runs_and_failed_paths(env, tmp_path, monkeypatch):
+    ws, client, run, source = env
+    root = tmp_path / 'batch'
+    for name in ('a', 'b', 'c'):
+        folder = root / name
+        folder.mkdir(parents=True)
+        for file in source.iterdir():
+            (folder / file.name).write_bytes(file.read_bytes())
+    original = RunCache.put
+    def fail_middle(cache, run):
+        if Path(run.metadata.input_root).name == 'b':
+            raise RuntimeError('injected failure')
+        return original(cache, run)
+    monkeypatch.setattr(RunCache, 'put', fail_middle)
+    result = client.post('/api/runs/from-path', json={'path': str(root)}).json()
+    assert len(result['runs']) == 2
+    assert [f['path'] for f in result['failures']] == [str(root / 'b')]
+    assert 'Error reference:' in result['failures'][0]['message']
+    assert len(ws.runs.list()) == 3
+
+
+def test_valid_filename_does_not_allow_an_unreadable_document_set(env):
+    ws, client, run, source = env
+    files = [('files', (name, b'corrupt PDF' if 'drawing' in name else _source_file(source, name).read_bytes())) for name in SET]
+    result = client.post('/api/runs/upload', files=files)
+    assert result.status_code == 400 and 'Could not read all three' in result.json()['detail']
+    assert len(ws.runs.list()) == 1
+    assert not list((ws.path / 'uploads').rglob('*.pdf'))
+
+
+def test_streamed_progress_reaches_100_only_after_the_run_is_saved(env):
+    import json
+    ws, client, run, source = env
+    response = upload(client, source, params={'stream': 'true'})
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('application/x-ndjson')
+    events = [json.loads(line) for line in response.text.splitlines()]
+    progress = [e['percent'] for e in events if e['type'] == 'progress']
+    assert progress == sorted(progress) and progress[0] == 0 and progress[-1] == 100
+    assert {5, 70, 90}.issubset(progress)
+    assert events[-1]['type'] == 'result'
+    assert ws.runs.get(events[-1]['data']['run_id']) is not None
+
+
+def test_streamed_parse_failure_never_reports_completion_and_cleans_upload(env):
+    import json
+    ws, client, run, source = env
+    files = [('files', (name, b'bad' if 'drawing' in name else _source_file(source, name).read_bytes())) for name in SET]
+    response = client.post('/api/runs/upload?stream=true', files=files)
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]['type'] == 'error' and events[-1]['status'] == 400
+    assert not any(e.get('percent') == 100 for e in events)
+    assert len(ws.runs.list()) == 1
+    assert not list((ws.path / 'uploads').rglob('*.pdf'))

@@ -9,6 +9,7 @@ from kaizen.api.app import create_app
 from kaizen.evaluation.learning import shadow_evaluate
 from kaizen.review.access import AccessStore
 from kaizen.review.auth import LocalAccounts
+from kaizen.review.invitations import InvitationStore
 from kaizen.review.learning import DrawingInput, LabelApproval
 from tests.unit.test_learning import AUTHOR, VERIFIER, body_for, row_for, verify
 from tests.unit.test_learning import learning_env as learning_fixture
@@ -31,7 +32,7 @@ def clients(learning_env):
     for email in (AUTHOR, VERIFIER, VIEWER, OUTSIDER):
         client = TestClient(app)
         if email != VERIFIER:
-            client.post('/api/auth/signup', json={'email': email, 'password': PW})
+            client.post('/api/auth/signup', json={'email': email, 'password': PW, 'invitation': InvitationStore(ws.db).create(email, VERIFIER)['code']})
             access.update(email, VERIFIER, 'approved', False)
         assert client.post('/api/auth/signin', json={'email': email, 'password': PW}).status_code == 200
         out[email] = client
@@ -85,13 +86,14 @@ def test_excel_review_import_rebuilds_candidate_and_dry_run_does_not(learning_en
     shadow_evaluate(ws, run, VERIFIER)
     base = f'/api/runs/{run.metadata.run_id}'
     path = tmp_path / 'review.xlsx'
-    response = clients[AUTHOR].get(f'{base}/export.xlsx')
+    response = clients[AUTHOR].get(f'{base}/export.xlsx?detail=complete')
     assert response.status_code == 200
     path.write_bytes(response.content)
     wb = openpyxl.load_workbook(path)
-    sheet = wb['BOM_Label']
-    cols = {c.value: c.column for c in sheet[1]}
-    target = next(n for n in range(2, sheet.max_row + 1) if sheet.cell(n, cols['Row ID']).value == row.row_id)
+    sheet = wb[row.sku]
+    header = next(r for r in sheet if any(c.value == 'Row ID' for c in r))
+    cols = {c.value: c.column for c in header if c.value}
+    target = next(n for n in range(header[0].row + 1, sheet.max_row + 1) if sheet.cell(n, cols['Row ID']).value == row.row_id)
     sheet.cell(target, cols['Reviewer Decision'], 'NEEDS_MORE_INFORMATION')
     wb.save(path)
     report_id = learning.summary(run)['latest_evaluation']['id']

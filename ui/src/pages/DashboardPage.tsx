@@ -1,7 +1,9 @@
-import { ArrowRight, Certificate, CheckCircle, FileXls, GitDiff, ShieldWarning, Warning } from "@phosphor-icons/react";
+import { ArrowRight, Certificate, CheckCircle, GitDiff, ShieldWarning, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { RunActions } from "../components/RunActions";
 import { RunSharing } from "../components/RunSharing";
+import { ExcelExport } from "../components/ExcelExport";
 import { api } from "../api";
 import { Badge, ClassificationBadge, SeverityBadge, StateBadge } from "../components/Badges";
 import { ErrorBox } from "../components/Feedback";
@@ -16,6 +18,7 @@ import { CHECK_TYPES, CLASSIFICATIONS, DOC_TYPES, REVIEW_STATES, type VerifyOutc
 const CHECK_LABEL: Record<string, string> = { BOM_LABEL: "BOM to label", BOM_DRAWING: "BOM to drawing", LABEL_DRAWING: "Label to drawing", PCO_BOM: "PCO to BOM", LABEL_REVISION: "Label revision" };
 
 export default function DashboardPage() {
+  const nav = useNavigate();
   const { runId = "" } = useParams();
   const toast = useToast();
   const run = useAsync(() => api.getRun(runId), [runId]);
@@ -88,11 +91,9 @@ export default function DashboardPage() {
                 recorded in the workbook's run-info sheet and on the certificate. */}
           </>
         }
-        description="Results and review status for this run."
-        actions={<div className="overview-review-action">
+        actions={<><LinkButton to={`${base}/quick-view`}>Quick view</LinkButton>
           <LinkButton variant="primary" to={queue({ nv: "1" })} iconRight={<ArrowRight size={16} />}>Review queue <span className="queue-count">{flagged}</span></LinkButton>
-          <span>{flagged ? "Awaiting review or approval" : "No pending reviews"}</span>
-        </div>}
+          {r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
       />
       <details className="run-management">
         <summary>Run settings and exports</summary>
@@ -107,9 +108,6 @@ export default function DashboardPage() {
             {r.permission !== "view" && <>
             <AnchorButton href={api.certificateUrl(runId)} download icon={<Certificate size={16} />} title="One page per SKU: run id, file hashes, counts, named reviewers, open action items">
               Certificate
-            </AnchorButton>
-            <AnchorButton href={api.exportUrl(runId)} download icon={<FileXls size={16} />}>
-              Export workbook
             </AnchorButton>
             </>}
         </div>
@@ -226,7 +224,7 @@ export default function DashboardPage() {
             <Card>
               <CardHead title="Automated results" count={`${reviewable} reviewable comparisons`} />
               <div className="p-5">
-                <p className="text-xs text-ink-3 mb-3">Original engine recommendations, recorded before review. Approvals appear in the review status above.</p>
+                <p className="text-xs text-ink-3 mb-3">Original engine recommendations, recorded before review. Unmapped means no accepted counterpart was found; it does not establish that a component is absent.</p>
                 <Bar segments={CLASSIFICATIONS.map((c) => ({ label: c, value: r.counts[c] ?? 0, color: CLASS_COLORS[c] }))} />
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {CLASSIFICATIONS.map((c) => (

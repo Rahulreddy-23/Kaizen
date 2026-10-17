@@ -134,11 +134,25 @@ class LearningStore:
     def enrolled(self, run_id):
         return self.conn.execute("SELECT 1 FROM learning_enrollments WHERE run_id=?", (run_id,)).fetchone() is not None
 
+    def ensure_enrolled(self, run: Run, actor: str = "system") -> str | None:
+        """Default collection is idempotent; unsafe partitions never block normal review.
+
+        Review events are retained independently. An identity/split conflict only
+        postpones curated learning, and is surfaced on the Closed testing page.
+        """
+        if self.enrolled(run.metadata.run_id):
+            return None
+        try:
+            self.enroll(run, actor)
+        except ValueError as exc:
+            return str(exc)
+        return None
+
     def enroll(self, run: Run, actor: str):
         rid = run.metadata.run_id
         keys = sorted({_sku_key(g.sku) for g in run.groups})
         if not keys or any(k in ("", "UNKNOWN") for k in keys):
-            raise ValueError("Resolve the product identities before enabling closed testing.")
+            raise ValueError("Resolve the product identities before verified learning can start.")
         with self.db.transaction():
             if self.enrolled(rid):
                 return
@@ -188,7 +202,7 @@ class LearningStore:
 
     def require_enrolled(self, run):
         if not self.enrolled(run.metadata.run_id):
-            raise ValueError("The run owner must enable closed testing first.")
+            raise ValueError("Verified learning is waiting for valid product identities and consistent dataset splits. Review history is still collected automatically.")
 
     def review_changed(self, rid, row_id, revision):
         events = self.conn.execute("SELECT payload FROM review_events WHERE run_id=? AND row_id=? AND seq>?", (rid, row_id, revision))

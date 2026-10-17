@@ -11,13 +11,13 @@ interface Ctx {
   error: string | null;
   /** Where passwords are checked: this workspace ("local") or Supabase. Decides the forgotten-password advice. */
   accounts: AccountsBackend;
-  /** Create an account for a BD address; an administrator must approve it before sign-in. */
-  signUp: (email: string, password: string) => Promise<void>;
+  /** Create an account using an administrator-issued invitation. */
+  signUp: (email: string, password: string, invitation: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Refetch key: changes when the session changes, so pages reload with the right visibility. */
   viewerParams: ViewerParams;
-  /** Reviewer identity — the verified email address — or "" when nobody is signed in. */
+  /** Reviewer identity — the invited account address — or "" when nobody is signed in. */
   name: string;
 }
 
@@ -47,9 +47,9 @@ export function ReviewerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
+  const signUp = useCallback(async (email: string, password: string, invitation: string) => {
     setError(null);
-    await api.signUp(email, password);
+    await api.signUp(email, password, invitation);
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {

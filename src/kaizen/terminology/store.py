@@ -135,6 +135,23 @@ class RelationshipStore:
                 best = RelationshipHit(rel, kind, spec)
         return best
 
+    def identity_terms(self, a: NormalizedText, *, sku: str | None = None, item_number: str | None = None,
+                       doc_types: tuple[DocType, ...] = ()) -> list[tuple[str, str]]:
+        """Approved descriptions for one identity, with lookup's scope/anchor rules.
+
+        Resolve once per relationship rather than looking up every alias against
+        the entire store for every drawing candidate.
+        """
+        eligible = []
+        for rel in self.all():
+            specificity = self._specificity(rel, sku)
+            if specificity is None or (rel.doc_types and doc_types and not set(doc_types) <= set(rel.doc_types)):
+                continue
+            if a.sorted_key in self._keys[rel.id] or (item_number and item_number in rel.item_anchors):
+                eligible.append((specificity, rel))
+        best = max((specificity for specificity, _ in eligible), default=-1)
+        return [(term, rel.id) for specificity, rel in eligible if specificity == best for term in rel.terms()]
+
     def snapshot(self) -> Snapshot:
         rels = [r.model_dump(mode="json") for r in self.all(active_only=False)]
         digest = hashlib.sha256(json.dumps(rels, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()

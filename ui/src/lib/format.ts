@@ -2,20 +2,23 @@ export const enc = encodeURIComponent;
 
 const ISSUE_LABELS: Record<string, string> = {
   QTY_MISMATCH: "Quantity mismatch",
+  QUANTITY_BASIS_UNCONFIRMED: "Quantity basis needs review",
   DESC_MISMATCH: "Description mismatch",
-  MISSING_IN_LABEL: "Missing from label",
-  MISSING_IN_BOM: "Missing from BOM",
+  MISSING_IN_LABEL: "No accepted label match",
+  MISSING_IN_BOM: "No accepted BOM match",
   REF_PARENT_MISMATCH: "Label reference mismatch",
   AMBIGUOUS_MATCH: "Ambiguous match",
   LOW_EXTRACTION_CONFIDENCE: "Low extraction confidence",
-  MISSING_IN_DRAWING: "Missing from drawing",
-  EXTRA_ON_DRAWING: "Extra item on drawing",
+  MISSING_IN_DRAWING: "No accepted drawing match",
+  EXTRA_ON_DRAWING: "Unmapped drawing callout",
   PCO_CHANGE_NOT_APPLIED: "PCO change not applied",
   PCO_QTY_SEQ_MISMATCH: "PCO quantity or sequence mismatch",
   BOM_MISSING_FOR_AFFECTED_CODE: "BOM missing for affected code",
   UNEXPECTED_LABEL_CHANGE: "Unexpected label change",
   EXPECTED_CHANGE_ABSENT: "Expected change missing",
   DRAWING_REV_MISMATCH: "Drawing revision mismatch",
+  DRAWING_APPLICABILITY_UNCONFIRMED: "Drawing applicability unconfirmed",
+  LABEL_CONFIGURATION_REVIEW: "Label configuration needs review",
 };
 
 export function issueLabel(code: string): string {
@@ -73,4 +76,14 @@ export function fmtBytes(n: number): string {
 
 export function isPdf(fileName: string): boolean {
   return /\.pdf$/i.test(fileName);
+}
+
+
+export function classificationLabel(code: string): string {
+  if (code === "MISSING") return "Unmapped";
+  return code.charAt(0).toUpperCase() + code.slice(1).toLowerCase();
+}
+
+export function checkLabel(code: string): string {
+  return ({BOM_LABEL: "BOM to label", BOM_DRAWING: "BOM to drawing", LABEL_DRAWING: "Label to drawing", PCO_BOM: "PCO to BOM", LABEL_REVISION: "Label revision"} as Record<string, string>)[code] ?? code.replace(/_/g, " ");
 }

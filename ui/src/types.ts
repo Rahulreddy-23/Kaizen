@@ -41,6 +41,7 @@ export const ROLES: Role[] = ["item", "header", "reference", "coverage", "exempt
 
 export const DISCREPANCY_TYPES = [
   "QTY_MISMATCH",
+  "QUANTITY_BASIS_UNCONFIRMED",
   "DESC_MISMATCH",
   "MISSING_IN_LABEL",
   "MISSING_IN_BOM",
@@ -55,6 +56,8 @@ export const DISCREPANCY_TYPES = [
   "UNEXPECTED_LABEL_CHANGE",
   "EXPECTED_CHANGE_ABSENT",
   "DRAWING_REV_MISMATCH",
+  "DRAWING_APPLICABILITY_UNCONFIRMED",
+  "LABEL_CONFIGURATION_REVIEW",
 ];
 
 export interface Health {
@@ -67,6 +70,8 @@ export interface Health {
 }
 
 export interface RunListItem {
+  deleted_at?: string;
+  deleted_by?: string;
   unavailable?: boolean;
   name: string;
   owner: string;
@@ -274,6 +279,51 @@ export interface BBox {
   x1: number;
   y1: number;
 }
+
+export type QuickStatus = "matched" | "attention" | "neutral";
+export type QuickKind = "BOM" | "LABEL" | "DRAWING";
+export interface QuickCell {
+  status: QuickStatus;
+  items: (Evidence & {id: string})[];
+}
+export interface QuickCheck {
+  row_id: string;
+  check: string;
+  status: QuickStatus;
+  classification: Classification;
+  engine_classification: Classification;
+  state: ReviewState;
+  explanation: string;
+  findings: Discrepancy[];
+  merged_rows: number;
+}
+export interface QuickRow {
+  id: string;
+  status: QuickStatus;
+  cells: Record<QuickKind, QuickCell | null>;
+  checks: QuickCheck[];
+}
+export interface QuickDocument {
+  id: string;
+  doc_type: QuickKind;
+  file_name: string;
+  pages: number;
+  warnings: string[];
+  full_text: boolean;
+  items: number;
+}
+export interface QuickView {
+  can_export?: boolean;
+  sku: string | null;
+  groups: {sku: string; document_ids: string[]}[];
+  view: "components" | "text";
+  documents: QuickDocument[];
+  rows: QuickRow[];
+  counts: Partial<Record<QuickStatus, number>>;
+  total: number;
+  offset: number;
+  limit: number;
+}
 export interface SubQuantity {
   value: number;
   kind: string;
@@ -365,6 +415,7 @@ export interface ActionItem {
 }
 
 export interface RowDetail {
+  can_save_relationship?: boolean;
   permission: "owner" | "edit" | "view";
   owner: string;
   revision: number;
@@ -411,6 +462,17 @@ export interface DocumentItems {
   warnings: string[];
   pages: number;
   items: DocumentItem[];
+  text_lines?: DocumentItem[];
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  invited_by: string;
+  created_at: string;
+  expires_at: string;
+  consumed_at: string;
+  revoked_at: string;
 }
 
 export interface Relationship {
@@ -428,6 +490,12 @@ export interface Relationship {
   notes: string;
   version: number;
   usage?: number;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  is_default?: boolean;
+  selected_version?: number | null;
+  enabled_version?: number | null;
+  enabled_definition?: Relationship | null;
 }
 export interface RelationshipHistory {
   version: number;
@@ -511,56 +579,6 @@ export interface VerifyOutcome {
   resolved: string[];
   still_open: string[];
   not_covered: string[];
-}
-
-export interface PerSku {
-  rows: number;
-  needs_validation: number;
-  auto_cleared: number;
-  estimated_minutes: number;
-}
-export interface BusinessCase {
-  skus: number;
-  rows: number;
-  auto_cleared: number;
-  needs_validation: number;
-  estimated_minutes_per_sku: number;
-  minutes_saved_per_sku: number;
-  reduction_pct: number;
-  hours_saved_per_project: number;
-  annual_savings: number;
-  meets_target: boolean;
-  baseline_minutes_per_sku: number;
-  hourly_rate: number;
-  skus_per_project: number;
-  projects_per_year: number;
-  reviewers: number;
-  assumptions: string[];
-  per_sku: Record<string, PerSku>;
-  // Projection (not in the contract; present in newer API builds): strong fuzzy pairings a reviewer typically
-  // confirms once and saves as relationships, after which the next run auto-clears them.
-  confirmable_rows?: number;
-  needs_validation_after_confirmation?: number;
-  estimated_minutes_per_sku_after_confirmation?: number;
-  reduction_pct_after_confirmation?: number;
-  hours_saved_per_project_after_confirmation?: number;
-  annual_savings_after_confirmation?: number;
-  meets_target_after_confirmation?: boolean;
-  /** "measured" when enough timed decisions exist, otherwise "assumed" (the brief's figure). */
-  effort_basis?: "measured" | "assumed";
-  timed_decisions?: number;
-  measured_minutes_per_validation_row?: number | null;
-  minutes_per_validation_row_used?: number;
-}
-export interface BusinessParams {
-  baseline_minutes_per_sku?: number;
-  hourly_rate?: number;
-  skus_per_project?: number;
-  projects_per_year?: number;
-  reviewers?: number;
-  minutes_per_validation_row?: number;
-  minutes_per_cleared_row?: number;
-  target_reduction_pct?: number;
 }
 
 // ---- run-to-run diff

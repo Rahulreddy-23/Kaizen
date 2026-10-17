@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from kaizen.api.app import create_app
 from kaizen.datasets.build import build_golden
 from kaizen.review.access import AccessStore
+from kaizen.review.sessions import UserStore
 from kaizen.workspace import Workspace
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -139,7 +140,7 @@ def test_save_as_relationship_and_next_run_uses_it(env):
     assert rel["created_by"] == DHARMA, "the signed-in session names the author, not the payload"
     assert "CHLORAPREP APPLICATOR 3ML" in rel["aliases"]
     r2 = client.post("/api/runs/from-path", json={"path": kit(golden, "sku-002")})
-    run2 = r2.json()[0]["run_id"]
+    run2 = r2.json()["runs"][0]["run_id"]
     rows = client.get(f"/api/runs/{run2}/results", params={"check": "BOM_LABEL", "sku": "1295108FNS"}).json()["rows"]
     again = next(x for x in rows if "CHLORAPREP" in x["engine"]["explanation"].upper())
     assert again["engine"]["classification"] == "EQUIVALENT" and again["engine"]["relationship_id"] == rel["id"]
@@ -161,7 +162,7 @@ def test_mining_action_items_verify_close_business_and_exports(env):
     assert ai["id"].startswith("AI-") and ai["status"] == "OPEN"
     assert client.patch(f"/api/action-items/{ai['id']}", json={"status": "IN_PROGRESS", "by": "Hemant"}).json()["status"] == "IN_PROGRESS"
     assert any(x["id"] == ai["id"] for x in client.get("/api/action-items").json())
-    r3 = client.post("/api/runs/from-path", json={"path": kit(golden, "sku-002")}).json()[0]["run_id"]
+    r3 = client.post("/api/runs/from-path", json={"path": kit(golden, "sku-002")}).json()["runs"][0]["run_id"]
     vc = client.post(f"/api/runs/{r3}/verify-and-close").json()
     assert ai["id"] not in vc["resolved"], "Verifying another run must not alter this run's action items"
 
@@ -170,7 +171,7 @@ def test_mining_action_items_verify_close_business_and_exports(env):
     bc2 = client.get(f"/api/runs/{run_id}/business-case", params={"minutes_per_validation_row": 5}).json()
     assert bc2["estimated_minutes_per_sku"] > bc["estimated_minutes_per_sku"]
 
-    x = client.get(f"/api/runs/{run_id}/export.xlsx")
+    x = client.get(f"/api/runs/{run_id}/export.xlsx?detail=complete")
     assert x.status_code == 200 and "spreadsheet" in x.headers["content-type"]
     wb = openpyxl.load_workbook(io.BytesIO(x.content))
     assert "Action_Items" in wb.sheetnames
@@ -221,7 +222,8 @@ def _fresh(ws):
 
 def sign_in(client, email: str, slot: int, blind=None) -> dict:
     """Through the front door. The account is created once; 409 afterwards just means it already is."""
-    assert client.post("/api/auth/signup", json={"email": email, "password": PASSWORD}).status_code in (200, 409)
+    if not UserStore(client.ws.db).exists(email):
+        UserStore(client.ws.db).create(email, PASSWORD)
     access = AccessStore(client.ws.db)
     access.register(email)
     access.update(email, DHARMA, 'approved', email == DHARMA)
@@ -328,9 +330,10 @@ def test_excel_round_trip_through_the_api(env):
     row = client.get(f"/api/runs/{run_id}/results", params={"check": "BOM_DRAWING", "classification": "MISSING", "limit": 1}).json()["rows"][0]
     xlsx = client.get(f"/api/runs/{run_id}/export.xlsx").content
     wb = openpyxl.load_workbook(io.BytesIO(xlsx))
-    sh = wb["BOM_Drawing"]
-    cols = {c.value: i + 1 for i, c in enumerate(sh[1])}
-    for r in range(2, sh.max_row + 1):
+    sh = wb[row["sku"]]
+    header = next(r for r in sh if any(c.value == "Row ID" for c in r))
+    cols = {c.value: c.column for c in header if c.value}
+    for r in range(header[0].row + 1, sh.max_row + 1):
         if sh.cell(row=r, column=cols["Row ID"]).value == row["row_id"]:
             sh.cell(row=r, column=cols["Reviewer Decision"], value="CONFIRM_DISCREPANCY")
             sh.cell(row=r, column=cols["Reviewer Comment"], value="decided in Excel")
@@ -345,6 +348,27 @@ def test_excel_round_trip_through_the_api(env):
     assert d["decision"] == "CONFIRM_DISCREPANCY" and d["reviewer"] == DHARMA and d["comment"] == "decided in Excel"
     wrong = client.post(f"/api/runs/{run_id}/decisions/import", files={"file": ("x.xlsx", b"not a workbook", XLSX_MIME)})
     assert wrong.status_code == 400
+
+
+def test_excel_download_modes_are_distinct_and_preserve_the_saved_report(env):
+    from concurrent.futures import ThreadPoolExecutor
+
+    client, _, ws, run_id = env
+    saved = ws.runs_dir / run_id / "report.xlsx"
+    original = saved.read_bytes() if saved.exists() else None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        default, complete = list(pool.map(client.get, [f"/api/runs/{run_id}/export.xlsx", f"/api/runs/{run_id}/export.xlsx?detail=complete"]))
+    assert default.status_code == complete.status_code == 200
+    assert "-summary.xlsx" in default.headers["content-disposition"]
+    assert "-complete.xlsx" in complete.headers["content-disposition"]
+    summary_wb = openpyxl.load_workbook(io.BytesIO(default.content))
+    complete_wb = openpyxl.load_workbook(io.BytesIO(complete.content))
+    assert len([s for s in summary_wb if s.sheet_state == "visible"]) == 11  # ten supplied SKU sets and the PCO's affected code without a BOM
+    assert "Documents" not in summary_wb.sheetnames and "Documents" in complete_wb.sheetnames
+    assert "BOM_Label" not in complete_wb.sheetnames
+    assert summary_wb["Run_Metadata"].sheet_state == "hidden"
+    assert (saved.read_bytes() if saved.exists() else None) == original
+    assert client.get(f"/api/runs/{run_id}/export.xlsx?detail=unknown").status_code == 422
 
 
 def test_index_page_is_served_with_no_cache(tmp_path):

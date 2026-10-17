@@ -4,12 +4,13 @@ import { api } from "../api";
 import { VERDICTS, type AttributeLabel, type GroundTruthBody, type LearningOption, type Verdict } from "../learning";
 import { useReviewer } from "../lib/reviewer";
 import { useAsync } from "../lib/useAsync";
-import { enc } from "../lib/format";
-import { CLASSIFICATIONS, type Classification, type RowDetail } from "../types";
+import { classificationLabel, enc, fmtQty, issueLabel } from "../lib/format";
+import { ChoiceList } from "./ChoiceList";
+import { CLASSIFICATIONS, DISCREPANCY_TYPES, type Classification, type RowDetail } from "../types";
 import { ErrorBox } from "./Feedback";
 import { Button, Card, CardHead, Field } from "./ui";
 
-const DISCREPANCIES = ["QTY_MISMATCH", "DESC_MISMATCH", "MISSING_IN_LABEL", "MISSING_IN_BOM", "MISSING_IN_DRAWING", "EXTRA_ON_DRAWING", "AMBIGUOUS_MATCH", "LOW_EXTRACTION_CONFIDENCE"];
+const DISCREPANCIES = DISCREPANCY_TYPES;
 const blankAttributes = (): AttributeLabel => ({component_type: null, dimensions_mm: [], gauge: null, concentration_pct: null, pack_quantity: null});
 
 export function GroundTruthPanel({runId, rowId, detail}: {runId: string; rowId: string; detail: RowDetail}) {
@@ -40,7 +41,7 @@ export function GroundTruthPanel({runId, rowId, detail}: {runId: string; rowId: 
     setDimensionText({});
     setIncludeAttributes(!!p && Object.keys(p.attributes).length > 0);
     setNote(p?.note ?? ""); setError(null);
-  }, [rowId, annotation?.version]);
+  }, [runId, rowId, annotation?.version]);
   if (state.error) return <ErrorBox error={state.error} onRetry={state.reload} />;
   if (!state.data) return null;
   const canEdit = detail.permission !== "view";
@@ -60,6 +61,10 @@ export function GroundTruthPanel({runId, rowId, detail}: {runId: string; rowId: 
         if (includeAttributes && dimensions.some(n => !Number.isFinite(n) || n <= 0)) throw new Error("Enter positive dimensions in mm, separated by commas.");
         return [i.id, {...value, dimensions_mm: dimensions}];
       }));
+      if (aIds.length > 1 && aIds.some(id => !Number.isFinite(allocations[id]) || allocations[id] <= 0)) throw new Error("Enter a positive quantity for every selected assembly member.");
+      if (includeAttributes && Object.values(verifiedAttributes).some(value =>
+        [value.gauge, value.concentration_pct, value.pack_quantity].some(n => n !== null && (!Number.isFinite(n) || n <= 0)) ||
+        (value.pack_quantity !== null && !Number.isInteger(value.pack_quantity)))) throw new Error("Use positive attribute values and a whole number for pack quantity; leave unknown values empty.");
       const body: GroundTruthBody = {expected_version: annotation?.version ?? 0, review_revision: detail.revision, verdict, classification, expected_a_ids: aIds, expected_b_ids: bIds, discrepancies,
         assembly_quantities: aIds.length > 1 ? Object.fromEntries(aIds.map(id => [id, allocations[id] ?? 0])) : {},
         attributes: includeAttributes ? verifiedAttributes : {}, note};
@@ -73,23 +78,26 @@ export function GroundTruthPanel({runId, rowId, detail}: {runId: string; rowId: 
     JSON.stringify(includeAttributes ? Object.fromEntries(selected.map(i => [i.id, attributes[i.id] ?? i.suggested_attributes])) : {}) !== JSON.stringify(saved.attributes) ||
     (includeAttributes && selected.some(i => dimensionText[i.id] !== undefined && dimensionText[i.id] !== (attributes[i.id] ?? i.suggested_attributes).dimensions_mm.join(", "))));
   function choices(label: string, options: LearningOption[], ids: string[], change: (ids: string[]) => void) {
-    return <Field label={label}><select multiple size={5} className="input w-full" value={ids} onChange={e => change(Array.from(e.target.selectedOptions, o => o.value))}>
-      {options.map(i => <option key={i.id} value={i.id}>{i.item_number ? `${i.item_number} · ` : ""}{i.description} · qty {i.quantity ?? "?"}</option>)}
-    </select><p className="text-xs text-ink-3 mt-1">Cmd/Ctrl-click to select assembly members or deselect an absent counterpart.</p></Field>;
+    return <ChoiceList label={label} options={options.map(i => ({value: i.id, label: i.description,
+      description: [i.item_number, i.quantity !== null ? `Quantity ${fmtQty(i.quantity)}` : null, i.page ? `Page ${i.page}` : null].filter(Boolean).join(" · ")}))}
+      value={ids} onChange={change} hint="Select each component you verified. Choose multiple items for an assembly; clear the selection for an absent counterpart." />;
   }
   return <Card>
-    <CardHead title="Ground truth" description={state.data.enabled ? `Reserved for ${state.data.split === "evaluation" ? "evaluation" : "training"}${annotation ? ` · v${annotation.version} · ${annotation.status}` : ""}` : "Closed testing is not enabled"} />
+    <CardHead title="Ground truth" description={state.data.enabled ? `Reserved for ${state.data.split === "evaluation" ? "evaluation" : "training"}${annotation ? ` · v${annotation.version} · ${annotation.status}` : ""}` : "Verified learning needs attention"} />
     <div className="p-5 space-y-4">
-      {!state.data.enabled ? <p className="text-sm">The run owner can enable data collection on the <Link to={`/runs/${enc(runId)}/learning`}>Closed testing</Link> page.</p> : <>
+      {!state.data.enabled ? <p className="text-sm">Review history is collected automatically. {state.data.setup_issue} Inspect <Link to={`/runs/${enc(runId)}/learning`}>Closed testing</Link> for source identity or dataset split issues.</p> : <>
         <p className="text-xs text-ink-3">Identify the true source pairing and outcome from the documents. A different administrator verifies it before it enters a dataset.</p>
         <fieldset disabled={!canEdit || busy} className="space-y-4">
           <Field label="What did you verify?"><select className="input w-full" value={verdict} onChange={e => setVerdict(e.target.value as Verdict)}>{VERDICTS.map(([v, text]) => <option key={v} value={v}>{text}</option>)}</select></Field>
-          {choices("Expected source A (keep the reviewed component)", state.data.a_options, aIds, setAIds)}
-          {choices("Expected source B", state.data.b_options, bIds, setBIds)}
+          <div className="grid md:grid-cols-2 gap-5">
+            {choices("Expected source A", state.data.a_options, aIds, setAIds)}
+            {choices("Expected source B", state.data.b_options, bIds, setBIds)}
+          </div>
           {selected.map(i => <p key={i.id} className="text-xs"><Link to={`/runs/${enc(runId)}/documents/${enc(i.doc_id)}?item=${enc(i.id)}${i.page ? `&page=${i.page}` : ""}`}>Inspect {i.item_number || i.description}</Link>{i.page ? ` · page ${i.page}` : ""}</p>)}
-          {aIds.length > 1 && <div className="space-y-2"><p className="text-sm font-medium">Assembly quantities per label unit</p>{state.data.a_options.filter(i => aIds.includes(i.id)).map(i => <Field key={i.id} label={i.item_number || i.description}><input type="number" min="0.000001" step="any" className="input w-full" value={allocations[i.id] ?? ""} onChange={e => setAllocations({...allocations, [i.id]: Number(e.target.value)})} /></Field>)}</div>}
-          <Field label="Verified classification"><select className="input w-full" value={classification} onChange={e => setClassification(e.target.value as Classification)}>{CLASSIFICATIONS.map(c => <option key={c}>{c}</option>)}</select></Field>
-          <Field label="Verified discrepancy types"><select multiple size={4} className="input w-full" value={discrepancies} onChange={e => setDiscrepancies(Array.from(e.target.selectedOptions, o => o.value))}>{Array.from(new Set([...DISCREPANCIES, ...discrepancies])).map(d => <option key={d}>{d}</option>)}</select><p className="text-xs text-ink-3 mt-1">Deselect all for a clear match.</p></Field>
+          {aIds.length > 1 && <div className="space-y-2"><p className="text-sm font-medium">Assembly quantities per label unit</p>{state.data.a_options.filter(i => aIds.includes(i.id)).map(i => <Field key={i.id} label={i.item_number || i.description}><input type="number" min="0.000001" step="any" className="input w-full" value={allocations[i.id] ?? ""} onChange={e => { const next = {...allocations}; if (e.target.value) next[i.id] = Number(e.target.value); else delete next[i.id]; setAllocations(next); }} /></Field>)}</div>}
+          <Field label="Verified classification"><select className="input w-full" value={classification} onChange={e => setClassification(e.target.value as Classification)}>{CLASSIFICATIONS.map(c => <option key={c} value={c}>{classificationLabel(c)}</option>)}</select></Field>
+          <ChoiceList label="Verified discrepancy types" options={Array.from(new Set([...DISCREPANCIES, ...discrepancies])).map(d => ({value: d, label: issueLabel(d)}))}
+            value={discrepancies} onChange={setDiscrepancies} hint="Select all issues you verified against the documents. Clear the selection when no discrepancy is confirmed." />
           <details><summary className="text-sm font-medium cursor-pointer">Component attributes</summary>
             <label className="flex gap-2 text-xs my-3"><input type="checkbox" checked={includeAttributes} onChange={e => setIncludeAttributes(e.target.checked)} />I checked these attributes against the sources.</label>
             <p className="text-xs text-ink-3 mb-3">Suggested values need verification. Dimensions use mm; leave unreadable or unspecified fields empty.</p>
