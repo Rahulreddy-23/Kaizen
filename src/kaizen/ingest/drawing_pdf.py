@@ -20,7 +20,7 @@ from kaizen.ingest.text_lines import capture_text_lines
 from kaizen.models import DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "drawing_pdf"
-PARSER_VERSION = "6"
+PARSER_VERSION = "7"
 
 ES_MARKERS = set(
     """CON DE DEL LA EL LOS LAS PARA SEGUN SI O Y EN UN UNA TUBO AGUJA JERINGA JERINGAS TIJERAS ALAMBRE GUIA CINTA METRICA
@@ -51,7 +51,9 @@ _PLACEMENT_RE = re.compile(r"\(\s*(PLACE IN [^)]*)\)", re.IGNORECASE)
 _PLACED_ON_TRAY_RE = re.compile(r"\s+(PLACED\s+ON\s+(?:THE\s+)?TRAY)\s*$", re.IGNORECASE)
 _PLACED_ON_TRAY_ES_RE = re.compile(r"\bCOLOCAD[AO]\b.*\bBANDEJA\b", re.IGNORECASE)
 _LEBELING_TYPO_RE = re.compile(r"\bLEBELING\b", re.IGNORECASE)
-_PAREN_RE = re.compile(r"\([^)]*\)")
+# Conditional/placement qualifiers and depicted counts have separate semantics.
+# Other parentheses (plural suffixes, dimensions, identifiers) are source content.
+_PAREN_RE = re.compile(r"\(\s*(?:(?:SI|CUANDO|COLOCAR)\s+[^)]*|\d+)\s*\)", re.IGNORECASE)
 _DRAWING_NO_RE = re.compile(r"DRAWING NO\.?\s*([A-Z0-9][A-Z0-9\-]{4,})", re.IGNORECASE)
 _DWG_RE = re.compile(r"\b(DWG[0-9]{5,})\b")
 _REV_RE = re.compile(r"(?<![A-Z])REV\.?\s*([A-Z0-9]{1,3})(?![A-Z0-9])")
@@ -112,7 +114,10 @@ def _clusters(lines: list[list[Word]]) -> list[list[list[Word]]]:
             right = max(w.x1 for w in line)
             last_left, last_right = min(w.x0 for w in last), max(w.x1 for w in last)
             center_delta = abs((x0 + right - last_left - last_right) / 2)
-            aligned = abs(last_left - x0) <= 14 or abs(last_right - right) <= 14 or center_delta <= 18
+            # A wrapped caption may alternate between its main left edge and a
+            # hanging indent. Compare with its existing lines, not only the last.
+            aligned = any(abs(min(w.x0 for w in prior) - x0) <= 14 or abs(max(w.x1 for w in prior) - right) <= 14
+                          or abs((x0 + right - min(w.x0 for w in prior) - max(w.x1 for w in prior)) / 2) <= 18 for prior in c)
             # Centred and right-aligned bilingual callouts are common in real drawings.
             # A new English label after a Spanish translation starts another callout.
             current_text = _clean_ocr_line(line_text(line))
@@ -294,22 +299,22 @@ def _top(line: list[Word]) -> float:
 def _split_notes(lines: list[list[Word]], page) -> tuple[list[list[Word]], list[list[Word]]]:
     """Separate note text from callout candidates.
 
-    By drafting convention the notes sit with the title block along the bottom of the sheet, so a
-    NOTES/NOTAS heading in the lower part of the sheet closes the callout area (the title block beside
-    it is dropped). A heading higher up owns only the lines stacked directly beneath it, so a notes block
-    near the top never hides the callouts below it."""
+    A heading owns its aligned stack, not the entire width of the page. Footer
+    headings stop new callouts, but an existing callout in another column may
+    continue below them. This keeps translations separate from notes/title cells.
+    """
     headings = [l for l in lines if re.match(r"^(NOTES?|NOTAS?)\b", line_text(l), re.I)]
     cutoff = min((_top(h) for h in headings if _top(h) >= page.rect.height * 0.6), default=page.rect.height)
-    notes = [l for l in lines if _top(l) >= cutoff and max(w.x1 for w in l) < page.rect.width * 0.6]
+    notes = []
     taken: set[int] = set()
-    for heading in sorted((h for h in headings if _top(h) < cutoff), key=_top):
+    for heading in sorted(headings, key=_top):
         if id(heading) in taken:
             continue
         left, height = min(w.x0 for w in heading), max(w.y1 for w in heading) - _top(heading)
         bottom = max(w.y1 for w in heading)
         stack = [heading]
         for line in sorted(lines, key=_top):
-            if id(line) in taken or line is heading or _top(line) <= _top(heading) or _top(line) >= cutoff:
+            if id(line) in taken or line is heading or _top(line) <= _top(heading):
                 continue
             if not left - 10 <= min(w.x0 for w in line) <= left + 40:
                 continue
@@ -318,9 +323,10 @@ def _split_notes(lines: list[list[Word]], page) -> tuple[list[list[Word]], list[
             stack.append(line)
             bottom = max(bottom, max(w.y1 for w in line))
         taken.update(id(l) for l in stack)
-        notes = stack + notes
-    body = [l for l in lines if _top(l) < cutoff and id(l) not in taken]
-    return body, notes
+        notes.extend(stack)
+    candidates = [l for l in lines if id(l) not in taken]
+    body = [line for cluster in _clusters(candidates) if any(_top(l) < cutoff for l in cluster) for line in cluster]
+    return body, sorted(notes, key=lambda l: (_top(l), min(w.x0 for w in l)))
 
 
 def _is_instruction(text: str) -> bool:

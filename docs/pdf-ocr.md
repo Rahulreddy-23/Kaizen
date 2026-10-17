@@ -89,3 +89,28 @@ that did not become comparison entries. Filter by phrase or page, then select a 
 source. This view is separate from component comparisons and never creates synonyms or approvals.
 Older runs retain their original extraction. Full-text capture is not a guarantee that every character was
 recognized correctly; unreadable scans and ambiguous identifiers still need source verification.
+
+## Layout and evidence safeguards
+
+Label contents columns are inferred from quantity/unit starters. The full-text view uses those same
+boundaries within the contents region, so nearby columns do not become one line. Headers and footers
+retain their own layout. A matching native text layer can supply missing spaces in this view; the
+selected line also shows the original raw OCR. Letters, identifiers and quantities are never replaced
+by this spacing step.
+
+Drawing notes belong to the aligned stack below their heading. They do not cut off a caption in another
+column. Wrapped captions can return from a hanging indent to their original edge, keeping English and
+Spanish evidence together. Spanish conditional/placement qualifiers and depicted counts are separated
+from component wording; meaningful parentheses such as plural suffixes and dimensions are retained.
+
+These changes follow the layout/position approach described in the
+[PyMuPDF text extraction documentation](https://pymupdf.readthedocs.io/en/latest/recipes-text.html).
+[Tesseract's quality guidance](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html) also identifies
+segmentation, region size and image quality as causes of OCR errors. It does not establish that higher
+DPI or a different engine will always improve a page. Kaizen uses offline recognition and preserves
+source evidence so improvements can be evaluated without sending documents to an external OCR service.
+
+Measure changes against source transcriptions, including character errors, complete entries, separately
+retained physical lines, numeric fields and translation association. Keep a separate set of unseen
+layouts for independent review. Counts and engine confidence alone do not establish accuracy; visually
+ambiguous characters and document-specific engineering conclusions still require verification.

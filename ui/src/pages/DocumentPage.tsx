@@ -143,7 +143,7 @@ export default function DocumentPage() {
   const pdf = isPdf(d.file_name) && d.pages > 0;
   const src = pdf ? api.pageImageUrl(runId, docId, page) : null;
   const sourceRows = allText ? d.text_lines ?? [] : d.items;
-  const cols: Col[] = allText ? [{ h: "Recognized text", cell: (i) => i.raw_text, cls: "min-w-[18rem] whitespace-pre-wrap" }] : columns(d.doc_type);
+  const cols: Col[] = allText ? [{ h: "Recognized text", cell: (i) => i.description, cls: "min-w-[18rem] whitespace-pre-wrap" }] : columns(d.doc_type);
   const lowConf = sourceRows.filter((i) => i.confidence < LOW_CONFIDENCE).length;
   const header = Object.entries(d.header);
   const needle = filter.trim().toLowerCase();
@@ -279,10 +279,10 @@ export default function DocumentPage() {
                   </dd>
                   </>}<dt>Confidence</dt>
                   <dd>{selected.confidence < LOW_CONFIDENCE ? <Badge tone="warn">{pct(selected.confidence)} — verify against the page</Badge> : <span className="num">{pct(selected.confidence)}</span>}</dd>
-                  {!allText && <><dt>Raw text</dt>
+                  <dt>Raw text</dt>
                   <dd>
                     <pre className="mono text-xs whitespace-pre-wrap bg-surface-2 border border-line rounded p-2">{selected.raw_text}</pre>
-                  </dd></>}
+                  </dd>
                 </dl>
               ) : (
                 <EmptyState icon={<CursorClick size={32} />} title="No line selected" description="Select an extracted line to view its details." />

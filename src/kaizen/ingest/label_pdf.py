@@ -20,7 +20,7 @@ from kaizen.ingest.text_lines import capture_text_lines, restore_supported_spaci
 from kaizen.models import BBox, DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "label_pdf"
-PARSER_VERSION = "5"
+PARSER_VERSION = "6"
 
 _REF_CODE_RE = re.compile(r"^[A-Z0-9]{5,12}$")
 _NUMBER_RE = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
@@ -159,6 +159,7 @@ def parse_label_pdf(path: Path | str) -> Document:
                 warnings.append(f"page {page_no}: no text found (text may be drawn as outlines); no usable OCR engine. {OCR_SETUP_HELP}")
         if words:
             method = page_method if method in ("none", page_method) else "mixed"
+        page_text_start = len(text_lines)
         text_lines.extend(capture_text_lines(words, doc_id=doc_id, doc_type=DocType.LABEL, file=str(path), sha=sha, page=page_no, method=page_method))
         lines = group_lines(words, y_tol=2.5)
         if not lines:
@@ -194,6 +195,13 @@ def parse_label_pdf(path: Path | str) -> Document:
         region = [_expand_fused_tokens(line) for line in region]
         starters = [w.x0 for line in region for i, w in enumerate(line) if _is_entry_starter(line, i)]
         columns = _cluster_columns(starters) if starters else [min(w.x0 for l in region for w in l)] if region else [0.0]
+        if region:
+            text_lines[page_text_start:] = capture_text_lines(
+                words, doc_id=doc_id, doc_type=DocType.LABEL, file=str(path), sha=sha, page=page_no, method=page_method,
+                column_cuts=tuple(x - _COLUMN_TOLERANCE for x in columns[1:]),
+                column_y=(min(w.y0 for line in region for w in line), max(w.y1 for line in region for w in line)),
+                reference_words=native if page_method == "ocr" and native_contents else None,
+            )
         entries = _build_entries(region, columns)
         native_entries_for_spacing = []
         if page_method == "ocr" and native_contents:

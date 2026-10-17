@@ -70,6 +70,16 @@ it("keeps a recovery action available when a screen throws",async()=>{
 describe('full source text coverage', () => {
  const entry = (id: string, description: string, page = 1) => ({id,doc_id:'doc',doc_type:'DRAWING' as const,file:'drawing.pdf',file_name:'drawing.pdf',sha256:'abc',page,bbox:{x0:20,y0:30,x1:250,y1:42},locator:`page ${page}`,raw_text:description,sheet:null,item_number:null,description,quantity:null,uom:null,oper_seq:null,category:'DOCUMENT',category_reason:'Source text',confidence:.91,attributes:{},sub_quantity:null,is_active:true});
  const open = () => render(<MemoryRouter initialEntries={['/runs/run/documents/doc']}><Routes><Route path='/runs/:runId/documents/:docId' element={<DocumentPage />} /></Routes></MemoryRouter>);
+ it('displays recovered spaces while keeping the original OCR available in the selected source',async()=>{
+  const line={...entry('text','2 Each - Protective Cover'),raw_text:'2Each-ProtectiveCover'};
+  vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:'doc',doc_type:'LABEL',file_name:'label.pdf',pages:1,header:{},warnings:[],items:[],text_lines:[line]});
+  open();
+  fireEvent.click(await screen.findByRole('button',{name:'All recognized text'}));
+  expect(screen.getByText('2 Each - Protective Cover')).toBeTruthy();
+  expect(screen.queryByText('2Each-ProtectiveCover')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'View extracted line 1'}));
+  expect(screen.getByText('2Each-ProtectiveCover')).toBeTruthy();
+ });
  it('shows retained notes separately, filters them and opens their actual source page', async () => {
   vi.mocked(api.getDocumentItems).mockResolvedValue({doc_id:'doc',doc_type:'DRAWING',file_name:'drawing.pdf',pages:2,header:{notes:[{page:2,text:'Verify the outer barrier'}]},warnings:[],items:[entry('component','Protective cover')],text_lines:[entry('text','Verify the outer barrier before shipping',2)]});
   vi.mocked(api.pageImageUrl).mockImplementation((_run,_doc,p)=>`/pages/${p}`);
