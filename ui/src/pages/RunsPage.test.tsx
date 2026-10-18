@@ -31,6 +31,7 @@ it('shows 0–100 progress beside Start cross-check and locks inputs until savin
   expect(screen.getByRole('progressbar').getAttribute('value')).toBe('0');
   expect(screen.getByRole('progressbar').closest('.run-start-action')?.querySelector('button')?.textContent).toContain('Start cross-check');
   expect((screen.getByLabelText(/Run name/) as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByRole('button', {name: 'Close'}) as HTMLButtonElement).disabled).toBe(true);
   act(() => update({percent: 70, stage: 'Comparing documents'}));
   expect(screen.getByText('70%')).toBeTruthy();
   await act(async () => {finish(summary);});
