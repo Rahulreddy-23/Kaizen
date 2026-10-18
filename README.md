@@ -78,7 +78,7 @@ Administrators use **Manage users → Invite a reviewer**. Share the one-use cod
 BD recipient; it expires after 72 hours. The recipient chooses **Accept invitation**, enters that BD address
 and code, and creates a password. A BD address alone cannot register.
 
-1. On **All runs**, choose **New cross-check** and upload a folder or individual files. Choose **Try a demo** for synthetic examples.
+1. On **All runs**, choose **New cross-check** and add a kit folder or exactly three files: one BOM, one label and one drawing. Each set creates its own run. A parent folder adds its kit subfolders. Choose **Try a demo** for synthetic examples.
 2. Open **Quick view**, choose a SKU and select an entry to compare its three sources. Use **Open document reader** for adjustable side-by-side reading or full-width focus. **Documents** shows extraction; **Review queue** records decisions.
 3. Save decisions and approve reviewed results. On **Overview**, use **Download Excel** for a summary or complete details, with each SKU on its own worksheet. Both support decision imports. View-only users cannot change or export runs.
 
@@ -95,7 +95,8 @@ author’s account; other users opt in. Edits require deliberate version updates
 | Drawing | PDF |
 | PCO | FM00835 PDF, XLSX, XLSM, CSV |
 
-Keep each SKU's documents in its own subfolder when possible, with PCO files included in the upload.
+Web uploads require exactly one BOM, one PDF label and one PDF drawing per run. Keep each kit in its own
+folder. The parser formats above also cover PCOs and label revisions through the CLI workflow below.
 Word files are unsupported. Offline OCR and its models are installed automatically, including for scanned
 labels and drawings. Tesseract with English data is an optional additional engine; it is not required.
 For an existing checkout, pull the changes, repeat the Python install command above, run `kaizen doctor`,

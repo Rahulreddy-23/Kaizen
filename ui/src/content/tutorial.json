@@ -54,27 +54,27 @@
     {
       "id": "upload",
       "label": "Upload a project",
-      "intro": "Keep related BOMs, labels, drawings and PCOs together in a project folder, using SKU subfolders where possible.",
+      "intro": "Each run needs exactly one BOM, one PDF label and one PDF drawing. Keep each kit’s three documents together in a folder.",
       "steps": [
         {
           "title": "Start a cross-check",
-          "body": "In All runs, choose New cross-check. Enter a recognizable run name, such as the product and review date."
+          "body": "In All runs, choose New cross-check. Run name is optional; folder names are used by default. When adding several folders, the entered name is added to each folder’s name."
         },
         {
           "title": "Choose the documents",
-          "body": "Choose folder preserves SKU subfolders. Choose files accepts individual documents. To include several top-level folders together, put them under one project folder before choosing it."
+          "body": "Choose folder adds a kit folder or a parent containing several kit folders. Choose 3 files adds one set of three documents selected together. Each folder or set becomes its own run."
         },
         {
           "title": "Review your selection",
-          "body": "Check the file names, paths, sizes and total. Remove unwanted files or use Clear all. Choosing again replaces the selection; cancelling the picker keeps it."
+          "body": "Expand a folder row to check its filenames. Add a folder or Add 3 files appends another set. Remove a set or use Clear all to start over. Cancelling a picker keeps the current selection."
         },
         {
           "title": "Start the run",
-          "body": "Choose Start cross-check and wait for the results. A new upload creates a new run, so you can compare later corrections with the original."
+          "body": "Choose Start cross-check or Create runs. Sets are processed one at a time; the stage and saved-run status are shown. Failed sets stay in the list for retry while successful runs remain saved. If the connection is interrupted, check All runs before retrying."
         }
       ],
       "paragraphs": [],
-      "note": "Supported files: PDF, XLSX, XLSM and CSV, up to 250 MB per run. Word files are unsupported. For initial testing, use clean source PDFs or readable spreadsheets.",
+      "note": "BOMs may be PDF, XLSX, XLSM or CSV; labels and drawings must be PDF. Each run accepts exactly three documents, up to 250 MB total. Word files are unsupported. Use clean source PDFs or readable spreadsheets for initial testing.",
       "action": {
         "label": "Start from all runs",
         "to": "/"
@@ -230,7 +230,7 @@
         },
         {
           "title": "Rename or delete",
-          "body": "Owners can Rename or Delete from Overview or All runs. Read the named confirmation before deleting."
+          "body": "Owners can open Options → Rename or Delete on Overview or All runs. Read the named confirmation before deleting."
         },
         {
           "title": "Restore or make a copy",
@@ -282,7 +282,7 @@
         },
         {
           "title": "Get independent verification",
-          "body": "A different administrator verifies an annotation before it enters the verified dataset. Normal self-approval does not create independently verified ground truth."
+          "body": "For a private run, use Share run to give an approved administrator Can edit and approve access. The verifier must be different from the annotation author. Ask them to inspect the source evidence and verify the annotation in Closed testing. Normal self-approval does not create verified training truth."
         },
         {
           "title": "Inspect the candidate report",

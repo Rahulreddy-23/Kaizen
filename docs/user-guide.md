@@ -28,17 +28,17 @@ Already approved? Use your existing password; a new invitation is not needed. Fo
 
 ## Upload a project
 
-Keep related BOMs, labels, drawings and PCOs together in a project folder, using SKU subfolders where possible.
+Each run needs exactly one BOM, one PDF label and one PDF drawing. Keep each kit’s three documents together in a folder.
 
-1. **Start a cross-check.** In All runs, choose New cross-check. Enter a recognizable run name, such as the product and review date.
+1. **Start a cross-check.** In All runs, choose New cross-check. Run name is optional; folder names are used by default. When adding several folders, the entered name is added to each folder’s name.
 
-2. **Choose the documents.** Choose folder preserves SKU subfolders. Choose files accepts individual documents. To include several top-level folders together, put them under one project folder before choosing it.
+2. **Choose the documents.** Choose folder adds a kit folder or a parent containing several kit folders. Choose 3 files adds one set of three documents selected together. Each folder or set becomes its own run.
 
-3. **Review your selection.** Check the file names, paths, sizes and total. Remove unwanted files or use Clear all. Choosing again replaces the selection; cancelling the picker keeps it.
+3. **Review your selection.** Expand a folder row to check its filenames. Add a folder or Add 3 files appends another set. Remove a set or use Clear all to start over. Cancelling a picker keeps the current selection.
 
-4. **Start the run.** Choose Start cross-check and wait for the results. A new upload creates a new run, so you can compare later corrections with the original.
+4. **Start the run.** Choose Start cross-check or Create runs. Sets are processed one at a time; the stage and saved-run status are shown. Failed sets stay in the list for retry while successful runs remain saved. If the connection is interrupted, check All runs before retrying.
 
-Supported files: PDF, XLSX, XLSM and CSV, up to 250 MB per run. Word files are unsupported. For initial testing, use clean source PDFs or readable spreadsheets.
+BOMs may be PDF, XLSX, XLSM or CSV; labels and drawings must be PDF. Each run accepts exactly three documents, up to 250 MB total. Word files are unsupported. Use clean source PDFs or readable spreadsheets for initial testing.
 
 ## Check extracted documents
 
@@ -98,7 +98,7 @@ Runs start private to their owner. Owners control who can view or change them.
 
 1. **Share with an approved user.** On Overview, expand Run settings and exports → Share run. Choose an approved account and either Can view or Can edit and approve. Update or remove its grant when needed.
 
-2. **Rename or delete.** Owners can Rename or Delete from Overview or All runs. Read the named confirmation before deleting.
+2. **Rename or delete.** Owners can open Options → Rename or Delete on Overview or All runs. Read the named confirmation before deleting.
 
 3. **Restore or make a copy.** Deletion moves a run to All runs → Deleted runs. Only its owner can restore it, including its previous sharing. Make a copy creates an independent private run; approvals and sharing do not transfer.
 
@@ -122,7 +122,7 @@ Closed testing collects review data automatically and curates independently veri
 
 1. **Review normally.** Collection is on by default for eligible new runs, copies and existing active owned runs. No Enable step is needed. Editors can annotate correct pairings, attributes, drawing applicability and unresolved evidence.
 
-2. **Get independent verification.** A different administrator verifies an annotation before it enters the verified dataset. Normal self-approval does not create independently verified ground truth.
+2. **Get independent verification.** For a private run, use Share run to give an approved administrator Can edit and approve access. The verifier must be different from the annotation author. Ask them to inspect the source evidence and verify the annotation in Closed testing. Normal self-approval does not create verified training truth.
 
 3. **Inspect the candidate report.** Verified feedback can rebuild and evaluate a local candidate. Training and held-out evaluation identities stay separate; the report does not automatically replace the live matching rules.
 
