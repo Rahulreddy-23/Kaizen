@@ -136,7 +136,7 @@ class OcrError(RuntimeError):
 
 
 def _rapid_session_options():
-    """Bound inference threads to fit desktop CPUs and the single-core pilot."""
+    """Bound threads and avoid retaining allocation plans for variable-size pages."""
     import onnxruntime
 
     options = onnxruntime.SessionOptions()
@@ -147,6 +147,11 @@ def _rapid_session_options():
         threads = 1
     options.intra_op_num_threads = max(1, min(4, threads))
     options.inter_op_num_threads = 1
+    # Page detection and line crops have different tensor shapes on every call.
+    # Reusing the first allocation pattern retains large buffers across pages and
+    # sessions, exhausting a small hosted instance even with CPU arenas disabled
+    # by RapidOCR. Keep the model, resolution and recognition batches unchanged.
+    options.enable_mem_pattern = False
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
     return options
 

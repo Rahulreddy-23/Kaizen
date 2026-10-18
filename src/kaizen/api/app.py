@@ -11,6 +11,7 @@ import tempfile
 import threading
 import uuid
 import zipfile
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -164,22 +165,34 @@ def _demo_dataset_path() -> Path | None:
 
 
 class RunCache:
-    def __init__(self, ws: Workspace, learning: LearningStore | None = None):
+    def __init__(self, ws: Workspace, learning: LearningStore | None = None, *, max_entries: int = 8):
         self.ws = ws
         self.learning = learning
-        self._runs: dict[str, Run] = {}
+        self._runs: OrderedDict[str, Run] = OrderedDict()
+        self._max_entries = max(1, max_entries)
+        self._lock = threading.RLock()
+
+    def _remember(self, run: Run) -> None:
+        with self._lock:
+            self._runs[run.metadata.run_id] = run
+            self._runs.move_to_end(run.metadata.run_id)
+            while len(self._runs) > self._max_entries:
+                self._runs.popitem(last=False)
 
     def get(self, run_id: str) -> Run:
         rec = self.ws.runs.get(run_id)
         if rec is None:
             raise HTTPException(404, f"run {run_id} not found")
-        run = self._runs.get(run_id)
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None:
+                self._runs.move_to_end(run_id)
         if run is None:
             try:
                 run = load_run(rec["json_path"])
             except FileNotFoundError:
                 raise HTTPException(404, "The saved run is unavailable. Upload its source documents again.")
-            self._runs[run_id] = run
+            self._remember(run)
         if self.learning and rec.get("owner"):
             self.learning.ensure_enrolled(run, rec["owner"])
         return run
@@ -187,7 +200,7 @@ class RunCache:
     def put(self, run: Run) -> Path:
         path = save_run(run, self.ws.runs_dir / run.metadata.run_id / "run.json")
         self.ws.register_run(run, path)
-        self._runs[run.metadata.run_id] = run
+        self._remember(run)
         return path
 
 

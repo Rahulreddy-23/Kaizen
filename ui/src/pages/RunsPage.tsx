@@ -40,6 +40,7 @@ export default function RunsPage() {
   const [folders, setFolders] = useState<UploadFolder[]>([]);
   const folderInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
+  const [uploadStates, setUploadStates] = useState<Record<string, "queued" | "processing" | "saved" | "failed">>({});
   const [progress, setProgress] = useState<RunProgress | null>(null);
   const [failure, setFailure] = useState<{ title: string; message: string } | null>(null);
   const toast = useToast();
@@ -73,13 +74,15 @@ export default function RunsPage() {
   // Every folder or 3-file set is its own run, sent one at a time so one bad set does not stop the rest.
   const upload = async () => {
     setBusy("upload"); setErr(null); setFailure(null); setProgress({percent: 0, stage: "Uploading documents"});
+    setUploadStates(Object.fromEntries(folders.map(folder => [folder.name, "queued"])));
     const failed: UploadFolder[] = [], problems: string[] = [];
     let last: RunSummary | null = null;
     for (const [index, folder] of folders.entries()) {
+      setUploadStates(previous => ({...previous, [folder.name]: "processing"}));
       const update = (value: RunProgress) => setProgress({percent: Math.min(99, Math.floor((index * 100 + value.percent) / folders.length)), stage: `${folder.name}: ${value.stage}`});
       const label = folder.name.split("/").pop()!, typed = runName.trim();
-      try { last = await api.uploadRun([folder], typed ? (folders.length === 1 ? typed : `${typed} · ${label}`) : label, update); }
-      catch (e) { failed.push(folder); problems.push(`${folder.name}: ${errorMessage(e)}`); }
+      try { last = await api.uploadRun([folder], typed ? (folders.length === 1 ? typed : `${typed} · ${label}`) : label, update); setUploadStates(previous => ({...previous, [folder.name]: "saved"})); }
+      catch (e) { setUploadStates(previous => ({...previous, [folder.name]: "failed"})); failed.push(folder); problems.push(`${folder.name}: ${errorMessage(e)}`); }
     }
     if (!failed.length) await showComplete();
     else setProgress(null);
@@ -115,7 +118,7 @@ export default function RunsPage() {
   const all = runs.data ?? [];
   const visible = (tab === "deleted" ? deleted.data ?? [] : all).filter(r => (tab === "all" || tab === "deleted" || (tab === "mine" ? r.permission === "owner" : r.permission !== "owner")) && `${r.name} ${r.run_id} ${r.owner}`.toLowerCase().includes(search.toLowerCase()));
   const pagination = usePagedList(visible, `${tab}:${search}`);
-  const openCreate = () => { setErr(null); setFolders([]); setSkippedFiles(0); setFailure(null); setProgress(null); setRunName(""); setPath(""); setCreating(true); };
+  const openCreate = () => { setErr(null); setFolders([]); setSkippedFiles(0); setFailure(null); setProgress(null); setRunName(""); setPath(""); setUploadStates({}); setCreating(true); };
 
   return <div className="workspace-page">
     <PageHeader title="Cross-checks" description="Open a run or upload documents to start a new check." actions={<Button variant="primary" onClick={openCreate} icon={<Plus size={18} />}>New cross-check</Button>} />
@@ -145,12 +148,26 @@ export default function RunsPage() {
       </Card>
 
     </section>
-    <Dialog className="new-run-dialog" open={creating} onClose={() => { if (!busy) setCreating(false); }} title="New cross-check" description="Add folders or sets of 3 files. Each one becomes its own run and needs exactly 3 documents: a BOM, a label and a drawing." footer={<><Button disabled={!!busy} onClick={() => setCreating(false)}>Cancel</Button><div className="run-start-action"><Button variant="primary" loading={busy === "upload"} disabled={!!busy || !folders.length || !!problem} onClick={upload} icon={<UploadSimple size={17} />}>{folders.length > 1 ? `Create ${folders.length} runs` : "Start cross-check"}</Button>{busy === "upload" && progress && <RunProgressIndicator value={progress} />}</div></>}>
-      <label className="label" htmlFor="run-name">Run name <span className="text-ink-3">(optional; each run is also named after its folder)</span></label><input id="run-name" className="input w-full" disabled={!!busy} maxLength={120} placeholder="e.g. Orion · September label review" value={runName} onChange={e => setRunName(e.target.value)} />
-      <div className="upload-zone"><FolderOpen size={32} /><strong>Add kit documents</strong><p>Each run needs one BOM, one label and one drawing: choose a folder holding them, or select the 3 files together. Documents are recognised by their content, with file names used as a fallback.</p><input ref={folderInput} type="file" multiple {...DIR_PROPS} hidden aria-label="Project folder" disabled={!!busy} onChange={e => selectFolder(e.target)} /><input ref={filesInput} type="file" multiple accept=".pdf,.xlsx,.xlsm,.csv" hidden aria-label="Individual documents" disabled={!!busy} onChange={e => selectFiles(e.target)} /><div className="flex flex-wrap justify-center gap-2"><Button variant={folders.length ? undefined : "primary"} disabled={!!busy} onClick={() => folderInput.current?.click()} icon={folders.length ? <Plus size={17} /> : <FolderOpen size={17} />}>{folders.length ? "Add a folder" : "Choose folder"}</Button><Button disabled={!!busy} onClick={() => filesInput.current?.click()} icon={<Files size={17} />}>{folders.length ? "Add 3 files" : "Choose 3 files"}</Button></div><small>PDF, XLSX, XLSM and CSV · Up to 250 MB per run · Choose a parent folder to add every folder inside it</small>{!!folders.length && <span role="status">{folders.length} run{folders.length === 1 ? "" : "s"} · {fileCount} documents</span>}</div>
-      {!!skippedFiles && <p className="text-sm text-ink-3" role="status">{skippedFiles} unsupported or hidden files were skipped. Supported formats: PDF, XLSX, XLSM and CSV.</p>}
-      {!!folders.length && <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => { setFolders([]); setSkippedFiles(0); setFailure(null); setErr(null); }}>Clear all</Button>}
-      {!!folders.length && <ul className="upload-folder-list space-y-3" aria-label="Runs to create">{folders.map(folder => { const issue = folderProblem(folder); const Icon = folder.loose ? Files : FolderOpen; return <li key={folder.name} className="flex items-start gap-3 text-sm"><Icon size={20} className={issue ? "text-bad-strong shrink-0" : "text-ok-strong shrink-0"} aria-hidden /><div className="min-w-0 flex-1"><strong className="block break-words">{folder.name || "(no folder)"}</strong><span className={issue ? "text-bad-strong" : "text-ink-3"}>{issue ?? `${folder.files.length} documents: ${folder.files.map(f => f.name).join(", ")}`}</span></div><Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setFolders(folders.filter(f => f !== folder))} icon={<X size={16} />} aria-label={`Remove ${folder.name}`}>Remove</Button></li>; })}</ul>}
+    <Dialog className="new-run-dialog" open={creating} onClose={() => { if (!busy) setCreating(false); }} title="New cross-check" description="One BOM, one label and one drawing per run." footer={<><Button disabled={!!busy} onClick={() => setCreating(false)}>Cancel</Button><div className="run-start-action"><Button variant="primary" loading={busy === "upload"} disabled={!!busy || !folders.length || !!problem} onClick={upload} icon={<UploadSimple size={17} />}>{folders.length > 1 ? `Create ${folders.length} runs` : "Start cross-check"}</Button>{busy === "upload" && progress && <RunProgressIndicator value={progress} />}</div></>}>
+      <div className="run-name-field"><label className="label" htmlFor="run-name">Run name <span className="text-ink-3">(optional)</span></label><input id="run-name" className="input w-full" disabled={!!busy} maxLength={120} placeholder="Defaults to the folder name" value={runName} onChange={e => setRunName(e.target.value)} /></div>
+      <div className={`document-picker${folders.length ? " has-files" : ""}`}>
+        <FolderOpen size={32} className="document-picker-icon" aria-hidden />
+        <div className="document-picker-copy"><h3>{folders.length ? "Add more documents" : "Choose your documents"}</h3><p>Select a kit folder, or its 3 files together. A parent folder creates a separate run for each kit inside.</p></div>
+        <input ref={folderInput} type="file" multiple {...DIR_PROPS} hidden aria-label="Project folder" disabled={!!busy} onChange={e => selectFolder(e.target)} />
+        <input ref={filesInput} type="file" multiple accept=".pdf,.xlsx,.xlsm,.csv" hidden aria-label="Individual documents" disabled={!!busy} onChange={e => selectFiles(e.target)} />
+        <div className="document-picker-actions"><Button disabled={!!busy} onClick={() => folderInput.current?.click()} icon={folders.length ? <Plus size={17} /> : <FolderOpen size={17} />}>{folders.length ? "Add a folder" : "Choose folder"}</Button><Button disabled={!!busy} onClick={() => filesInput.current?.click()} icon={<Files size={17} />}>{folders.length ? "Add 3 files" : "Choose 3 files"}</Button></div>
+        {!folders.length && <small className="document-picker-hint">PDF, XLSX, XLSM or CSV · Up to 250 MB per run</small>}
+      </div>
+      {!!folders.length && <section className="upload-selection" aria-label="Selected documents">
+        <div className="upload-selection-heading"><div><strong>{folders.length} run{folders.length === 1 ? "" : "s"}</strong><span>{fileCount} documents</span></div><Button variant="ghost" size="sm" disabled={!!busy} onClick={() => { setFolders([]); setSkippedFiles(0); setFailure(null); setErr(null); setUploadStates({}); }}>Clear all</Button></div>
+        <ul className="upload-file-list upload-folder-list" aria-label="Runs to create">{folders.map(folder => { const issue = folderProblem(folder), state = uploadStates[folder.name]; const Icon = folder.loose ? Files : FolderOpen; return <li key={folder.name}>
+          <Icon size={20} aria-hidden />
+          <div className="upload-file-name"><details><summary><strong>{folder.name || "(no folder)"}</strong><span>{issue ?? (state === "processing" ? "Processing…" : state === "saved" ? "Run saved" : state === "failed" ? "Could not process" : `${folder.files.length} documents · Ready`)}</span></summary><ul className="upload-document-names">{folder.files.map(file => <li key={file.name}>{file.name}</li>)}</ul></details></div>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => { setFolders(folders.filter(f => f !== folder)); setUploadStates({}); }} icon={<X size={16} />} aria-label={`Remove ${folder.name}`} />
+        </li>; })}</ul>
+      </section>}
+      {!!skippedFiles && <p className="upload-skipped" role="status">{skippedFiles} hidden or unsupported file{skippedFiles === 1 ? "" : "s"} skipped.</p>}
+      {busy === "upload" && progress && <p className="upload-stage" role="status" aria-live="polite">{progress.stage}</p>}
       <div className="demo-option"><div><strong>Sample documents</strong><p>Use the demo to see how a review works.</p></div><div className="run-start-action"><Button disabled={!!busy} loading={busy === "demo"} onClick={() => start("demo", api.loadDemo)}>Try a demo</Button>{busy === "demo" && progress && <RunProgressIndicator value={progress} />}</div></div>
       {session?.is_admin && health.data && !health.data.hosted && <details className="advanced-options"><summary>Advanced: use a local folder path</summary><div className="space-y-3 pt-3"><p className="text-ink-3">Enter a folder path on the machine running Kaizen.</p><input className="input w-full mono" placeholder="/path/to/project-folder" disabled={!!busy} value={path} aria-label="Local folder path" onChange={e => setPath(e.target.value)} /><div className="run-start-action"><Button loading={busy === "path"} disabled={!!busy || !path.trim()} onClick={() => void runFromPath()}>Run folder</Button>{busy === "path" && progress && <RunProgressIndicator value={progress} />}</div></div></details>}
       {err && <ErrorBox error={err} />}

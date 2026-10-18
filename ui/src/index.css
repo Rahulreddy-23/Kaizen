@@ -1050,6 +1050,7 @@
 .new-run-dialog .dialog-header p { margin-top: 8px; line-height: 1.6; max-width: 52ch; }
 .new-run-dialog .dialog-body { padding: 0 24px 20px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .new-run-dialog .dialog-body > * + * { margin-top: 20px; }
+.new-run-dialog .run-name-field .input { margin-top: 6px; }
 .new-run-dialog .dialog-footer { padding: 16px 24px; flex-shrink: 0; }
 .run-name-field .label { display: flex; gap: 5px; }
 .document-picker { display: flex; flex-direction: column; align-items: center; padding: 28px 24px 24px; border: 1px solid rgb(var(--c-line)); border-radius: 10px; background: rgb(var(--c-surface-2) / .65); text-align: center; }
@@ -1364,7 +1365,13 @@
 .run-progress progress::-webkit-progress-bar { background: rgb(var(--c-surface-2)); }
 .run-progress progress::-webkit-progress-value { background: rgb(var(--c-accent-500)); }
 .run-progress progress::-moz-progress-bar { background: rgb(var(--c-accent-500)); }
-.upload-folder-list { max-height: 240px; overflow: auto; overflow-wrap: anywhere; }
+.upload-folder-list { max-height: 272px; overflow: auto; overflow-wrap: anywhere; }
+.upload-folder-list .upload-file-name summary { cursor: pointer; padding: 2px 0; }
+.upload-folder-list .upload-file-name summary strong { display: inline; }
+.upload-folder-list .upload-document-names { margin: 8px 0 2px; color: rgb(var(--c-ink-3)); }
+.upload-folder-list .upload-document-names li { padding: 3px 0; border: 0; font-size: 12px; }
+.upload-skipped { color: rgb(var(--c-ink-3)); font-size: 12px; line-height: 1.5; }
+.upload-stage { padding: 12px 0; border-top: 1px solid rgb(var(--c-line)); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.new-run-dialog .upload-skipped { margin-top: 8px; }
 
 .new-run-dialog .dialog-footer, .new-run-dialog .demo-option { flex-wrap: wrap; }
-.upload-zone > small, .upload-zone > [role="status"] { display: block; margin-top: 8px; }

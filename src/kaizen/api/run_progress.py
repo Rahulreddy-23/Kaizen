@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 Progress = Callable[[int, str], None]
+HEARTBEAT_SECONDS = 15
 
 
 def stream_run(work: Callable[[Progress], Any]) -> StreamingResponse:
@@ -37,7 +38,13 @@ def stream_run(work: Callable[[Progress], Any]) -> StreamingResponse:
         try:
             yield json.dumps({'type': 'progress', 'percent': 0, 'stage': 'Preparing documents'}) + '\n'
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    # Long OCR pages need no invented percentage, but a live
+                    # stream must not look idle to an upstream HTTP proxy.
+                    yield json.dumps({'type': 'heartbeat'}) + '\n'
+                    continue
                 yield json.dumps(event) + '\n'
                 if event['type'] != 'progress':
                     break

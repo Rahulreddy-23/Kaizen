@@ -114,3 +114,16 @@ Measure changes against source transcriptions, including character errors, compl
 retained physical lines, numeric fields and translation association. Keep a separate set of unseen
 layouts for independent review. Counts and engine confidence alone do not establish accuracy; visually
 ambiguous characters and document-specific engineering conclusions still require verification.
+
+## Hosted memory and long pages
+
+OCR sessions disable ONNX's saved memory patterns because page and line-crop tensor shapes vary.
+The detector resolution, models, recognition batches and matching thresholds stay unchanged.
+RapidOCR also disables the CPU memory arena, and the hosted image limits inference to one CPU thread.
+The API processes one cross-check at a time; other uploads receive a retryable busy response.
+Progress streams send a heartbeat every 15 seconds during long pages rather than inventing progress.
+Parsed runs use an eight-entry memory cache and reload from the private workspace when evicted;
+page images retain their separate 64 MiB limit. Eviction does not delete documents or reviews.
+
+These bounds reduce memory retention; they do not establish concurrent-user capacity. Validate new
+layouts and real batch uploads on the configured hosting plan before increasing tester volume.

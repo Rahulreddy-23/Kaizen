@@ -79,6 +79,13 @@ def test_bundled_engine_is_preferred_even_when_tesseract_exists(monkeypatch):
     assert ocr.available_engines() == ['rapidocr-onnxruntime', 'tesseract']
 
 
+def test_variable_page_inference_does_not_retain_memory_patterns(monkeypatch):
+    monkeypatch.setenv('OMP_NUM_THREADS', '1')
+    options = ocr._rapid_session_options()
+    assert not options.enable_mem_pattern
+    assert options.intra_op_num_threads == options.inter_op_num_threads == 1
+
+
 def test_cache_distinguishes_a_flattened_scan_from_vector_recovery_geometry(monkeypatch):
     monkeypatch.setattr(ocr, 'available_engines', lambda: ['rapidocr-onnxruntime'])
     monkeypatch.setattr(ocr, 'outline_regions', lambda page: [pymupdf.Rect(10, 10, 60, 20)] if page.number else [])

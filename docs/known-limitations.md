@@ -37,8 +37,8 @@ See [real-data validation](real-data-validation.md) for the scope of the local e
 
 ## Review and learning
 
-- Registration is immediate for allowed domains but does not prove email ownership. Sessions do not
-  expire automatically. Broader access needs an approved identity/session policy; see [security](security-review.md).
+- Hosted registration requires an invitation for an approved domain. Confidential sessions expire after
+  eight hours. Invitations are bearer codes, so recipients must keep them private; see [security](security-review.md).
 - Shared authentication alone does not synchronize local workspaces. Account roles, files, terminology,
   decisions and learning artifacts remain in the configured workspace.
 - The website uses shared decisions and approvals; historical two-reviewer records remain compatible.
