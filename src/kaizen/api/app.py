@@ -645,11 +645,17 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         return {"ended": ended}
 
     @app.get("/api/health")
-    def health():
-        try:
-            restart_required = _source_fingerprint() != source_fingerprint
-        except OSError:
-            restart_required = True
+    async def health():
+        # Hosted source ships in an immutable image and changes through a new
+        # process on deploy. Keep readiness cheap during OCR: hashing every Python
+        # file on each probe can consume the probe timeout under CPU contention.
+        # Desktops still detect edits, outside the event loop.
+        restart_required = False
+        if os.environ.get("KAIZEN_HOSTED") != "1":
+            try:
+                restart_required = await run_in_threadpool(_source_fingerprint) != source_fingerprint
+            except OSError:
+                restart_required = True
         return {"status": "ok", "version": __version__, "api_contract": API_CONTRACT, "restart_required": restart_required, "hosted": os.environ.get("KAIZEN_HOSTED") == "1", "confidential": confidential_mode()}
 
     @app.get("/api/runs")

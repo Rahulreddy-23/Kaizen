@@ -127,3 +127,7 @@ page images retain their separate 64 MiB limit. Eviction does not delete documen
 
 These bounds reduce memory retention; they do not establish concurrent-user capacity. Validate new
 layouts and real batch uploads on the configured hosting plan before increasing tester volume.
+
+Hosted readiness probes return directly from the event loop without scanning the source tree.
+Local installs retain the restart-required source check, performed in a worker thread. Deployment
+images still run the network-disabled OCR smoke test in CI before release.

@@ -240,6 +240,21 @@ def test_health_detects_stale_server_after_source_changes(env, monkeypatch):
     assert env[1].get('/api/health').json()['restart_required']
 
 
+def test_hosted_readiness_does_not_walk_source_files_during_ocr(env, monkeypatch):
+    from kaizen.api import app as api_module
+
+    monkeypatch.setenv('KAIZEN_HOSTED', '1')
+
+    def source_scan():
+        raise AssertionError('Hosted readiness must not scan the application tree')
+
+    monkeypatch.setattr(api_module, '_source_fingerprint', source_scan)
+    response = env[1].get('/api/health')
+    assert response.status_code == 200
+    assert response.json()['hosted'] and response.json()['confidential']
+    assert not response.json()['restart_required']
+
+
 @pytest.mark.parametrize('path,method,payload', [
     ('/api/runs/from-path', 'post', {}),
     ('/api/runs/from-path', 'post', {'path': None}),
