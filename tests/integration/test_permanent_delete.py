@@ -124,6 +124,25 @@ def test_file_cleanup_failure_is_durable_and_resumed_on_startup(env, monkeypatch
     assert ws.db.conn.execute('SELECT count(*) FROM run_file_cleanup').fetchone()[0] == 0
 
 
+def test_cleanup_retry_rechecks_new_source_references(env, monkeypatch):
+    ws, client, _, source = env
+    rid = upload(client, source).json()['run_id']
+    cache = RunCache(ws)
+    reused = cache.get(rid).model_copy(deep=True)
+    reused.metadata.run_id = 'new-reference-after-storage-error'
+    uploads = Path(ws.runs.get(rid)['input_root'])
+    client.delete(f'/api/runs/{rid}')
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, 'rmtree', lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError('Storage busy')))
+        assert purge(client, rid).json()['cleanup_pending'] is True
+    cache.put(reused)
+    ws.db.conn.execute('UPDATE runs SET owner=? WHERE run_id=?', (EMAIL, reused.metadata.run_id))
+    ws.db.conn.commit()
+    create_app(ws)
+    assert uploads.exists()
+    assert ws.db.conn.execute('SELECT count(*) FROM run_file_cleanup').fetchone()[0] == 1
+
+
 def test_purge_cannot_follow_run_directory_symlinks(env):
     ws, client, run, source = env
     rid = run.metadata.run_id

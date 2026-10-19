@@ -50,10 +50,17 @@ def cleanup_files(ws, run_id: str) -> bool:
         job = ws.db.conn.execute('SELECT paths FROM run_file_cleanup WHERE run_id=?', (run_id,)).fetchone()
         if job is None:
             return True
-        for value in json.loads(job['paths']):
+        paths = json.loads(job['paths'])
+        # A local administrator may have registered another run since an I/O
+        # failure. Recheck references on every retry before touching any files.
+        references = [_references(dict(r)) for r in ws.db.conn.execute('SELECT * FROM runs')] if paths else []
+        for value in paths:
             path = Path(value)
             if not _managed(ws, path):
                 logger.error('Run file cleanup refused an unmanaged directory')
+                return False
+            if any(refs is None or any(ref == path or path in ref.parents for ref in refs) for refs in references):
+                logger.warning('Run file cleanup deferred to protect referenced files')
                 return False
             try:
                 if path.exists():
