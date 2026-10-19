@@ -100,7 +100,7 @@ def test_hidden_runs_cannot_be_read_by_guessing_ids(env, suffix):
     assert anonymous.get(f'/api/runs/{rid}{suffix}').status_code == 401
 
 
-@pytest.mark.parametrize('suffix', ['/decisions', '/finalize', '/bulk-accept', '/copy', '/verify-and-close', '/action-items', '/mining/approve', '/decisions/import'])
+@pytest.mark.parametrize('suffix', ['/decisions', '/finalize', '/bulk-accept', '/bulk-approve', '/copy', '/verify-and-close', '/action-items', '/mining/approve', '/decisions/import'])
 def test_viewer_cannot_mutate(env, suffix):
     ws, access, c, rid, row = env
     assert c[VIEWER].post(f'/api/runs/{rid}{suffix}', json={'row_id':row,'decision':'ACCEPT'}).status_code == 403

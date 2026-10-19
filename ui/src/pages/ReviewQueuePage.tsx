@@ -1,18 +1,18 @@
-import { CaretLeft, CaretRight, CheckSquare, EyeSlash, ListChecks, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, EyeSlash, ListChecks, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Badge, ClassificationBadge, RoleTag, SeverityBadge, StateBadge } from "../components/Badges";
-import { ConfirmDialog, ErrorBox, Loading } from "../components/Feedback";
+import { ErrorBox } from "../components/Feedback";
 import { HotkeyHelp, HotkeyHint } from "../components/HotkeyHelp";
 import { ImportDecisions } from "../components/ImportDecisions";
+import { BulkReviewActions } from "../components/BulkReviewActions";
 import { Button, Card, EmptyState, PageHeader, TableSkeleton } from "../components/ui";
-import { displayName, enc, fmtQty, issueLabel } from "../lib/format";
+import { enc, fmtQty, issueLabel } from "../lib/format";
 import { useHotkeys } from "../lib/hotkeys";
-import { PAGE_SIZE, queueParams, queueQueryFromParams } from "../lib/queue";
+import { PAGE_SIZE, queueParams, queueQueryFromParams, updateQueueFilter } from "../lib/queue";
 import { useReviewer } from "../lib/reviewer";
-import { useToast } from "../lib/toast";
-import { errorMessage, useAsync } from "../lib/useAsync";
+import { useAsync } from "../lib/useAsync";
 import { useDataRefresh } from "../lib/dataRefresh";
 import { CHECK_TYPES, CLASSIFICATIONS, DISCREPANCY_TYPES, REVIEW_STATES, ROLES, SEVERITIES, type ResultRow, type SideSummary } from "../types";
 
@@ -24,8 +24,7 @@ export default function ReviewQueuePage() {
   const { runId = "" } = useParams();
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
-  const toast = useToast();
-  const { viewerParams, name } = useReviewer();
+  const { viewerParams } = useReviewer();
   const run = useAsync(() => api.getRun(runId), [runId]);
   const query = queueQueryFromParams(sp, viewerParams);
   const page = useAsync(() => api.getResults(runId, query), [runId, sp.toString(), viewerParams.viewer, viewerParams.blind]);
@@ -35,11 +34,7 @@ export default function ReviewQueuePage() {
   useEffect(() => setSearch(sp.get("q") ?? ""), [sp]);
 
   const set = (k: string, v: string) => {
-    const n = new URLSearchParams(sp);
-    if (v) n.set(k, v);
-    else n.delete(k);
-    if (k !== "offset") n.delete("offset");
-    setSp(n, { replace: true });
+    setSp(updateQueueFilter(sp, k, v), { replace: true });
   };
   const clear = () => setSp(new URLSearchParams(), { replace: true });
   const open = (rowId: string) => nav(`/runs/${enc(runId)}/rows/${enc(rowId)}?${queueParams(sp).toString()}`);
@@ -68,38 +63,6 @@ export default function ReviewQueuePage() {
     [rows, hi, runId, sp.toString()],
   );
 
-  // ---- bulk accept
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkCount, setBulkCount] = useState<number | null>(null);
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkErr, setBulkErr] = useState<string | null>(null);
-  const openBulk = async () => {
-    setBulkOpen(true);
-    setBulkCount(null);
-    setBulkErr(null);
-    try {
-      const result = await api.getResults(runId, { needs_validation: false, state: "ENGINE_RECOMMENDED", limit: 1 });
-      setBulkCount(result.total);
-    } catch (e) {
-      setBulkErr(errorMessage(e));
-    }
-  };
-  const doBulk = async () => {
-    setBulkBusy(true);
-    setBulkErr(null);
-    try {
-      const res = await api.bulkAccept(runId);
-      toast({ tone: "ok", title: `Accepted ${res.accepted} clean row${res.accepted === 1 ? "" : "s"} as ${name}`, description: "Each carries the comment “bulk accept: exact/equivalent with no discrepancy”." });
-      setBulkOpen(false);
-      page.reload();
-      run.reload();
-    } catch (e) {
-      setBulkErr(errorMessage(e));
-    } finally {
-      setBulkBusy(false);
-    }
-  };
-
   const offset = query.offset ?? 0;
   useEffect(() => {
     if (!page.data || page.loading || offset === 0 || page.data.rows.length) return;
@@ -109,7 +72,7 @@ export default function ReviewQueuePage() {
   const total = page.data?.total ?? 0;
   const from = total === 0 ? 0 : Math.min(offset + 1, total);
   const to = Math.min(offset + PAGE_SIZE, total);
-  const nvOn = sp.get("nv") !== "0";
+  const nvOn = query.needs_validation === true;
 
   const sel = (k: string, label: string, options: readonly string[], render?: (v: string) => string) => (
     <label className="flex flex-col gap-1 text-xs text-ink-2">
@@ -142,9 +105,7 @@ export default function ReviewQueuePage() {
                 run.reload();
               }}
             />}
-            <Button onClick={openBulk} disabled={!name || !run.data || run.data.permission === "view"} icon={<CheckSquare size={16} />} title={name ? "" : "Sign in first"}>
-              Accept all clean rows
-            </Button>
+            <BulkReviewActions runId={runId} canEdit={!!run.data && run.data.permission !== "view"} onChanged={() => { page.reload(); run.reload(); }}/>
           </>
         }
       />
@@ -288,24 +249,7 @@ export default function ReviewQueuePage() {
         </Card>
       </div>
 
-      {bulkOpen && (
-        <ConfirmDialog title="Accept all clean rows" confirmLabel={bulkCount ? `Accept ${bulkCount} rows` : "Accept"} onConfirm={doBulk} onCancel={() => setBulkOpen(false)} busy={bulkBusy || bulkCount === null}>
-          <p>
-            Records an <b>Accept</b> decision as <b title={name}>{displayName(name)}</b> on every row that has no discrepancy and does not need validation. Rows you already decided are skipped.
-          </p>
-          {bulkCount === null && !bulkErr && <Loading lines={2} />}
-          {bulkCount !== null && (
-            <p className="text-md">
-              <b className="num">{bulkCount}</b> row{bulkCount === 1 ? "" : "s"} will be accepted.
-            </p>
-          )}
-          {bulkErr && <ErrorBox error={bulkErr} />}
-          <p className="text-ink-3 text-xs">
-            Nothing is hidden by this: accepted rows stay in the run and the workbook with the engine recommendation and your decision side by side.{" "}
-            <Link to={`/runs/${enc(runId)}/review?nv=0&classification=EXACT`}>Inspect the clean rows first</Link>.
-          </p>
-        </ConfirmDialog>
-      )}
+
     </div>
   );
 }

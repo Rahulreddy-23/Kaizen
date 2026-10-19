@@ -12,6 +12,14 @@ DECISIONS = ("ACCEPT", "OVERRIDE", "CONFIRM_DISCREPANCY", "NEEDS_MORE_INFORMATIO
 STATES = ("ENGINE_RECOMMENDED", "REVIEWER_1_COMPLETE", "REVIEWER_2_COMPLETE", "AGREED", "DISAGREEMENT", "FINALIZED")
 
 
+def auto_cleared(result: CheckResult) -> bool:
+    """Bulk review is restricted to paired, unflagged component comparisons."""
+    return (result.role in ('item', 'change') and result.source_a is not None
+            and result.source_b is not None and not result.requires_validation
+            and result.classification in (Classification.EXACT, Classification.EQUIVALENT)
+            and all(d.severity.value == 'INFO' for d in result.discrepancies))
+
+
 @dataclass(frozen=True)
 class Decision:
     slot: int
@@ -197,9 +205,10 @@ class ReviewStore:
 
     def bulk_accept_clean(self, run_id: str, results: list[CheckResult], slot: int, reviewer: str) -> int:
         existing = self.all_decisions(run_id)
+        finals = self.finals(run_id)
         n = 0
         for r in results:
-            if r.role == 'exempt' or r.requires_validation or slot in existing.get(r.row_id, {}):
+            if not auto_cleared(r) or r.row_id in finals or slot in existing.get(r.row_id, {}):
                 continue
             self.decide(run_id, r.row_id, slot, reviewer, "ACCEPT", comment="bulk accept: exact/equivalent with no discrepancy", timed=False)
             n += 1

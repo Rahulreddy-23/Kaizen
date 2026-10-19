@@ -64,6 +64,8 @@ Open Review queue in a run, narrow the list, then inspect each finding against i
 
 4. **Approve the saved decision.** Review the saved values, then choose Approve decision. If you are approving your own work, complete the explicit confirmation and use Confirm self-approval. Changes made later remove the old approval but keep its history.
 
+For a batch, use **Approve auto-cleared rows** on Overview, or **Bulk review** in the queue. The preview counts eligible paired Exact/Equivalent component rows across the run. Confirm that you reviewed the pairings, then approve. Existing Accept decisions can be approved; other decisions, flagged/unpaired rows, headers, exemptions and prior approvals are skipped. **Accept auto-cleared rows** only saves review decisions and leaves them awaiting approval. Selecting **Approved** turns off Pending only so completed approvals remain visible. Editing an approved row removes its current approval and reduces the Approved count until it is approved again.
+
 Potential means review is needed. Unmapped means no counterpart was accepted; it does not prove a physical component is absent. Saving a decision is different from approving it.
 
 ## Choose shared terminology

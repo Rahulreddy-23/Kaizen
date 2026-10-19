@@ -20,12 +20,21 @@ export function queueQueryFromParams(sp: URLSearchParams, _v: ViewerParams, over
     state: sp.get("state") || undefined,
     role: sp.get("role") || undefined,
     // Pending review is ON by default; "nv=0" shows every row, including approvals.
-    needs_validation: sp.get("nv") === "0" ? undefined : true,
+    needs_validation: sp.get("nv") === "0" || sp.get("state") === "FINALIZED" ? undefined : true,
     search: sp.get("q") || undefined,
     limit: PAGE_SIZE,
     offset: Number.isSafeInteger(Number(sp.get("offset"))) ? Math.max(0, Number(sp.get("offset"))) : 0,
     ...overrides,
   };
+}
+
+export function updateQueueFilter(sp: URLSearchParams, key: string, value: string): URLSearchParams {
+  const next = new URLSearchParams(sp);
+  value ? next.set(key, value) : next.delete(key);
+  if (key === "state" && value === "FINALIZED") next.set("nv", "0");
+  if (key === "nv" && value !== "0" && next.get("state") === "FINALIZED") next.delete("state");
+  if (key !== "offset") next.delete("offset");
+  return next;
 }
 
 /** Only the queue-related params, so links stay short. */

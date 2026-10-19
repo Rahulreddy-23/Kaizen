@@ -158,7 +158,7 @@
         },
         {
           "title": "Approve the saved decision",
-          "body": "Review the saved values, then choose Approve decision. If you are approving your own work, complete the explicit confirmation and use Confirm self-approval. Changes made later remove the old approval but keep its history."
+          "body": "Review the saved values, then choose Approve decision. If you are approving your own work, complete the explicit confirmation and use Confirm self-approval. For a batch, use Approve auto-cleared rows on Overview or Bulk review in the queue: inspect the eligible count, confirm that you reviewed the pairings and approve. Accept auto-cleared rows saves decisions only; it leaves them Reviewed and awaiting approval. Selecting Approved turns off Pending only. Changes made later remove the old approval, reduce the Approved count and keep the history."
         }
       ],
       "paragraphs": [],

@@ -40,6 +40,11 @@ class RunName(Payload):
     name: str = Field(min_length=1, max_length=120)
 
 
+class BulkApprovalInput(Payload):
+    expected_revision: str = Field(min_length=64, max_length=64)
+    confirm_self_approval: bool = False
+
+
 class UserUpdate(Payload):
     status: str = "pending"
     is_admin: bool = False

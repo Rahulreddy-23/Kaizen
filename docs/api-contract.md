@@ -163,6 +163,8 @@ Component/assembly candidates remain Potential with source evidence; missing spe
 | POST | `/api/runs/{run_id}/decisions` | `{row_id, decision, comment?, override_classification?, expected_revision}`; records the shared decision and clears prior approval. |
 | POST | `/api/runs/{run_id}/finalize` | `{row_id, final_decision, expected_revision, confirm_self_approval?, note?}`; approves the saved current decision. |
 | POST | `/api/runs/{run_id}/bulk-accept` | `{}`; accepts eligible clean rows, not approval of the whole run. |
+| GET | `/api/runs/{run_id}/bulk-review` | Returns `accept_count`, `approve_count` and an opaque `revision` for eligible paired, auto-cleared component comparisons. Headers, exemptions, flagged/unpaired rows, prior approvals and incompatible saved decisions are excluded. |
+| POST | `/api/runs/{run_id}/bulk-approve` | `{expected_revision, confirm_self_approval: true}`; atomically records missing Accept decisions and approves the eligible batch. Preserves other decisions and records self-approval attribution. Returns `approved`; a changed preview returns 409 without partial writes. Ordinary approval does not create verified training labels. |
 | POST | `/api/runs/{run_id}/relationships/from-row` | Reviewer with Edit access: `{row_id, scope?, anchor?, canonical?, aliases?, doc_types?, notes?}`; explicitly approves and adopts that identity relationship. |
 | GET | `/api/runs/{run_id}/terminology-worklist` | Ranked identity suggestions, projected rows cleared and top-five/top-ten totals. |
 | GET | `/api/runs/{run_id}/mining` | Optional `min_skus=2`; repeated suggestions with evidence/confirmations/contradictions. |

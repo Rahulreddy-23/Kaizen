@@ -33,6 +33,7 @@ from kaizen.api.payloads import (
     ActionInput,
     ActionUpdate,
     ApprovalInput,
+    BulkApprovalInput,
     ChangeNote,
     Credentials,
     DecisionInput,
@@ -71,7 +72,7 @@ from kaizen.review.mining import approve_suggestion, mine_suggestions, reject_su
 from kaizen.review.progress import review_snapshot
 from kaizen.review.rundiff import diff_runs
 from kaizen.review.sessions import ReviewSession, SessionStore
-from kaizen.review.store import ReviewStore
+from kaizen.review.store import ReviewStore, auto_cleared
 from kaizen.security import confidential_mode, private_headers, session_lifetime
 from kaizen.storage.purge import purge_run, resume_cleanup
 from kaizen.terminology.catalog import TerminologyCatalog
@@ -227,7 +228,7 @@ def _summary(run: Run, review: ReviewStore, viewer_slot: int = 1, blind: bool = 
         "run_id": run.metadata.run_id, "timestamp": run.metadata.timestamp.isoformat(), "input_root": run.metadata.input_root, "tool_version": run.metadata.tool_version,
         "skus": len(run.groups), "documents": len(run.documents), "documents_by_type": {t: sum(1 for d in run.documents if d.doc_type.value == t) for t in ("BOM", "LABEL", "DRAWING", "PCO")},
         "unrecognised_files": [i.path for i in run.metadata.inputs if i.doc_type is None], "rows": len(run.results), "reviewable_rows": len(rev), "exempt_rows": sum(1 for r in run.results if r.role == "exempt"), "header_rows_needing_validation": header_needs,
-        "counts": counts, "needs_validation": needs, "auto_cleared": len(rev) - needs,
+        "counts": counts, "needs_validation": needs, "auto_cleared": sum(auto_cleared(r) for r in rev),
         "per_check": {ct: sum(1 for r in run.results if r.check.value == ct) for ct in ("BOM_LABEL", "BOM_DRAWING", "LABEL_DRAWING", "PCO_BOM", "LABEL_REVISION")},
         "blockers": sum(1 for r in run.results for d in r.discrepancies if d.severity.value == "BLOCKER"),
         "coverage": [c.model_dump() for c in run.coverage], "groups": [g.model_dump() for g in run.groups], "warnings": run.warnings,
@@ -1110,6 +1111,24 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if changed:
             queue_learning(run_id, session.reviewer, background)
         return {"accepted": accepted}
+
+    @app.get('/api/runs/{run_id}/bulk-review')
+    def preview_bulk_review(run_id: str):
+        preview = review.bulk_preview(run_id, cache.get(run_id).results)
+        return {k: v for k, v in preview.items() if k != 'approve_ids'}
+
+    @app.post('/api/runs/{run_id}/bulk-approve')
+    def post_bulk_approval(run_id: str, payload: BulkApprovalInput, background: BackgroundTasks, session=Depends(_identified)):
+        try:
+            with ws.db.transaction():
+                labels = [a for a in learning.records('learning_labels', run_id) if a['status'] == 'approved']
+                approved = review.bulk_approve_clean(run_id, cache.get(run_id).results, session.reviewer, payload.expected_revision, payload.confirm_self_approval)
+                changed = any(learning.review_changed(run_id, a['row_id'], a['payload']['review_revision']) for a in labels)
+        except ValueError as exc:
+            raise HTTPException(409 if 'changed' in str(exc) else 400, str(exc))
+        if approved and changed:
+            queue_learning(run_id, session.reviewer, background)
+        return {'approved': approved}
 
     @app.post("/api/runs/{run_id}/relationships/from-row")
     def relationship_from_row(run_id: str, payload: RowRelationship, session: ReviewSession | None = Depends(_identified)):

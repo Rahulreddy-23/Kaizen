@@ -69,6 +69,7 @@ Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corner
   Owners open Options for Rename/Delete; deletion retains the named-run confirmation and restore workflow.
 - Keep page overflow within the viewport. Dense tables and source images may scroll in their own
   containers. Wrap long explanations, paths and identifiers; preserve full text in accessible content.
+- Overview offers explicit bulk approval under Auto-cleared. The queue’s Bulk review menu separates Accept decisions from approvals. Bulk approval previews run-wide eligible counts and requires a self-approval acknowledgement. Approved filters disable Pending only; enabling Pending only clears the Approved filter. Saving a decision and approving it remain separate states.
 
 ## Lists and evidence
 

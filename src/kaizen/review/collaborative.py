@@ -1,8 +1,9 @@
 """One shared review per row, with append-only changes and explicit approvals."""
+import hashlib
 import json
 from dataclasses import asdict
 
-from kaizen.review.store import ReviewStore
+from kaizen.review.store import ReviewStore, auto_cleared
 
 
 class CollaborativeReviewStore(ReviewStore):
@@ -13,7 +14,36 @@ class CollaborativeReviewStore(ReviewStore):
         # Keep the initial "not reviewed" snapshot and every write together. Another editor must
         # not have their decision overwritten between the snapshot and the bulk operation.
         with self._atomic():
-            return super().bulk_accept_clean(run_id, results, slot, reviewer)
+            existing = self.all_decisions(run_id)
+            return super().bulk_accept_clean(run_id, [r for r in results if not existing.get(r.row_id)], slot, reviewer)
+
+    def bulk_preview(self, run_id, results):
+        with self._atomic():
+            decisions, finals = self.all_decisions(run_id), self.finals(run_id)
+            accept, approve = [], []
+            for row in results:
+                if not auto_cleared(row) or row.row_id in finals:
+                    continue
+                current = decisions.get(row.row_id, {})
+                if not current:
+                    accept.append(row.row_id)
+                if not current or all(d.decision == 'ACCEPT' for d in current.values()):
+                    approve.append(row.row_id)
+            revision = hashlib.sha256(json.dumps([run_id, [(rid, self.revision(run_id, rid)) for rid in approve]]).encode()).hexdigest()
+            return {'accept_count': len(accept), 'approve_count': len(approve), 'revision': revision, 'approve_ids': approve}
+
+    def bulk_approve_clean(self, run_id, results, actor, expected_revision, confirmed):
+        with self._atomic():
+            if confirmed is not True:
+                raise ValueError('Confirm the bulk approval, including approval of your own work.')
+            preview = self.bulk_preview(run_id, results)
+            if expected_revision != preview['revision']:
+                raise ValueError('These rows changed. Refresh the bulk preview before approving.')
+            for rid in preview['approve_ids']:
+                if not self.decisions(run_id, rid):
+                    self.decide(run_id, rid, 1, actor, 'ACCEPT', 'Bulk approval: reviewed auto-cleared pairing.', timed=False)
+                self.approve(run_id, rid, 'ACCEPT', actor, 'Bulk approval of auto-cleared rows.', self.revision(run_id, rid), True)
+            return len(preview['approve_ids'])
 
     @staticmethod
     def state_of(decisions, final):

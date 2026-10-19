@@ -33,7 +33,7 @@ export function ActionMenu({ label = "Options", compact = false, items }: {
       event.preventDefault(); const buttons = controls(); (event.key === "Home" ? buttons[0] : buttons[buttons.length - 1])?.focus();
     } else if (event.key === "Tab" && open) close();
   }}>
-    <Button icon={compact ? <DotsThree size={20} weight="bold"/> : undefined} iconOnly={compact} iconRight={!compact ? <CaretDown size={14}/> : undefined} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => {last.current = false; setOpen(value => !value);}}>{!compact && "Options"}</Button>
+    <Button icon={compact ? <DotsThree size={20} weight="bold"/> : undefined} iconOnly={compact} iconRight={!compact ? <CaretDown size={14}/> : undefined} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => {last.current = false; setOpen(value => !value);}}>{!compact && label}</Button>
     {open && <div id={id} className="action-menu-panel" role="menu" aria-label={label}>
       {items.map(item => <button key={item.label} role="menuitem" tabIndex={-1} type="button" className={item.danger ? "is-danger" : undefined} onClick={() => {close(); item.onSelect();}}>{item.icon}{item.label}</button>)}
     </div>}

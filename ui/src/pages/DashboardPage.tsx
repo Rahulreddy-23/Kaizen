@@ -1,6 +1,7 @@
 import { ArrowRight, Certificate, CheckCircle, GitDiff, ShieldWarning, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { BulkReviewActions } from "../components/BulkReviewActions";
 import { RunActions } from "../components/RunActions";
 import { RunSharing } from "../components/RunSharing";
 import { ExcelExport } from "../components/ExcelExport";
@@ -138,6 +139,7 @@ export default function DashboardPage() {
               <p className="text-sm text-ink-3 mt-2">
                 Original automated results. <Link className="whitespace-nowrap" to={queue({ nv: "0", engine_classification: "EXACT" })}>View exact matches</Link>.
               </p>
+              <BulkReviewActions runId={runId} canEdit={r.permission !== "view"} onChanged={run.reload} approveOnly/>
             </div>
             <div className="p-5">
               <div className="text-sm font-medium text-ink-2">Needs review</div>

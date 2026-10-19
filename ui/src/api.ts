@@ -250,6 +250,8 @@ export const api = {
   postDecision: (runId: string, body: DecisionBody) => request<DecisionResponse>(`/api/runs/${enc(runId)}/decisions`, json("POST", body)),
   finalize: (runId: string, body: FinalizeBody) => request<{ row_id: string; state: ReviewState }>(`/api/runs/${enc(runId)}/finalize`, json("POST", body)),
   bulkAccept: (runId: string) => request<{ accepted: number }>(`/api/runs/${enc(runId)}/bulk-accept`, json("POST", {})),
+  bulkReviewPreview: (runId: string) => request<{accept_count: number; approve_count: number; revision: string}>(`/api/runs/${enc(runId)}/bulk-review`),
+  bulkApprove: (runId: string, revision: string) => request<{approved: number}>(`/api/runs/${enc(runId)}/bulk-approve`, json("POST", {expected_revision: revision, confirm_self_approval: true})),
 
   // ---- reviewer session: identity, slot and blind mode are held by the server
   // Sign-up creates the account; sign-in exchanges the password for a session. The password is only

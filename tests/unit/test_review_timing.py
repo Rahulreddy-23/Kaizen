@@ -55,7 +55,9 @@ def test_reopening_a_row_restarts_the_clock(store):
 
 
 def test_bulk_accept_is_never_timed(store):
-    rows = [_row(1), _row(2)]
+    from tests.unit.test_quick_view import fixture
+    paired = fixture().results[0]
+    rows = [_row(i).model_copy(update={'source_a': paired.source_a, 'source_b': paired.source_b}) for i in (1, 2)]
     store.mark_opened("run1", "R-1", slot=1)
     assert store.bulk_accept_clean("run1", rows, slot=1, reviewer="Dharma") == 2
     assert all(d.seconds_spent is None for d in store.decisions("run1", "R-1").values())
