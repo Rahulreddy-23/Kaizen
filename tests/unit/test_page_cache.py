@@ -39,3 +39,22 @@ def test_concurrent_same_page_joins_one_render_and_failures_can_be_retried():
     with pytest.raises(ValueError):
         cache.get('bad', lambda: (_ for _ in ()).throw(ValueError('broken source')))
     assert cache.get('bad', lambda: b'recovered') == b'recovered'
+
+
+def test_purge_releases_only_its_pages_and_pending_renders_cannot_repopulate_cache():
+    cache = PageImageCache()
+    cache.get(('deleted', 'first'), lambda: b'private')
+    cache.get(('kept', 'first'), lambda: b'kept')
+    entered, release = Event(), Event()
+    def render():
+        entered.set()
+        assert release.wait(5)
+        return b'pending private page'
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(cache.get, ('deleted', 'second'), render)
+        assert entered.wait(5)
+        cache.discard_run('deleted')
+        release.set()
+        assert pending.result(5) == b'pending private page'
+    assert list(cache._images) == [('kept', 'first')]
+    assert cache._bytes == 4

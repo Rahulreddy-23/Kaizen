@@ -100,7 +100,7 @@ Runs start private to their owner. Owners control who can view or change them.
 
 2. **Rename or delete.** Owners can open Options → Rename or Delete on Overview or All runs. Read the named confirmation before deleting.
 
-3. **Restore or make a copy.** Deletion moves a run to All runs → Deleted runs. Only its owner can restore it, including its previous sharing. Make a copy creates an independent private run; approvals and sharing do not transfer.
+3. **Restore, permanently delete, or make a copy.** Deletion first moves a run to All runs → Deleted runs. Only its owner can restore it, including its previous sharing. In Deleted runs, choose **Delete permanently**, type **DELETE**, then confirm to remove the run, stored uploads, extracted results, exports, review history and run-specific closed-testing records. This cannot be undone. Independent copies, original local folders, approved shared terminology and files still used by other runs are retained. SQLite reuses freed database pages; the database file need not shrink. A minimal deletion receipt and non-content dataset split identifiers remain. Existing downloaded copies and hosting backups follow their own retention policies. If storage cleanup fails, the app reports it and retries on service restart. Make a copy creates an independent private run; approvals and sharing do not transfer.
 
 Delete is recoverable: source files and review history remain stored. For permanent removal, contact the application operator. View-only users cannot change decisions, approve results or download review exports.
 

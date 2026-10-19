@@ -49,6 +49,7 @@ from kaizen.api.payloads import (
     UserUpdate,
 )
 from kaizen.api.quick_view import build_quick_view, filter_quick_view
+from kaizen.api.run_guard import RunRequestGuard
 from kaizen.api.run_progress import Progress, stream_run
 from kaizen.evaluation.learning import shadow_evaluate
 from kaizen.ingest.detect import detect_doc_type
@@ -72,6 +73,7 @@ from kaizen.review.rundiff import diff_runs
 from kaizen.review.sessions import ReviewSession, SessionStore
 from kaizen.review.store import ReviewStore
 from kaizen.security import confidential_mode, private_headers, session_lifetime
+from kaizen.storage.purge import purge_run, resume_cleanup
 from kaizen.terminology.catalog import TerminologyCatalog
 from kaizen.terminology.exchange import export_xlsx
 from kaizen.terminology.source_import import import_source, inspect_source
@@ -192,9 +194,14 @@ class RunCache:
                 run = load_run(rec["json_path"])
             except FileNotFoundError:
                 raise HTTPException(404, "The saved run is unavailable. Upload its source documents again.")
+        # The workspace list can load a run outside a run-scoped request. Do
+        # not re-enrol or retain it if another request deleted it meanwhile.
+        with self.ws.db.transaction():
+            if self.ws.runs.get(run_id) is None:
+                raise HTTPException(404, 'Run not found.')
+            if self.learning and rec.get("owner"):
+                self.learning.ensure_enrolled(run, rec["owner"])
             self._remember(run)
-        if self.learning and rec.get("owner"):
-            self.learning.ensure_enrolled(run, rec["owner"])
         return run
 
     def put(self, run: Run) -> Path:
@@ -202,6 +209,10 @@ class RunCache:
         self.ws.register_run(run, path)
         self._remember(run)
         return path
+
+    def discard(self, run_id: str) -> None:
+        with self._lock:
+            self._runs.pop(run_id, None)
 
 
 def _summary(run: Run, review: ReviewStore, viewer_slot: int = 1, blind: bool = False) -> dict[str, Any]:
@@ -244,6 +255,8 @@ def _queue_sort_key(r):
 def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, accounts: LocalAccounts | SupabaseAccounts | None = None) -> FastAPI:
     ws = workspace or Workspace.resolve(None)
     app = FastAPI(title="Kaizen Cross-Check", version=__version__)
+    app.add_middleware(RunRequestGuard)
+    resume_cleanup(ws)
     source_fingerprint = _source_fingerprint()
     page_images = PageImageCache()
     change_salt = uuid.uuid4().hex
@@ -305,6 +318,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     def queue_learning(run_id, actor, background):
         with learning_lock:
+            if ws.runs.get(run_id) is None:
+                raise HTTPException(404, 'Run not found.')
             if background is None and run_id in learning_running:
                 raise HTTPException(409, 'A candidate rebuild is already running. Wait for its result.')
             with ws.db.transaction():
@@ -437,7 +452,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             raise HTTPException(403, 'Only application administrators can change shared terminology.')
         rid = request.path_params.get('run_id')
         if rid:
-            if path == f'/api/runs/{rid}/restore' and request.method == 'POST':
+            if (path == f'/api/runs/{rid}/restore' and request.method == 'POST') or (path == f'/api/runs/{rid}/permanent' and request.method == 'DELETE'):
                 record = ws.runs.get(rid, include_deleted=True)
                 if not record or record['owner'] != actor:
                     raise HTTPException(404, 'Deleted run not found.')
@@ -549,8 +564,25 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             ws.db.conn.execute('UPDATE runs SET deleted_at=?,deleted_by=? WHERE run_id=?',
                                (datetime.now(timezone.utc).isoformat(), session.reviewer, run_id))
             ws.db.audit(session.reviewer, 'run.deleted', run_id)
-        cache._runs.pop(run_id, None)
+        cache.discard(run_id)
         return {'run_id': run_id, 'deleted': True}
+
+    @app.delete('/api/runs/{run_id}/permanent')
+    def permanently_delete_run(run_id: str, confirmation: str = Body(..., embed=True), session=Depends(_identified)):
+        if confirmation != run_id:
+            raise HTTPException(400, 'Confirm the selected run before deleting it permanently.')
+        with learning_lock:
+            if run_id in learning_running:
+                raise HTTPException(409, 'Closed-testing processing is still finishing. Wait, then try again.')
+            try:
+                result = purge_run(ws, run_id, session.reviewer)
+            except KeyError:
+                raise HTTPException(404, 'Deleted run not found.')
+            except ValueError as e:
+                raise HTTPException(409, str(e))
+            cache.discard(run_id)
+            page_images.discard_run(run_id)
+        return result
 
     @app.post('/api/runs/{run_id}/restore')
     def restore_run(run_id: str, session=Depends(_identified)):

@@ -28,8 +28,7 @@ for implementation boundaries.
    ground truth and candidate evaluation, not as an automatic approval or live-model update.
 
 Owners can rename or delete from **Options** in All runs or Overview. Deletion moves a run to **All runs → Deleted runs**,
-where only its owner can restore it. Documents, decisions and existing sharing are retained; deleted runs
-are inaccessible to everyone until restored. Independent copies are unaffected.
+where only its owner can restore it or confirm permanent deletion by typing DELETE. Recoverable deletion retains documents, decisions and existing sharing; permanent deletion removes run-specific files and review/learning data to reclaim storage. Shared files, original local folders, independent copies and approved terminology survive. Deleted runs are inaccessible to everyone until restored.
 
 The website uses one shared decision and explicit approval. Reviewer-slot selection and blind-review
 steps belong to the legacy CLI workflow; they are not the current website interaction.

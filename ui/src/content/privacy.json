@@ -90,9 +90,9 @@
       "intro": "Recoverable deletion does not erase the underlying documents.",
       "steps": [],
       "paragraphs": [
-        "Delete run moves a run to Deleted runs. Its sources, decisions, history and previous sharing remain stored so the owner can restore it. The operator must handle permanent removal requests and any required retention schedule; automatic permanent purging is not currently provided.",
+        "Delete run moves a run to Deleted runs. Its sources, decisions, history and previous sharing remain stored so the owner can restore it. The owner can choose Delete permanently there, type DELETE and confirm to erase the run’s stored uploads, extracted results, generated exports, review history and run-specific closed-testing records. This is irreversible. Files used by other runs, independent copies, approved shared terminology and original local folders are retained. A minimal deletion receipt and non-content dataset split identifiers remain. SQLite reuses freed database pages rather than shrinking its file during a request. Failed file cleanup is reported and retried when the service restarts. There is no automatic retention schedule.",
         "Backups and provider disk snapshots may retain earlier data. Access revocation and application deletion do not immediately remove all backup copies. The operator must define a backup expiry and restoration process appropriate to the documents.",
-        "To request permanent deletion or report unintended access, contact the application administrator or the person who supplied your testing invitation. No unverified privacy-contact address is published here."
+        "Use All runs → Deleted runs → Delete permanently for owner-controlled removal. For backup retention requests or unintended access, contact the application administrator or the person who supplied your testing invitation. No unverified privacy-contact address is published here."
       ],
       "note": "",
       "action": null,

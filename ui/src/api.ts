@@ -214,6 +214,7 @@ export const api = {
   share: (runId: string, email: string, permission: "view" | "edit" | null) => request<RunShare[]>(`/api/runs/${enc(runId)}/sharing`, json("PUT", {email, permission})),
   renameRun: (runId: string, name: string) => request<unknown>(`/api/runs/${enc(runId)}`, json("PATCH", {name})),
   deleteRun: (runId: string) => request<{deleted: boolean}>(`/api/runs/${enc(runId)}`, {method: "DELETE"}),
+  permanentlyDeleteRun: (runId: string) => request<{deleted: boolean; cleanup_pending: boolean; files_retained?: boolean}>(`/api/runs/${enc(runId)}/permanent`, {method: "DELETE", body: JSON.stringify({confirmation: runId})}),
   restoreRun: (runId: string) => request<{restored: boolean}>(`/api/runs/${enc(runId)}/restore`, {method: "POST"}),
   listDeletedRuns: () => request<RunListItem[]>("/api/runs?deleted=true"),
   copyRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}/copy`, {method: "POST"}),

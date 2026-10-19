@@ -88,6 +88,7 @@ verification, candidate evaluation and dataset exports additionally require Edit
 | PATCH | `/api/runs/{run_id}` | Owner `{name}`; trimmed 1–120 characters. |
 | DELETE | `/api/runs/{run_id}` | Owner moves the run to Deleted runs; retains documents, reviews and sharing for recovery. All normal run routes become inaccessible. |
 | POST | `/api/runs/{run_id}/restore` | Only the original owner restores a deleted run, including its prior sharing. |
+| DELETE | `/api/runs/{run_id}/permanent` | Original owner only; run must already be deleted. Body: `{"confirmation":"<run_id>"}`. Erases run-scoped review/learning data and unshared app-managed files. Returns `deleted` and `cleanup_pending`; pending file removal retries at startup. Conflicts (409) while run requests or closed-testing jobs are in flight. Copies, local original folders, shared files and approved terminology survive. |
 | POST | `/api/runs/{run_id}/copy` | Private independent run owned by the actor. Sharing/approvals do not transfer. |
 | GET | `/api/runs/{run_id}/download.zip` | Sources, portable run JSON, history and editable workbook. Downloading alone does not register a new run. |
 

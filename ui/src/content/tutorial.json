@@ -234,11 +234,11 @@
         },
         {
           "title": "Restore or make a copy",
-          "body": "Deletion moves a run to All runs → Deleted runs. Only its owner can restore it, including its previous sharing. Make a copy creates an independent private run; approvals and sharing do not transfer."
+          "body": "Deletion moves a run to All runs → Deleted runs. Only its owner can restore it, including its previous sharing. To free storage, choose Delete permanently there, type DELETE and confirm. This erases the run’s files, results, review history and closed-testing records and cannot be undone. Independent copies, shared source files and approved terminology are retained. Make a copy creates an independent private run; approvals and sharing do not transfer."
         }
       ],
       "paragraphs": [],
-      "note": "Delete is recoverable: source files and review history remain stored. For permanent removal, contact the application operator. View-only users cannot change decisions, approve results or download review exports.",
+      "note": "Delete is recoverable until the owner confirms Delete permanently in Deleted runs. Original local folders and backups follow their own retention policies. View-only users cannot change decisions, approve results or download review exports.",
       "action": {
         "label": "Open all runs",
         "to": "/"

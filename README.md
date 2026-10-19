@@ -14,7 +14,7 @@ Read the [user tutorial](docs/user-guide.md) and [privacy/document-handling noti
 - Five cross-checks: BOM–Label, BOM–Drawing, Label–Drawing, PCO–BOM and Old–New label, plus missing-document coverage.
 - **Quick view**: per-SKU BOM / Label / Diagram comparisons with green/orange source highlights, resizable two/three-document layouts, full-width focus and independent pan/zoom.
 - SKU-grouped documents, searchable source/discrepancy lists, paginated review queues and source-page references. Labels/drawings offer comparison entries and a separate **All recognized text** view for headers, notes and unparsed text.
-- Invite-only BD accounts, private runs, rename/delete/restore, View/Edit sharing, independent copies, decisions and explicit approvals.
+- Invite-only BD accounts, private runs, rename/delete/restore and owner-only permanent deletion to reclaim stored files; View/Edit sharing, independent copies, decisions and explicit approvals.
 - Shared reviewer-approved terminology, with named approvals and optional account selections; independently verified closed-testing feedback. Uncertain component matches, assemblies, quantity bases and drawing applicability remain review-required.
 - Per-SKU Excel downloads (**Summary** or **Complete details**), decision imports, annotated BOM PDFs, certificates, action items and run comparisons.
 

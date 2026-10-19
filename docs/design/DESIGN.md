@@ -74,7 +74,7 @@ Cards use 10px corners and subtle borders/shadows. Inputs/buttons use 7px corner
 
 | Surface | Implemented behavior |
 | --- | --- |
-| All runs | Totals, ownership filters, Deleted runs and search; 25 entries per client-side page. Owners open Options for Rename/Delete; deleted runs offer Restore. Destructive actions require a confirmation that names the run. |
+| All runs | Totals, ownership filters, Deleted runs and search; 25 entries per client-side page. Owners open Options for Rename/Delete; deleted runs offer Restore and Delete permanently. Permanent deletion names the run, explains storage/history removal and retained copies, requires typing DELETE, locks the dialog during submission and reports cleanup failures. |
 | Review queue | 100 comparisons per page; basic filters plus More filters; current review state and engine evidence stay distinct. |
 | Terminology | Shared library/My terminology, named approval/time/version, reviewer/scope/search filters, explicit checkbox subsets or Add entire list. Current account usage and available version updates stay visible. Packaged defaults are included; shared management remains administrator-only. 25 entries per page. |
 | Action items, users | Search/filter controls where relevant; 25 entries per client-side page. Manage users includes invitation creation, a one-time code field and pending invitation revocation. |

@@ -1146,6 +1146,12 @@
 
 .run-actions, .run-row-actions { display: flex; align-items: center; gap: 4px; }
 .run-row-actions { gap: 10px; justify-content: flex-end; }
+.deleted-run-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+@media (max-width: 1023px) {
+  .run-list-row.is-deleted { grid-template-columns: minmax(0, 1fr); }
+  .run-list-row.is-deleted .run-row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .deleted-run-actions { justify-content: flex-start; }
+}
 .run-row-actions .run-open { min-height: 32px; }
 @media (max-width: 767px) {
   .runs-toolbar .view-switch { flex-wrap: wrap; gap: 4px 16px; }

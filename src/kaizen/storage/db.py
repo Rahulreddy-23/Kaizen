@@ -6,6 +6,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS run_file_cleanup (
+    run_id TEXT PRIMARY KEY, paths TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS learning_enrollments (
     run_id TEXT PRIMARY KEY, enabled_by TEXT NOT NULL, enabled_at TEXT NOT NULL
 );

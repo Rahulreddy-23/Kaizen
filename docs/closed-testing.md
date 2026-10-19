@@ -106,5 +106,4 @@ including `kaizen.db`, source files and candidate artifacts. Learning tables are
 the workspace opens. Closed testing is on by default for eligible owned runs. Unknown SKU identities or
 conflicting source splits defer verified learning and show an actionable explanation; normal review events
 continue to be collected. Setup is idempotent and never changes an existing split or creates approved labels. Learning artifacts stay
-in the workspace and its backups; an administrator exports them explicitly. Retention and deletion remain
-operator-managed through workspace backups/storage; there is no new automatic deletion policy.
+in the workspace and its backups; an administrator exports them explicitly. Owner-confirmed permanent deletion in Deleted runs removes the run’s learning labels, drawings, jobs, evaluations and candidate artifacts along with its review data. Shared non-content split assignments remain to prevent train/evaluation leakage. Backups and automatic retention schedules remain operator-managed.

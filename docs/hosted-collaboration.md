@@ -36,7 +36,7 @@ revocations. Ground-truth verification/evaluation/exports also need Edit access 
 
 Owners can rename/delete from All runs or Overview. Deleted runs are hidden from active lists and all
 shared access. Restore from **All runs → Deleted runs** retains sources, review history and existing
-sharing; only the owner can see or restore deleted runs. Independent copies remain separate.
+sharing; only the owner can see or restore deleted runs. The owner can also permanently delete a deleted run after typing DELETE: run files, exports, review history and run-specific learning records are erased. Shared files, original local folders, independent copies and approved shared terminology survive. Storage failures leave a durable cleanup job that retries at startup; backups follow operator retention. Independent copies remain separate.
 
 A saved decision records the signed-in actor and revision. Approval is separate; an author or run owner
 explicitly confirms self-approval. Edits remove the old approval while retaining history. Independent
