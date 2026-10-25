@@ -131,6 +131,8 @@ export interface RunSummary {
   copied_from: string;
   run_id: string;
   timestamp: string;
+  /** The newest review decision in the run, or null when nobody has decided anything yet. */
+  last_decided_at: string | null;
   input_root: string;
   tool_version: string;
   skus: number;

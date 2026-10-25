@@ -8,7 +8,7 @@ import DocumentPage from "./DocumentPage";
 import DocumentsPage from "./DocumentsPage";
 import TerminologyPage from "./TerminologyPage";
 
-vi.mock("../api",()=>({api:{getDocumentItems:vi.fn(),getDocuments:vi.fn(),getRun:vi.fn(),pageImageUrl:vi.fn(),annotatedBomUrl:vi.fn(),terminology:{list:vi.fn(),get:vi.fn(),history:vi.fn()}}}));
+vi.mock("../api",()=>({api:{getDocumentItems:vi.fn(),getDocuments:vi.fn(),getRun:vi.fn(),pageImageUrl:vi.fn(),annotatedUrl:vi.fn(),terminology:{list:vi.fn(),get:vi.fn(),history:vi.fn()}}}));
 vi.mock("../lib/reviewer",()=>({useReviewer:()=>({name:"viewer@bd.com",session:{is_admin:false}})}));
 vi.mock("../lib/toast",()=>({useToast:()=>vi.fn()}));
 vi.mock("../components/PageImage",()=>({PageImage:({src,alt}:{src:string;alt:string})=><img src={src} alt={alt} />}));
@@ -41,7 +41,7 @@ describe("document source controls",()=>{
   render(<MemoryRouter initialEntries={["/runs/run/documents"]}><Routes><Route path="/runs/:runId/documents" element={<DocumentsPage />} /></Routes></MemoryRouter>);
   await screen.findByRole("link",{name:"bom.xlsx"});
   expect(screen.queryByRole("link",{name:"Annotated BOM"})).toBeNull();
-  expect(api.annotatedBomUrl).not.toHaveBeenCalled();
+  expect(api.annotatedUrl).not.toHaveBeenCalled();
  });
 });
 

@@ -243,8 +243,9 @@ export const api = {
   // The session decides which decisions are visible; `_v` only forces a refetch when it changes.
   getRow: (runId: string, rowId: string, _v: ViewerParams) =>
     request<RowDetail>(`/api/runs/${enc(runId)}/results/${enc(rowId)}`),
-  pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110, format?: "png" | "jpeg") =>
-    `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi, format })}`,
+  /** `marks` draws the reviewers' check marks before the page is rasterised, from the live decisions. */
+  pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110, format?: "png" | "jpeg", marks?: boolean) =>
+    `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi, format, marks: marks || undefined })}`,
 
   // ---- decisions
   postDecision: (runId: string, body: DecisionBody) => request<DecisionResponse>(`/api/runs/${enc(runId)}/decisions`, json("POST", body)),
@@ -265,7 +266,8 @@ export const api = {
   // ---- documents
   getDocuments: (runId: string) => request<DocumentSummary[]>(`/api/runs/${enc(runId)}/documents`),
   getDocumentItems: (runId: string, docId: string) => request<DocumentItems>(`/api/runs/${enc(runId)}/documents/${enc(docId)}/items`),
-  annotatedBomUrl: (runId: string, docId: string) => `/api/runs/${enc(runId)}/annotated-bom/${enc(docId)}`,
+  annotatedUrl: (runId: string, docId: string) => `/api/runs/${enc(runId)}/annotated/${enc(docId)}`,
+  annotatedBundleUrl: (runId: string, sku?: string) => `/api/runs/${enc(runId)}/annotated.zip${qs({ sku: sku || undefined })}`,
 
   // ---- mining
   certificateUrl: (runId: string, sku?: string) => `/api/runs/${enc(runId)}/certificate.pdf${qs({ sku })}`,

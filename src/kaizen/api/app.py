@@ -56,7 +56,7 @@ from kaizen.evaluation.learning import shadow_evaluate
 from kaizen.ingest.detect import detect_doc_type
 from kaizen.models import Classification, DocType, Run, Thresholds
 from kaizen.pipeline import SUPPORTED_SUFFIXES, discover_files, load_run, run_folder, save_run
-from kaizen.reporting.annotated_bom import write_annotated_bom
+from kaizen.reporting.annotated import mark_document, write_annotated
 from kaizen.reporting.certificate import write_certificate, write_run_certificate
 from kaizen.reporting.excel import ReviewBundle, export_with_review
 from kaizen.reporting.excel_import import import_decisions
@@ -223,8 +223,13 @@ def _summary(run: Run, review: ReviewStore, viewer_slot: int = 1, blind: bool = 
     counts = {c.value: sum(1 for r in rev if r.classification is c) for c in Classification}
     needs = sum(1 for r in rev if r.requires_validation)
     header_needs = sum(1 for r in run.results if r.role in ("header", "reference", "coverage") and r.requires_validation)
-    _, progress, states = review_snapshot(run, review, viewer_slot, blind)
+    rows, progress, states = review_snapshot(run, review, viewer_slot, blind)
+    # Deciding a row is the only thing that changes a marked document, so the newest decision is the
+    # date those documents carry. Served here so the side-by-side page and the PDFs agree, and taken
+    # from the snapshot rows rather than a second query of the same decisions.
+    decided = [d["decided_at"] for row in rows for d in row["decisions"].values() if d and d.get("decided_at")]
     return {
+        "last_decided_at": max(decided) if decided else None,
         "run_id": run.metadata.run_id, "timestamp": run.metadata.timestamp.isoformat(), "input_root": run.metadata.input_root, "tool_version": run.metadata.tool_version,
         "skus": len(run.groups), "documents": len(run.documents), "documents_by_type": {t: sum(1 for d in run.documents if d.doc_type.value == t) for t in ("BOM", "LABEL", "DRAWING", "PCO")},
         "unrecognised_files": [i.path for i in run.metadata.inputs if i.doc_type is None], "rows": len(run.results), "reviewable_rows": len(rev), "exempt_rows": sum(1 for r in run.results if r.role == "exempt"), "header_rows_needing_validation": header_needs,
@@ -458,7 +463,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 if not record or record['owner'] != actor:
                     raise HTTPException(404, 'Deleted run not found.')
                 return
-            edit = request.method not in ('GET', 'HEAD') or any(x in path for x in ('export.xlsx', 'certificate.pdf', 'annotated-bom', 'download.zip', '/learning/export', '/learning/observations'))
+            edit = request.method not in ('GET', 'HEAD') or any(x in path for x in ('export.xlsx', 'certificate.pdf', 'annotated', 'download.zip', '/learning/export', '/learning/observations'))
             require_run(rid, actor, edit=edit, owner=path.endswith('/sharing') or (request.method in ('PATCH', 'DELETE') and path == f'/api/runs/{rid}'))
             if path.endswith('/diff') and request.query_params.get('against'):
                 require_run(request.query_params['against'], actor)
@@ -939,7 +944,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         return {"doc_id": d.id, "doc_type": d.doc_type.value, "file_name": Path(d.path).name, "header": d.header, "warnings": d.warnings, "pages": _page_count(d.path), "items": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.items], "text_lines": [_evidence(i) | {"id": i.id, "is_active": i.is_active} for i in d.text_lines]}
 
     @app.get("/api/runs/{run_id}/documents/{doc_id}/pages/{page_no}")
-    def get_page_image(run_id: str, doc_id: str, page_no: int, highlight: str | None = None, dpi: int = Query(110, ge=36, le=300), format: Literal["png", "jpeg"] = "png"):
+    def get_page_image(run_id: str, doc_id: str, page_no: int, highlight: str | None = None, dpi: int = Query(110, ge=36, le=300), format: Literal["png", "jpeg"] = "png", marks: bool = False):
         run = cache.get(run_id)
         d = _doc(run, doc_id)
         if not d.path.lower().endswith(".pdf"):
@@ -947,12 +952,20 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if not Path(d.path).is_file():
             raise HTTPException(404, "Source document is unavailable. Upload it again to view its pages.")
         stat = Path(d.path).stat()
-        key = (run_id, doc_id, str(Path(d.path).resolve()), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, page_no, dpi, highlight, format)
+        # Marks come from the review decisions, which change without the file changing, so the cache
+        # key carries a fingerprint of them. Approving a row then shows new marks instead of a stale image.
+        names, states, updated = _decided(run_id) if marks else (None, None, None)
+        decided = hashlib.sha256(json.dumps([names, states, updated], sort_keys=True).encode()).hexdigest()[:12] if marks else ""
+        key = (run_id, doc_id, str(Path(d.path).resolve()), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, page_no, dpi, highlight, format, decided)
 
         def render():
             with pymupdf.open(d.path) as pdf:
                 if page_no < 1 or page_no > len(pdf):
                     raise HTTPException(404, "page out of range")
+                if marks:
+                    # The whole document is marked, not just this page: the mark size is chosen once
+                    # per document so that every page carries the same one.
+                    mark_document(pdf, run, d, checked_by=names or None, review_states=states, updated=updated)
                 page = pdf[page_no - 1]
                 if highlight:
                     r = _find(run, highlight)
@@ -1248,11 +1261,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             temporary.cleanup()
             raise
 
-    @app.get("/api/runs/{run_id}/annotated-bom/{doc_id}")
-    def annotated_bom(run_id: str, doc_id: str, session: ReviewSession | None = Depends(_identified)):
-        _refuse_if_blind(session)
-        run = cache.get(run_id)
-        d = _doc(run, doc_id)
+    def _decided(run_id: str) -> tuple[list[str], dict[str, str], str | None]:
+        """Who has reviewed this run, what each decided row became, and when the newest decision landed.
+
+        Shared by the annotated PDF download and the marked page images, so a reviewer sees the same
+        marks on screen as in the file they download.
+        """
         decisions = review.all_decisions(run_id)
         names = sorted({dec.reviewer for slots in decisions.values() for dec in slots.values()})
         states: dict[str, str] = {}
@@ -1262,7 +1276,62 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 states[row_id] = "clear"
             elif last and last.decision == "CONFIRM_DISCREPANCY":
                 states[row_id] = "discrepancy"
-        out = write_annotated_bom(run, d, ws.runs_dir / run_id / f"annotated-{re.sub(r'[^A-Za-z0-9]+', '_', d.sku or doc_id)}.pdf", checked_by=names or None, review_states=states)
+        # Deciding a row is the only thing that changes a marked document, so the newest decision is
+        # the date it carries. A run nobody has reviewed has none, and the run's own date stands in.
+        latest = max((dec.decided_at for slots in decisions.values() for dec in slots.values()), default=None)
+        return names, states, latest
+
+    def _annotated_name(d, doc_id: str) -> str:
+        """A BOM and a label of the same SKU would otherwise overwrite each other's file."""
+        return "annotated-" + re.sub(r"[^A-Za-z0-9]+", "_", f"{d.doc_type.value}-{d.sku or doc_id}") + ".pdf"
+
+    @app.get("/api/runs/{run_id}/annotated.zip")
+    def annotated_bundle(run_id: str, sku: str | None = None, session: ReviewSession | None = Depends(_identified)):
+        """Every marked document in one archive, or just one SKU's three when `sku` is given."""
+        _refuse_if_blind(session)
+        run = cache.get(run_id)
+        names, states, updated = _decided(run_id)
+        groups = [g for g in run.groups if not sku or g.sku == sku]
+        if sku and not groups:
+            raise HTTPException(404, f"no SKU set called {sku}")
+        by_id = {d.id: d for d in run.documents}
+        # Every SKU set has its own drawing.pdf, and they all carry the SKU DWG…, so a flat archive
+        # would silently overwrite them. One folder per SKU set, except when only one was asked for.
+        wanted: list[tuple[str, object]] = []
+        taken: set[str] = set()
+        for g in groups:
+            for d in (by_id[i] for i in g.document_ids if i in by_id):
+                if d.doc_type.value not in ("BOM", "LABEL", "DRAWING") or d.header.get("revision_role") == "old":
+                    continue
+                name = _annotated_name(d, d.id)
+                entry = name if len(groups) == 1 else f"{re.sub(r'[^A-Za-z0-9]+', '_', g.sku)}/{name}"
+                if entry in taken:
+                    continue
+                taken.add(entry)
+                wanted.append((entry, d))
+        if not wanted:
+            raise HTTPException(404, "no documents to mark up")
+        temporary = tempfile.TemporaryDirectory()
+        root = Path(temporary.name)
+        try:
+            archive = root / "annotated.zip"
+            with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+                for entry, d in wanted:
+                    out = write_annotated(run, d, root / "pdfs" / entry, checked_by=names or None, review_states=states, updated=updated)
+                    z.write(out.path, entry)
+            tag = re.sub(r"[^A-Za-z0-9]+", "_", sku) if sku else "all"
+            return FileResponse(archive, media_type="application/zip", filename=f"{run_id}-annotated-{tag}.zip", background=BackgroundTask(temporary.cleanup))
+        except Exception:
+            temporary.cleanup()
+            raise
+
+    @app.get("/api/runs/{run_id}/annotated/{doc_id}")
+    def annotated_document(run_id: str, doc_id: str, session: ReviewSession | None = Depends(_identified)):
+        _refuse_if_blind(session)
+        run = cache.get(run_id)
+        d = _doc(run, doc_id)
+        names, states, updated = _decided(run_id)
+        out = write_annotated(run, d, ws.runs_dir / run_id / _annotated_name(d, doc_id), checked_by=names or None, review_states=states, updated=updated)
         return FileResponse(out.path, media_type="application/pdf", filename=out.path.name, headers={"X-Kaizen-Fallback": "true" if out.fallback else "false", "X-Kaizen-Marks": str(out.marks)})
 
     # ---- certificate, run diff, optional Excel round-trip ---------------------------------------

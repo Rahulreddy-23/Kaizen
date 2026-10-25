@@ -1,7 +1,11 @@
 """API contract used by the reviewer UI. Runs against a temporary workspace; no network."""
 
 import io
+import zipfile
 import json
+from datetime import datetime
+
+import pymupdf
 
 import openpyxl
 import pytest
@@ -177,7 +181,7 @@ def test_mining_action_items_verify_close_business_and_exports(env):
     assert "Action_Items" in wb.sheetnames
     docs = client.get(f"/api/runs/{run_id}/documents").json()
     bom = next(d for d in docs if d["doc_type"] == "BOM" and d["sku"] == "1295108FNS")
-    pdf = client.get(f"/api/runs/{run_id}/annotated-bom/{bom['id']}")
+    pdf = client.get(f"/api/runs/{run_id}/annotated/{bom['id']}")
     assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
 
 
@@ -381,3 +385,61 @@ def test_index_page_is_served_with_no_cache(tmp_path):
     assert c.get("/").headers.get("cache-control") == "no-cache"
     assert c.get("/index.html").headers.get("cache-control") == "no-cache"
     assert c.get("/app.js").status_code == 200 and c.get("/app.js").headers.get("cache-control") is None
+
+
+def test_marked_pages_and_the_annotated_bundle(env):
+    """The side-by-side reader and the downloads both come from the live review decisions."""
+    client, golden, ws, run_id = env
+    docs = client.get(f"/api/runs/{run_id}/documents").json()
+    label = next(d for d in docs if d["doc_type"] == "LABEL" and d["header"].get("revision_role") != "old")
+
+    plain = client.get(f"/api/runs/{run_id}/documents/{label['id']}/pages/1")
+    marked = client.get(f"/api/runs/{run_id}/documents/{label['id']}/pages/1?marks=true")
+    assert plain.status_code == 200 and marked.status_code == 200
+    # Same page, drawn differently: the marks are the only difference between the two images.
+    assert marked.content != plain.content
+
+    bundle = client.get(f"/api/runs/{run_id}/annotated.zip")
+    assert bundle.status_code == 200 and bundle.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(bundle.content)) as z:
+        names = z.namelist()
+        assert all(n.endswith(".pdf") and "/annotated-" in n for n in names), names
+        # Every SKU set owns a drawing.pdf carrying the same DWG SKU, so a flat archive would drop
+        # all but one of them. One folder per SKU set keeps every file, and the count proves it.
+        assert len(names) == len(set(names)) and len(names) > 18
+        assert any("/annotated-LABEL" in n for n in names) and any("/annotated-DRAWING" in n for n in names)
+        assert not any("label_old" in n.lower() for n in names)
+        assert z.read(names[0]).startswith(b"%PDF")
+
+    one_sku = client.get(f"/api/runs/{run_id}/annotated.zip?sku=1295108FNS")
+    assert one_sku.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(one_sku.content)) as z:
+        # One SKU asked for, so the archive is flat: the three documents, no folder to open first.
+        only = z.namelist()
+        assert 0 < len(only) < len(names) and all(n.startswith("annotated-") for n in only)
+    assert client.get(f"/api/runs/{run_id}/annotated.zip?sku=nope").status_code == 404
+
+
+def test_the_marked_documents_and_the_page_show_the_same_update_date(env):
+    """One date, from one source: the newest decision. Two answers on screen and on paper is a bug."""
+    client, golden, ws, run_id = env
+    # This run is shared with the other tests in the module, so it may already carry decisions. What
+    # matters is that a new decision becomes the date, and that the PDFs say the same thing.
+    rows = client.get(f"/api/runs/{run_id}/results", params={"limit": 1, "status": "all"}).json()["rows"]
+    row_id = rows[0]["row_id"]
+    detail = client.get(f"/api/runs/{run_id}/results/{row_id}").json()
+    posted = client.post(f"/api/runs/{run_id}/decisions",
+                         json={"row_id": row_id, "decision": "ACCEPT", "expected_revision": detail["revision"]})
+    assert posted.status_code in (200, 201), posted.text
+
+    after = client.get(f"/api/runs/{run_id}").json()["last_decided_at"]
+    assert after, "a decided row must give the run an update date"
+    expected = datetime.fromisoformat(after).strftime("%d-%m-%Y")
+
+    docs = client.get(f"/api/runs/{run_id}/documents").json()
+    for kind in ("BOM", "LABEL", "DRAWING"):
+        d = next(x for x in docs if x["doc_type"] == kind and x["header"].get("revision_role") != "old")
+        pdf = client.get(f"/api/runs/{run_id}/annotated/{d['id']}")
+        assert pdf.status_code == 200
+        with pymupdf.open(stream=pdf.content, filetype="pdf") as opened:
+            assert expected in opened[0].get_text(), f"{kind}: the PDF does not carry {expected}"

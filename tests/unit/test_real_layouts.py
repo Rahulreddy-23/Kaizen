@@ -28,7 +28,7 @@ from kaizen.ingest.pdf_words import Word, extract_words
 from kaizen.matching.ladder import MatchLadder
 from kaizen.models import Classification, DocType, ItemCategory, Severity, Thresholds
 from kaizen.pipeline import ingest_folder, run_checks
-from kaizen.reporting.annotated_bom import write_annotated_bom
+from kaizen.reporting.annotated import write_annotated
 from kaizen.terminology.store import RelationshipStore
 from tests.unit.test_bom_label_check import bom_doc, label_doc
 from tests.unit.test_pairing_engine import drawing_doc
@@ -321,7 +321,7 @@ def test_rotated_bom_marks_follow_displayed_evidence(tmp_path):
     th = Thresholds()
     rows = run_bom_label_check(bom, label_doc([("Mask", "1")]), MatchLadder(RelationshipStore.default(), th), th)
     run = SimpleNamespace(results=rows, metadata=SimpleNamespace(run_id="test", timestamp=datetime.now()))
-    outcome = write_annotated_bom(run, bom, tmp_path / "marked.pdf")
+    outcome = write_annotated(run, bom, tmp_path / "marked.pdf")
     with pymupdf.open(outcome.path) as pdf:
         mark = outcome.mark_list[0]
         drawn = pdf[0].get_drawings()[0]["rect"] * pdf[0].rotation_matrix

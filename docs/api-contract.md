@@ -233,9 +233,15 @@ All review downloads require Edit access. Source-page previews remain available 
 | Method | Path | Input / result |
 | --- | --- | --- |
 | GET | `/api/runs/{run_id}/export.xlsx` | `detail=summary` (default) or `complete`; per-SKU XLSX download. Invalid detail returns 422. |
-| GET | `/api/runs/{run_id}/annotated-bom/{doc_id}` | PDF; `X-Kaizen-Fallback` marks a geometry fallback and `X-Kaizen-Marks` reports mark count. |
+| GET | `/api/runs/{run_id}/annotated/{doc_id}` | PDF; `X-Kaizen-Fallback` marks a geometry fallback and `X-Kaizen-Marks` reports mark count. |
+| GET | `/api/runs/{run_id}/annotated.zip` | Optional `sku`; every marked BOM, label and drawing. One folder per SKU set, flat when one `sku` is asked for. |
 | GET | `/api/runs/{run_id}/certificate.pdf` | Optional `sku`; one page per SKU, with hashes, review counts and open action items. |
 | POST | `/api/runs/{run_id}/decisions/import` | Multipart `file`, `dry_run=false`, `force=false`; validated decision round trip. |
+
+Marked documents carry the date of the newest review decision, as dd-mm-yyyy, and fall back to the
+run date when nobody has decided anything. The run summary serves the same value as
+`last_decided_at` (null when there are no decisions) so the side-by-side reader and the PDFs agree.
+A row nobody has settled carries no mark at all.
 
 Summary includes check totals, current status and attention rows. Complete details includes every
 comparison, original/source evidence, approvals and supporting audit sheets. Both use SKU worksheets

@@ -156,9 +156,9 @@ export default function DocumentsPage() {
                                 <LinkButton size="sm" to={to} icon={<Eye size={16} />}>
                                   Document
                                 </LinkButton>
-                                {d.doc_type === "BOM" && isPdf(d.file_name) && access.data && access.data.permission !== "view" && (
-                                  <AnchorButton size="sm" href={api.annotatedBomUrl(runId, d.id)} download icon={<FileArrowDown size={16} />} title="BOM PDF with check marks from the reviewer decisions">
-                                    Annotated BOM
+                                {["BOM", "LABEL", "DRAWING"].includes(d.doc_type) && d.header?.revision_role !== "old" && isPdf(d.file_name) && access.data && access.data.permission !== "view" && (
+                                  <AnchorButton size="sm" href={api.annotatedUrl(runId, d.id)} download icon={<FileArrowDown size={16} />} title="PDF with check marks from the reviewer decisions">
+                                    Annotated
                                   </AnchorButton>
                                 )}
                               </div>
