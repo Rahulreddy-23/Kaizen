@@ -14,7 +14,7 @@ from kaizen.datasets.build import build_golden
 from kaizen.models import DocType, Thresholds
 from kaizen.pipeline import run_folder
 from kaizen.ingest.pdf_words import extract_words
-from kaizen.reporting.annotated import (COLUMN_MARK, DOC_COLORS, MARK_ORDER, _kind, _other, _rows,
+from kaizen.reporting.annotated import (COLUMN_MARK, DOC_COLORS, GAP, MARK_ORDER, _kind, _other, _rows,
                                         _top_date, write_annotated)
 from kaizen.terminology.store import RelationshipStore
 
@@ -50,7 +50,10 @@ def test_marks_sit_on_the_row_and_never_over_printed_text(golden_run, tmp_path):
         assert all(line in doc[i].get_text() for line in text.splitlines() if line.strip())
     page1 = doc[0].get_text()
     assert "Compared with Label" in page1 and "Compared with PKG Drawings" in page1 and "Compared with PCO" in page1
-    assert "Checked by" in page1 and "Dharma A" in page1 and run.metadata.run_id in page1
+    # The run id is deliberately absent: this sheet goes to BD, and an internal identifier on it is
+    # noise to every reader who is not us. The names and the date are what a signed document needs.
+    assert "Checked by" in page1 and "Dharma A" in page1
+    assert run.metadata.run_id not in page1
     drawings = [d for i in range(len(doc)) for d in doc[i].get_drawings()]
     assert len(drawings) >= outcome.marks
     original = pymupdf.open(bom.path)
@@ -73,8 +76,8 @@ def test_status_marks_follow_classification(golden_run, tmp_path):
     bom = next(d for d in run.documents if d.doc_type is DocType.BOM and d.sku == "1295108FNS")
     outcome = write_annotated(run, bom, tmp_path / "b.pdf")
     kinds = {m.kind for m in outcome.mark_list}
-    # Two marks, and only two. A row nobody has settled gets no ink, so there is no third kind:
-    # on a document that leaves the building, a mark means a reviewer decided this row.
+    # Two marks, and only two. A row the comparison could not settle gets no ink, so there is no
+    # third kind: on a document that leaves the building, an unsure row is better blank than hedged.
     assert kinds == {"clear", "discrepancy"}
     assert any(m.check == "BOM_LABEL" and m.kind == "discrepancy" and m.item == "2260001" for m in outcome.mark_list)
     assert any(m.check == "PCO_BOM" for m in outcome.mark_list)
@@ -263,3 +266,40 @@ def test_every_document_carries_the_date_of_the_last_decision(golden_run, tmp_pa
         text = pymupdf.open(decided.path)[0].get_text()
         assert "21-10-2026" in text, f"{doc_type.value}: the decision date never reached the page"
         assert run.metadata.timestamp.strftime("%d-%m-%Y") not in text, f"{doc_type.value}: the run date is still there too"
+
+
+def test_an_unsigned_sheet_leaves_the_name_blank_rather_than_making_an_excuse(golden_run, tmp_path):
+    """Nobody has signed this run, so the block is a blank for a pen.
+
+    These sheets leave the building. '(reviewer names not recorded)' printed on one is the tool
+    explaining itself to a reader who only wants somewhere to write a name.
+    """
+    golden, run = golden_run
+    bom = next(d for d in run.documents if d.doc_type is DocType.BOM and d.sku == "1295108FNS")
+    outcome = write_annotated(run, bom, tmp_path / "unsigned.pdf")
+    page1 = pymupdf.open(outcome.path)[0].get_text()
+    assert "Checked by" in page1, "the heading stays: it says what the blank underneath is for"
+    assert "not recorded" not in page1
+    assert run.metadata.run_id not in page1
+
+
+def test_a_two_column_layout_marks_each_item_beside_its_own_words(golden_run, tmp_path):
+    """Two items on one line get their marks in two different places, each next to its own text.
+
+    The label lists its contents in two columns. A single shared mark column cannot serve both: the
+    widest row in the left column pushes that column's x past the right column's words, so a left
+    item's marks land beside the right item's, and one line appears to carry four marks for one item.
+    """
+    golden, run = golden_run
+    label = doc_for(run, DocType.LABEL, "1175108")
+    outcome = write_annotated(run, label, tmp_path / "two-column.pdf")
+    lines = {}
+    for mark in outcome.mark_list:
+        lines.setdefault((mark.page, round(mark.y, 1)), []).append(mark.x)
+    shared = [sorted(xs) for xs in lines.values() if len(xs) > 2]
+    assert shared, "this label must have lines carrying two items, or the test proves nothing"
+    for xs in shared:
+        # Each item's own pair stays together; the gap to the next item's pair is far wider.
+        pair, other = xs[:2], xs[2:]
+        assert pair[1] - pair[0] <= COLUMN_MARK + GAP + 0.5, f"a single item's marks drifted apart: {xs}"
+        assert other[0] - pair[1] > COLUMN_MARK * 2, f"two items' marks sit together, as if one item: {xs}"

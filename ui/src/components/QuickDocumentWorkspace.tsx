@@ -1,6 +1,6 @@
 import {ArrowsOut, ArrowSquareOut, CrosshairSimple, WarningCircle} from "@phosphor-icons/react";
 import {Fragment, useEffect, useRef, useState, type ReactNode} from "react";
-import {Link} from "react-router-dom";
+import {Link, useLocation} from "react-router-dom";
 import {api} from "../api";
 import {enc} from "../lib/format";
 import type {QuickCell, QuickDocument, QuickKind, QuickRow} from "../types";
@@ -50,6 +50,10 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
   view: PaneView; onView: (patch: Partial<PaneView>) => void; onFocus: () => void; hidden: boolean; missing: boolean; marks?: boolean;
 }) {
   const doc = documents.find(d => d.id === view.documentId) ?? documents[0];
+  // Where "Open full document" was pressed from. The document page sends the reader back here rather
+  // than to the documents list, which is somewhere they never were.
+  const here = useLocation();
+  const from = `${here.pathname}${here.search}`;
   const target = cell?.items.find(i => i.id === preferred) ?? cell?.items[0];
   const page = Math.min(Math.max(1,view.page),doc?.pages || 1);
   const item = target && target.doc_id === doc?.id && target.page === page ? target : cell?.items.find(i=>i.doc_id === doc?.id && i.page === page) ?? cell?.items.find(i=>i.doc_id === doc?.id);
@@ -68,7 +72,7 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
         <label className="sr-only" htmlFor={`reader-zoom-${kind}`}>{NAME[kind]} zoom</label>
         <select id={`reader-zoom-${kind}`} className="input input-sm" value={view.zoom} disabled={!doc.pages} onChange={e=>onView({zoom:e.target.value})}><option value="fit">Fit width</option>{Array.from(new Set([25,50,75,100,125,150,200,300,400,...(view.zoom === "fit" ? [] : [Number(view.zoom)])])).sort((a,b)=>a-b).map(n=><option key={n} value={n}>{n}%</option>)}</select>
         <Button size="sm" variant="ghost" iconOnly icon={<CrosshairSimple size={16}/>} aria-label={`Locate selected text in ${NAME[kind]}`} disabled={!selected || !target?.page} onClick={locate}/>
-        <Link className="quick-pane-open" to={`/runs/${enc(runId)}/documents/${enc(doc.id)}?page=${page}`} aria-label={`Open ${NAME[kind]} document`} title="Open full document"><ArrowSquareOut size={17}/></Link>
+        <Link className="quick-pane-open" to={`/runs/${enc(runId)}/documents/${enc(doc.id)}?page=${page}&from=${enc(from)}`} aria-label={`Open ${NAME[kind]} document`} title="Open full document"><ArrowSquareOut size={17}/></Link>
       </div>
       <div className={`quick-source-excerpt quick-${cell?.status ?? (missing ? "attention" : "neutral")}`}>
         {selected ? item ? <><strong>{item.description}</strong><small>{item.locator || item.file_name}{item.page !== page && " · Highlight on another page"}</small></> : <span>{cell ? "The selected entry is in another source file." : "No counterpart in this comparison. There is no location to highlight."}</span> : <span>Select a comparison entry to locate its source text.</span>}

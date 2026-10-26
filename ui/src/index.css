@@ -1226,6 +1226,26 @@
 .quick-attention { color: rgb(var(--c-warn-strong)); }
 .quick-neutral { color: rgb(var(--c-ink-2)); }
 .quick-hint { color: rgb(var(--c-ink-3)); font-size: 13px; line-height: 1.6; margin: 8px 0 16px; max-width: 100ch; }
+/* Marked-up page: the prose keeps a readable measure on the left, and the key stands beside it as a
+   column. A key read down one edge is scanned once; the same four spread across the page is read
+   four times, because the eye has to travel to find the next colour. */
+.marked-intro { display: flex; align-items: flex-start; gap: 40px; flex-wrap: wrap; margin: 8px 0 16px; }
+/* The text keeps its measure instead of growing, so the key sits beside the prose rather than being
+   pushed against the far edge of a wide window, where it reads as belonging to nothing. */
+.marked-intro-text { flex: 0 1 62ch; min-width: 0; }
+.marked-meta { font-size: 14px; margin: 0; }
+.marked-intro-text .quick-hint { margin: 8px 0 0; max-width: none; }
+.marked-legend { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+/* A heading, because four coloured lines beside a paragraph otherwise read as part of it. */
+.marked-legend b { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgb(var(--c-ink-3)); }
+.marked-legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.5; white-space: nowrap; }
+/* Both marks in the row's colour, kept to one fixed width so the labels line up down the key. */
+.marked-legend span > span { display: inline-flex; gap: 5px; min-width: 26px; }
+.marked-legend i { font-style: normal; }
+.marked-legend em { font-style: normal; font-size: 11px; color: rgb(var(--c-ink-3)); margin-top: 4px; }
+/* The per-document downloads are their own row: clear of the prose above, and clear of the reader
+   button below, which does a different job and should not read as a fourth download. */
+.marked-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 16px; }
 .quick-warnings { font-size: 13px; margin: 12px 0 16px; }
 .quick-warnings summary { color: rgb(var(--c-warn-strong)); cursor: pointer; }
 .quick-warnings > div { padding: 12px 0; }

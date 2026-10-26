@@ -61,11 +61,23 @@ describe('marked-up documents',()=>{
   expect(await screen.findByText(/Updated 24-10-2026/)).toBeTruthy();
  });
 
+ it('tells the document page where the reader came from, so back returns here',async()=>{
+  open('/runs/run/marked-up?sku=SKU-A');
+  const [open_] = await screen.findAllByRole('link',{name:/Open .* document/});
+  // Without this the document page sends them to the documents list, which they never visited.
+  const href = open_.getAttribute('href') ?? '';
+  expect(href).toContain('from=');
+  expect(decodeURIComponent(href.split('from=')[1])).toBe('/runs/run/marked-up?sku=SKU-A');
+ });
+
  it('explains what each colour means, because the label and drawing carry no legend of their own',async()=>{
   open();
   await screen.findAllByText('SKU-A');
-  for (const meaning of [/Agrees with the BOM/,/Agrees with the label/,/Agrees with the PKG drawing/,/Agrees with the PCO/]) {
+  for (const meaning of [/Checked against the BOM/,/Checked against the label/,/Checked against the PKG drawing/,/Checked against the PCO/]) {
     expect(screen.getByText(meaning)).toBeTruthy();
   }
+  // Colour says which document; shape says the result. A key that explains only the tick leaves a
+  // reader guessing at the first cross they meet.
+  expect(screen.getByText(/tick = agrees .* cross = differs .* no mark = needs a reviewer/)).toBeTruthy();
  });
 });

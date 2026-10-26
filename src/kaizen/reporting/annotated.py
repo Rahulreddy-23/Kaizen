@@ -73,8 +73,13 @@ class AnnotatedOutcome:
 def _kind(r, review_states: dict[str, str] | None) -> str | None:
     """The mark a row has earned, or None when it has earned none.
 
-    These documents leave the building, so ink has one meaning only: somebody decided this row. A row
-    nobody has settled yet gets nothing, because a mark that does not mean 'decided' reads like one.
+    Two things can settle a row, and a reviewer always outranks the tool. A decision on file is used
+    as given. Without one the comparison answers for itself: a confident agreement earns a tick and a
+    real discrepancy earns a cross, because a check the tool ran is still a check somebody can read.
+
+    What the tool will not do is guess. A row it could not settle — `requires_validation` — gets no
+    mark at all and waits for a person, which is the one case where ink would claim more than anybody
+    knows. These documents leave the building, so an unsure row is better blank than optimistic.
     """
     if review_states:
         st = review_states.get(r.row_id)
@@ -184,7 +189,9 @@ def _draw_mark(page: pymupdf.Page, kind: str, x: float, y: float, color, size: f
         # A cross. Only a settled row ever reaches here, so these two marks are the whole vocabulary.
         shape.draw_line(point(x, y - s * 0.5), point(x + s, y + s * 0.5))
         shape.draw_line(point(x, y + s * 0.5), point(x + s, y - s * 0.5))
-    shape.finish(color=color, width=width)
+    # closePath defaults to True, which joins the last point back to the first: a tick becomes a
+    # filled-looking triangle and a cross becomes a bowtie. Two open strokes are the whole mark.
+    shape.finish(color=color, width=width, closePath=False, lineJoin=1, lineCap=1)
     shape.commit()
 
 
@@ -337,12 +344,18 @@ def _mark_beside(doc: pymupdf.Document, doc_type: str, rows, review_states) -> l
     for page_no, on_page in pages.items():
         page = doc[page_no - 1]
         words = words_by_page[page_no]
+        # Per-field placement must clear the marks already drawn as well as the words, or two items on
+        # one line put their marks on top of each other. A shared column needs no such care: _fit has
+        # already proved every mark on the page clears every other.
+        taken = list(words)
         for index, column in enumerate(columns[page_no]):
             shared = plan.get((page_no, index))
             for field in column:
                 y = (field["bbox"].y0 + field["bbox"].y1) / 2
                 count = len(field["checks"])
-                places = _spots(shared[0], y, count, shared[1], size) if shared else _clear_places(page, words, field["bbox"], count, size)
+                places = _spots(shared[0], y, count, shared[1], size) if shared else _clear_places(page, taken, field["bbox"], count, size)
+                if not shared:
+                    taken.extend(pymupdf.Rect(px, py - size / 2, px + size, py + size / 2) for px, py in places)
                 for check, (x, my) in zip(field["checks"], places):
                     _draw_mark(page, field["kinds"][check], x, my, DOC_COLORS[_other(check, doc_type)], size, 1.6)
                     marks.append(Mark(page_no, field["item"], check, field["kinds"][check], x, my))
@@ -359,10 +372,18 @@ def _fit(doc, pages: dict[int, list[dict]], columns: dict[int, list[list[dict]]]
     callouts keep the full 9pt. A size that cannot satisfy every column is simply not used, which is
     what keeps a crowded column from solving its problem by drifting into the next column's space.
     """
+    # A page with two text columns gets no shared x at all. One column's widest row would push its
+    # marks past the other column's words, which is how a left-column item ended up with its marks
+    # 140pt away, beyond the right column — close enough to that column's own marks to read as four
+    # marks on one item. Those pages place each field beside its own text instead.
+    shared_pages = [page_no for page_no in pages if len(columns[page_no]) == 1]
+    wanted = sum(len(columns[page_no]) for page_no in shared_pages)
+    if not wanted:
+        return COLUMN_MARK, {}
     size = COLUMN_MARK
     while size >= 4.0:
         plan, boxes = {}, defaultdict(list)
-        for page_no in pages:
+        for page_no in shared_pages:
             for index, column in enumerate(columns[page_no]):
                 shared = _shared_column(doc[page_no - 1], words_by_page[page_no], column, size)
                 if shared is None:
@@ -371,7 +392,7 @@ def _fit(doc, pages: dict[int, list[dict]], columns: dict[int, list[list[dict]]]
                 boxes[page_no].extend(_boxes(column, *shared, size))
         page_clear = all(not a.intersects(b) for drawn in boxes.values()
                          for i, a in enumerate(drawn) for b in drawn[i + 1:])
-        if page_clear and len(plan) == sum(len(c) for c in columns.values()):
+        if page_clear and len(plan) == wanted:
             return size, plan
         size -= 0.5
     return COLUMN_MARK, {}
@@ -501,10 +522,11 @@ def _stamp(page: pymupdf.Page, run: Run, bom: Document, checked_by: list[str] | 
             y += 12
             w.append((stamp[0], y), f"{n}) {name}", font=_FONT, fontsize=9)
         if not checked_by:
+            # Nobody signed this run in the tool, so the block stays an empty line for a pen. Printing
+            # 'names not recorded' puts an excuse on a document that leaves the building, where the
+            # blank a reviewer fills in is both shorter and truer.
             y += 12
-            w.append((stamp[0], y), "(reviewer names not recorded)", font=_FONT, fontsize=8)
         w.append((stamp[0], y + 18), date, font=_FONT, fontsize=9)
-        w.append((stamp[0], y + 30), f"Kaizen {run.metadata.run_id}", font=_FONT, fontsize=6.5)
         w.write_text(page, color=(0.8, 0.1, 0.1), matrix=page.derotation_matrix)
 
     if legend is None:
@@ -518,7 +540,7 @@ def _stamp(page: pymupdf.Page, run: Run, bom: Document, checked_by: list[str] | 
         _draw_mark(page, "clear", legend[0], y, colour, COLUMN_MARK, 1.6)
         y += 16
     key = pymupdf.TextWriter(page.rect)
-    key.append((legend[0], y + 4), "tick = agrees    cross = discrepancy    no mark = not yet reviewed", font=_FONT, fontsize=6.5)
+    key.append((legend[0], y + 4), "tick = agrees    cross = discrepancy    no mark = needs a reviewer", font=_FONT, fontsize=6.5)
     key.write_text(page, color=(0.35, 0.35, 0.35), matrix=page.derotation_matrix)
 
 
@@ -528,7 +550,7 @@ def _fallback_page(run: Run, bom: Document, rows, out_path: Path, checked_by, re
     doc = pymupdf.open()
     page = doc.new_page(width=612, height=792)
     w = pymupdf.TextWriter(page.rect)
-    names = ", ".join(checked_by) if checked_by else "(reviewer names not recorded)"
+    names = ", ".join(checked_by) if checked_by else "____________________"  # a blank to sign, not an excuse
     w.append((30, 40), f"Annotated review page — {kind} {bom.sku} ({Path(bom.path).name})", font=_FONT, fontsize=11)
     w.append((30, 56), f"This {kind} has no page geometry to draw check marks on, so marks are listed per row instead.", font=_FONT, fontsize=7)
     w.append((30, 68), f"Checked by {names} | Kaizen Cross-Check {run.metadata.run_id} | Updated {_updated_on(run, updated)}", font=_FONT, fontsize=7)
