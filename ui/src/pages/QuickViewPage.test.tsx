@@ -59,8 +59,8 @@ describe('SKU quick view',()=>{
   fireEvent.change(bom,{target:{value:'200'}});
   expect(within(dialog).getByTestId('BOM.pdf, page 1').getAttribute('data-zoom')).toBe('200');
   expect(within(dialog).getByTestId('LABEL.pdf, page 2').getAttribute('data-zoom')).toBe('125');
-  expect(api.pageImageUrl).toHaveBeenCalledWith('run','BOM',1,null,300,'png',undefined);  // review shows the documents unmarked
-  expect(api.pageImageUrl).toHaveBeenCalledWith('run','LABEL',2,null,300,'jpeg',undefined);
+  expect(api.pageImageUrl).toHaveBeenCalledWith('run','BOM',1,null,300,'png',undefined,undefined);  // review shows the documents unmarked
+  expect(api.pageImageUrl).toHaveBeenCalledWith('run','LABEL',2,null,300,'jpeg',undefined,undefined);
   fireEvent.change(bom,{target:{value:'fit'}});
   expect(within(dialog).getByTestId('BOM.pdf, page 1').getAttribute('data-fit')).toBe('true');
   fireEvent.click(within(dialog).getByRole('button',{name:'Next entry'}));

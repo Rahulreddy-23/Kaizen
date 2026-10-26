@@ -14,7 +14,7 @@ from kaizen.datasets.build import build_golden
 from kaizen.ingest.pdf_words import extract_words
 from kaizen.models import DocType, Thresholds
 from kaizen.pipeline import run_folder
-from kaizen.reporting.annotated import COLUMN_MARK, DOC_COLORS, GAP, MARK_ORDER, _kind, _other, _rows, _top_date, write_annotated
+from kaizen.reporting.annotated import COLUMN_MARK, DOC_COLORS, GAP, MARK_ORDER, _kind, _other, _rows, _top_date, _updated_on, write_annotated
 from kaizen.terminology.store import RelationshipStore
 
 
@@ -114,6 +114,41 @@ def test_table_bom_falls_back_to_review_page(golden_run, tmp_path):
     assert outcome.fallback is True
     text = pymupdf.open(outcome.path)[0].get_text()
     assert "no page geometry" in text.lower() and "2131910FNS" in text and "END CAP" in text
+
+
+@pytest.mark.parametrize("doc_type,sku", [(DocType.BOM, "1295108FNS"), (DocType.LABEL, "1175108"), (DocType.DRAWING, "DWG3173108")])
+def test_pdf_without_comparison_boxes_keeps_its_original_pages(golden_run, tmp_path, doc_type, sku):
+    _, run = golden_run
+    document = doc_for(run, doc_type, sku)
+    unpaired = run.model_copy(update={"results": []})
+    outcome = write_annotated(unpaired, document, tmp_path / f"unpaired-{doc_type.value}.pdf")
+    assert not outcome.fallback and outcome.marks == 0
+    with pymupdf.open(document.path) as original, pymupdf.open(outcome.path) as marked:
+        assert len(marked) == len(original)
+        for before, after in zip(original, marked):
+            assert all(line in after.get_text() for line in before.get_text().splitlines() if line.strip())
+
+
+def test_image_only_pdf_without_boxes_keeps_its_scan(golden_run, tmp_path):
+    _, run = golden_run
+    drawing = doc_for(run, DocType.DRAWING, "DWG3173108")
+    source = tmp_path / "scan.pdf"
+    with pymupdf.open(drawing.path) as original, pymupdf.open() as scan:
+        image = original[0].get_pixmap(dpi=72)
+        page = scan.new_page(width=image.width, height=image.height)
+        page.insert_image(page.rect, stream=image.tobytes("png"))
+        scan.save(source)
+    document = drawing.model_copy(update={"path": str(source), "items": [], "text_lines": []})
+    outcome = write_annotated(run.model_copy(update={"results": []}), document, tmp_path / "marked-scan.pdf")
+    assert not outcome.fallback and outcome.marks == 0
+    with pymupdf.open(source) as original, pymupdf.open(outcome.path) as marked:
+        assert len(marked) == len(original) == 1
+        assert marked[0].get_pixmap().samples == original[0].get_pixmap().samples
+
+
+@pytest.mark.parametrize("stamp", ["2026-10-26T23:30:00Z", "2026-10-27T01:30:00+05:30", "2026-10-26T23:30:00"])
+def test_marked_date_uses_utc_across_timezone_boundaries(golden_run, stamp):
+    assert _updated_on(golden_run[1], stamp) == "26-10-2026"
 
 
 def test_label_and_drawing_marks_name_the_other_document(golden_run, tmp_path):

@@ -23,7 +23,7 @@ A BOM with no page geometry (XLSX/CSV source) gets a separate review page instea
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pymupdf
@@ -207,6 +207,8 @@ def _updated_on(run: Run, updated: str | None) -> str:
             stamp = datetime.fromisoformat(updated)
         except ValueError:
             pass  # a stored date we cannot read must not fail a download; the run date still tells the truth
+    if stamp.tzinfo is not None:
+        stamp = stamp.astimezone(timezone.utc)
     return stamp.strftime("%d-%m-%Y")
 
 
@@ -249,14 +251,13 @@ def write_annotated(run: Run, document: Document, out_path: Path | str, checked_
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    rows = list(_rows(run, document))
-    has_geometry = document.path.lower().endswith(".pdf") and any(item.evidence.bbox is not None and item.evidence.page for _, item in rows)
-    if not has_geometry:
-        return _fallback_page(run, document, rows, out_path, checked_by, review_states, updated)
-    doc = pymupdf.open(document.path)
-    marks = mark_document(doc, run, document, checked_by, review_states, updated)
-    doc.save(out_path)
-    doc.close()
+    if not document.path.lower().endswith(".pdf"):
+        return _fallback_page(run, document, list(_rows(run, document)), out_path, checked_by, review_states, updated)
+    # Missing extracted boxes means there is nothing to mark, not that the source
+    # PDF can be discarded. In particular, image-only drawings must keep their pages.
+    with pymupdf.open(document.path) as doc:
+        marks = mark_document(doc, run, document, checked_by, review_states, updated)
+        doc.save(out_path)
     return AnnotatedOutcome(out_path, len(marks), False, marks)
 
 
@@ -270,7 +271,10 @@ def mark_document(doc: pymupdf.Document, run: Run, document: Document, checked_b
     rows = list(_rows(run, document))
     if document.doc_type is DocType.BOM:
         marks = _mark_table(doc, rows, review_states)
-        _stamp(doc[0], run, document, checked_by, updated)
+        if any(item.evidence.bbox is not None and item.evidence.page for _, item in rows):
+            _stamp(doc[0], run, document, checked_by, updated)
+        else:
+            _top_date(doc[0], f"Updated {_updated_on(run, updated)}")
         return marks
     _top_date(doc[0], f"Updated {_updated_on(run, updated)}")
     return _mark_beside(doc, document.doc_type.value, rows, review_states)

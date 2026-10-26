@@ -244,8 +244,8 @@ export const api = {
   getRow: (runId: string, rowId: string, _v: ViewerParams) =>
     request<RowDetail>(`/api/runs/${enc(runId)}/results/${enc(rowId)}`),
   /** `marks` draws the reviewers' check marks before the page is rasterised, from the live decisions. */
-  pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110, format?: "png" | "jpeg", marks?: boolean) =>
-    `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi, format, marks: marks || undefined })}`,
+  pageImageUrl: (runId: string, docId: string, page: number, highlight?: string | null, dpi = 110, format?: "png" | "jpeg", marks?: boolean, marksRevision?: string) =>
+    `/api/runs/${enc(runId)}/documents/${enc(docId)}/pages/${page}${qs({ highlight: highlight ?? undefined, dpi, format, marks: marks || undefined, revision: marks ? marksRevision : undefined })}`,
 
   // ---- decisions
   postDecision: (runId: string, body: DecisionBody) => request<DecisionResponse>(`/api/runs/${enc(runId)}/decisions`, json("POST", body)),

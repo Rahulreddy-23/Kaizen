@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import {cleanup, render, screen, waitFor} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {MemoryRouter, Route, Routes} from "react-router-dom";
 import {api} from "../api";
 import type {QuickKind, QuickView} from "../types";
 import MarkedUpPage from "./MarkedUpPage";
+import {notifyDataChanged} from "../lib/dataRefresh";
 
 vi.mock('../api',()=>({api:{quickView:vi.fn(),getRun:vi.fn(),pageImageUrl:vi.fn(),annotatedUrl:vi.fn(),annotatedBundleUrl:vi.fn()}}));
 vi.mock('../components/PageImage',()=>({PageImage:({src,alt}:{src:string|null;alt:string})=><div data-testid={alt}>{src ?? 'no page'}</div>}));
@@ -19,7 +20,7 @@ beforeEach(()=>{
   vi.stubGlobal('requestAnimationFrame',(fn:()=>void)=>{fn();return 1;});
   vi.mocked(api.quickView).mockResolvedValue(payload());
   vi.mocked(api.getRun).mockResolvedValue({timestamp:'2026-10-24T09:15:00Z',last_decided_at:'2026-10-21T14:03:00Z'} as never);
-  vi.mocked(api.pageImageUrl).mockImplementation((_r,d,p,_h,_dpi,_f,marks)=>`${d}/page/${p}${marks?'?marks':''}`);
+  vi.mocked(api.pageImageUrl).mockImplementation((_r,d,p,_h,_dpi,_f,marks,revision)=>`${d}/page/${p}${marks?`?marks&revision=${revision}`:''}`);
   vi.mocked(api.annotatedUrl).mockImplementation((_r,d)=>`/annotated/${d}`);
   vi.mocked(api.annotatedBundleUrl).mockImplementation((_r,sku)=>`/annotated.zip?sku=${sku}`);
 });
@@ -59,6 +60,19 @@ describe('marked-up documents',()=>{
   vi.mocked(api.getRun).mockResolvedValue({timestamp:'2026-10-24T09:15:00Z',last_decided_at:null} as never);
   open();
   expect(await screen.findByText(/Updated 24-10-2026/)).toBeTruthy();
+ });
+
+ it('refreshes the date and marked pages after a decision changes, preserving the selected page',async()=>{
+  open();
+  await screen.findByText(/Updated 21-10-2026/);
+  fireEvent.change(screen.getByLabelText('BOM page'),{target:{value:'2'}});
+  const before = screen.getByTestId('BOM.pdf, page 2').textContent;
+  vi.mocked(api.getRun).mockResolvedValue({timestamp:'2026-10-24T09:15:00Z',last_decided_at:'2026-10-25T23:30:00Z'} as never);
+  await act(async()=>{notifyDataChanged('/api/runs/run/decisions');});
+  expect(await screen.findByText(/Updated 25-10-2026/)).toBeTruthy();
+  await waitFor(()=>expect(screen.getByTestId('BOM.pdf, page 2').textContent).not.toBe(before));
+  expect((screen.getByLabelText('BOM page') as HTMLSelectElement).value).toBe('2');
+  expect(api.getRun).toHaveBeenCalledTimes(2);
  });
 
  it('tells the document page where the reader came from, so back returns here',async()=>{

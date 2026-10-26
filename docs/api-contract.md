@@ -238,7 +238,7 @@ All review downloads require Edit access. Source-page previews remain available 
 | GET | `/api/runs/{run_id}/certificate.pdf` | Optional `sku`; one page per SKU, with hashes, review counts and open action items. |
 | POST | `/api/runs/{run_id}/decisions/import` | Multipart `file`, `dry_run=false`, `force=false`; validated decision round trip. |
 
-Marked documents carry the date of the newest review decision, as dd-mm-yyyy, and fall back to the
+Marked documents carry the UTC date of the newest review decision, as dd-mm-yyyy, and fall back to the
 run date when nobody has decided anything. The run summary serves the same value as
 `last_decided_at` (null when there are no decisions) so the side-by-side reader and the PDFs agree.
 A row the comparison could not settle carries no mark until a reviewer decides it; a reviewer's decision always overrides the comparison.

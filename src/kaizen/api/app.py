@@ -1282,8 +1282,10 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         return names, states, latest
 
     def _annotated_name(d, doc_id: str) -> str:
-        """A BOM and a label of the same SKU would otherwise overwrite each other's file."""
-        return "annotated-" + re.sub(r"[^A-Za-z0-9]+", "_", f"{d.doc_type.value}-{d.sku or doc_id}") + ".pdf"
+        """Keep distinct source documents of the same type and SKU distinct in downloads."""
+        stem = re.sub(r"[^A-Za-z0-9]+", "_", f"{d.doc_type.value}-{d.sku or doc_id}")[:120]
+        identity = hashlib.sha256(doc_id.encode()).hexdigest()[:16]
+        return f"annotated-{stem}-{identity}.pdf"
 
     @app.get("/api/runs/{run_id}/annotated.zip")
     def annotated_bundle(run_id: str, sku: str | None = None, session: ReviewSession | None = Depends(_identified)):

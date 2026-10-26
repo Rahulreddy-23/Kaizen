@@ -10,8 +10,9 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 
-from kaizen.api.app import create_app
+from kaizen.api.app import RunCache, create_app
 from kaizen.datasets.build import build_golden
+from kaizen.pipeline import load_run
 from kaizen.review.access import AccessStore
 from kaizen.review.sessions import UserStore
 from kaizen.workspace import Workspace
@@ -442,3 +443,40 @@ def test_the_marked_documents_and_the_page_show_the_same_update_date(env):
         assert pdf.status_code == 200
         with pymupdf.open(stream=pdf.content, filetype="pdf") as opened:
             assert expected in opened[0].get_text(), f"{kind}: the PDF does not carry {expected}"
+
+
+def test_annotated_bundle_preserves_distinct_documents_with_the_same_sku(env, tmp_path):
+    import hashlib
+
+    client, _, ws, run_id = env
+    run = load_run(ws.runs.get(run_id)['json_path'])
+    run.metadata.run_id = 'annotated-collisions'
+    group = next(g for g in run.groups if g.sku == '1295108FNS')
+    expected = [d for d in run.documents if d.id in group.document_ids and d.doc_type.value in ('BOM', 'LABEL', 'DRAWING')
+                and d.header.get('revision_role') != 'old']
+    sentinels = []
+    for kind in ('BOM', 'LABEL'):
+        original = next(d for d in expected if d.doc_type.value == kind)
+        source = tmp_path / f'alternate-{kind}.pdf'
+        sentinel = f'ALTERNATE_{kind}_SOURCE'
+        with pymupdf.open(original.path) as pdf:
+            pdf[0].insert_text((20, 20), sentinel)
+            pdf.save(source)
+        alternate = original.model_copy(update={'id': original.id + '-alternate', 'path': str(source),
+                                                'sha256': hashlib.sha256(source.read_bytes()).hexdigest()})
+        run.documents.append(alternate)
+        group.document_ids.append(alternate.id)
+        expected.append(alternate)
+        sentinels.append(sentinel)
+    RunCache(ws).put(run)
+    ws.db.conn.execute('UPDATE runs SET owner=? WHERE run_id=?', (DHARMA, run.metadata.run_id))
+    ws.db.conn.commit()
+    response = client.get(f'/api/runs/{run.metadata.run_id}/annotated.zip', params={'sku': group.sku})
+    assert response.status_code == 200, response.text
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert len(archive.namelist()) == len(set(archive.namelist())) == len(expected)
+        texts = []
+        for name in archive.namelist():
+            with pymupdf.open(stream=archive.read(name), filetype='pdf') as pdf:
+                texts.append(''.join(page.get_text() for page in pdf))
+        assert all(any(sentinel in text for text in texts) for sentinel in sentinels)

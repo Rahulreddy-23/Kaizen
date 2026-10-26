@@ -1,5 +1,5 @@
 import { Circle, FileArrowDown, FileZip } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { ErrorBox } from "../components/Feedback";
@@ -25,9 +25,16 @@ export default function MarkedUpPage() {
   const [params, setParams] = useSearchParams();
   const sku = params.get("sku") || "";
   const [expanded, setExpanded] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const data = useAsync(() => api.quickView(runId, { sku, status: "all" }), [runId, sku]);
   const run = useAsync(() => api.getRun(runId), [runId]);
-  useDataRefresh(data.refresh, runId);
+  const refresh = useCallback(() => {
+    data.refresh();
+    run.refresh();
+    setRefreshVersion(version => version + 1);
+  }, [data.refresh, run.refresh]);
+  useDataRefresh(refresh, runId);
+  const marksRevision = `${run.data?.last_decided_at || run.data?.timestamp || "initial"}:${refreshVersion}`;
 
   const result = data.data;
   const groups = result?.groups ?? [];
@@ -89,7 +96,7 @@ export default function MarkedUpPage() {
       </div>
 
       <QuickDocumentWorkspace key={`${runId}:${activeSku}`} runId={runId} sku={activeSku} documents={documents}
-        selected={null} preferred={{}} expanded={expanded} onExpanded={setExpanded} navigation={null} details={null} marks />
+        selected={null} preferred={{}} expanded={expanded} onExpanded={setExpanded} navigation={null} details={null} marks marksRevision={marksRevision} />
     </>}
   </div>;
 }
