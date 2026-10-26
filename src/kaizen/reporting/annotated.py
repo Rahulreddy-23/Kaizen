@@ -22,14 +22,14 @@ A BOM with no page geometry (XLSX/CSV source) gets a separate review page instea
 
 import re
 from collections import defaultdict
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 import pymupdf
 
 from kaizen.ingest.pdf_words import extract_words
-from kaizen.models import Document, DocType, Run, Severity
+from kaizen.models import DocType, Document, Run, Severity
 
 # Every document has a colour, and a mark wears the colour of the document it was compared against.
 # So green means 'the label agrees' on the BOM and on the drawing alike, and a reviewer learns the four
@@ -341,7 +341,7 @@ def _mark_beside(doc: pymupdf.Document, doc_type: str, rows, review_states) -> l
     size, plan = _fit(doc, pages, columns, words_by_page)
 
     marks: list[Mark] = []
-    for page_no, on_page in pages.items():
+    for page_no in pages:
         page = doc[page_no - 1]
         words = words_by_page[page_no]
         # Per-field placement must clear the marks already drawn as well as the words, or two items on
@@ -408,11 +408,11 @@ def _boxes(column: list[dict], x: float, stacked: bool, size: float) -> list[pym
 def _text_columns(fields: list[dict]) -> list[list[dict]]:
     """The page's marked fields, split into its text columns by where each field starts."""
     columns: list[list[dict]] = []
-    for field in sorted(fields, key=lambda f: f["bbox"].x0):
-        if columns and field["bbox"].x0 - columns[-1][-1]["bbox"].x0 <= COLUMN_SPLIT:
-            columns[-1].append(field)
+    for marked in sorted(fields, key=lambda f: f["bbox"].x0):
+        if columns and marked["bbox"].x0 - columns[-1][-1]["bbox"].x0 <= COLUMN_SPLIT:
+            columns[-1].append(marked)
         else:
-            columns.append([field])
+            columns.append([marked])
     return columns
 
 

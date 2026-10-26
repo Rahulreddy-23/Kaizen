@@ -1,13 +1,12 @@
 """API contract used by the reviewer UI. Runs against a temporary workspace; no network."""
 
 import io
-import zipfile
 import json
+import zipfile
 from datetime import datetime
 
-import pymupdf
-
 import openpyxl
+import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 

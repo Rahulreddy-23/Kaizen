@@ -11,11 +11,10 @@ import pymupdf
 import pytest
 
 from kaizen.datasets.build import build_golden
+from kaizen.ingest.pdf_words import extract_words
 from kaizen.models import DocType, Thresholds
 from kaizen.pipeline import run_folder
-from kaizen.ingest.pdf_words import extract_words
-from kaizen.reporting.annotated import (COLUMN_MARK, DOC_COLORS, GAP, MARK_ORDER, _kind, _other, _rows,
-                                        _top_date, write_annotated)
+from kaizen.reporting.annotated import COLUMN_MARK, DOC_COLORS, GAP, MARK_ORDER, _kind, _other, _rows, _top_date, write_annotated
 from kaizen.terminology.store import RelationshipStore
 
 
