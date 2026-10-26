@@ -1,4 +1,4 @@
-import { ArrowsClockwise, Circle, MagnifyingGlass } from "@phosphor-icons/react";
+import { ArrowsClockwise, Circle, MagnifyingGlass, SealCheck } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -71,7 +71,7 @@ export default function QuickViewPage() {
   return <div className="quick-view">
     <PageHeader back={{to:`/runs/${enc(runId)}`,label:"Overview"}} title="Quick view"
       description="Compare one SKU across its BOM, label and diagram. Select an entry to locate the source text."
-      actions={<>{result?.can_export && activeSku && <ExcelExport key={`${runId}:${activeSku}`} runId={runId} quickSku={activeSku}/>}<Button icon={<ArrowsClockwise size={16} />} onClick={data.reload} loading={data.loading}>Refresh</Button></>} />
+      actions={<>{result?.can_export && activeSku && <ExcelExport key={`${runId}:${activeSku}`} runId={runId} quickSku={activeSku}/>}<LinkButton to={`/runs/${enc(runId)}/marked-up${activeSku ? `?sku=${enc(activeSku)}` : ""}`} icon={<SealCheck size={16} />}>Marked-up documents</LinkButton><Button icon={<ArrowsClockwise size={16} />} onClick={data.reload} loading={data.loading}>Refresh</Button></>} />
     <nav className="quick-skus" aria-label="SKU selection">
       {groups.map((g, n) => <button key={g.sku} className={`quick-sku ${activeSku === g.sku ? "is-active" : ""}`} aria-pressed={activeSku === g.sku} onClick={() => change("sku", g.sku)}><strong>SKU {n + 1}</strong><span>{g.sku}</span></button>)}
     </nav>

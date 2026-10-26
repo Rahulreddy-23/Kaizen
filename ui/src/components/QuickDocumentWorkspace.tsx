@@ -1,6 +1,6 @@
 import {ArrowsOut, ArrowSquareOut, CrosshairSimple, WarningCircle} from "@phosphor-icons/react";
 import {Fragment, useEffect, useRef, useState, type ReactNode} from "react";
-import {Link} from "react-router-dom";
+import {Link, useLocation} from "react-router-dom";
 import {api} from "../api";
 import {enc} from "../lib/format";
 import type {QuickCell, QuickDocument, QuickKind, QuickRow} from "../types";
@@ -45,18 +45,22 @@ function Splitter({left, right, weights, totalWeight, onChange}: {left: QuickKin
   </div>;
 }
 
-function SourcePane({runId, kind, documents, cell, selected, missing, preferred, view, onView, onFocus, hidden}: {
+function SourcePane({runId, kind, documents, cell, selected, missing, preferred, view, onView, onFocus, hidden, marks, marksRevision}: {
   runId: string; kind: QuickKind; documents: QuickDocument[]; cell: QuickCell | null; selected: boolean; preferred?: string;
-  view: PaneView; onView: (patch: Partial<PaneView>) => void; onFocus: () => void; hidden: boolean; missing: boolean;
+  view: PaneView; onView: (patch: Partial<PaneView>) => void; onFocus: () => void; hidden: boolean; missing: boolean; marks?: boolean; marksRevision?: string;
 }) {
   const doc = documents.find(d => d.id === view.documentId) ?? documents[0];
+  // Where "Open full document" was pressed from. The document page sends the reader back here rather
+  // than to the documents list, which is somewhere they never were.
+  const here = useLocation();
+  const from = `${here.pathname}${here.search}`;
   const target = cell?.items.find(i => i.id === preferred) ?? cell?.items[0];
   const page = Math.min(Math.max(1,view.page),doc?.pages || 1);
   const item = target && target.doc_id === doc?.id && target.page === page ? target : cell?.items.find(i=>i.doc_id === doc?.id && i.page === page) ?? cell?.items.find(i=>i.doc_id === doc?.id);
   const box = selected && item?.page === page ? item.bbox : null;
   // Keep the rendered image stable throughout a pinch; reading scale is separate.
   const dpi = 300;
-  const image = doc?.pages ? api.pageImageUrl(runId,doc.id,page,null,dpi,kind === "BOM" ? "png" : "jpeg") : null;
+  const image = doc?.pages ? api.pageImageUrl(runId,doc.id,page,null,dpi,kind === "BOM" ? "png" : "jpeg",marks,marksRevision) : null;
   const locate = () => {if (target) onView({documentId:target.doc_id,page:target.page ?? 1,locate:view.locate + 1});};
   return <section id={`reader-${kind}`} className="quick-reader-pane" aria-label={`${NAME[kind]} source preview`} hidden={hidden}>
     <header className="quick-pane-title"><div><h3>{NAME[kind]}</h3>{documents.length === 1 && <p title={doc?.file_name}>{doc?.file_name}</p>}</div>{selected && cell && <Status status={cell.status} />}<Button size="sm" variant="ghost" iconOnly icon={<ArrowsOut size={15}/>} aria-label={`Focus ${NAME[kind]}`} title={`Focus ${NAME[kind]}`} onClick={onFocus}/></header>
@@ -68,7 +72,7 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
         <label className="sr-only" htmlFor={`reader-zoom-${kind}`}>{NAME[kind]} zoom</label>
         <select id={`reader-zoom-${kind}`} className="input input-sm" value={view.zoom} disabled={!doc.pages} onChange={e=>onView({zoom:e.target.value})}><option value="fit">Fit width</option>{Array.from(new Set([25,50,75,100,125,150,200,300,400,...(view.zoom === "fit" ? [] : [Number(view.zoom)])])).sort((a,b)=>a-b).map(n=><option key={n} value={n}>{n}%</option>)}</select>
         <Button size="sm" variant="ghost" iconOnly icon={<CrosshairSimple size={16}/>} aria-label={`Locate selected text in ${NAME[kind]}`} disabled={!selected || !target?.page} onClick={locate}/>
-        <Link className="quick-pane-open" to={`/runs/${enc(runId)}/documents/${enc(doc.id)}?page=${page}`} aria-label={`Open ${NAME[kind]} document`} title="Open full document"><ArrowSquareOut size={17}/></Link>
+        <Link className="quick-pane-open" to={`/runs/${enc(runId)}/documents/${enc(doc.id)}?page=${page}&from=${enc(from)}`} aria-label={`Open ${NAME[kind]} document`} title="Open full document"><ArrowSquareOut size={17}/></Link>
       </div>
       <div className={`quick-source-excerpt quick-${cell?.status ?? (missing ? "attention" : "neutral")}`}>
         {selected ? item ? <><strong>{item.description}</strong><small>{item.locator || item.file_name}{item.page !== page && " · Highlight on another page"}</small></> : <span>{cell ? "The selected entry is in another source file." : "No counterpart in this comparison. There is no location to highlight."}</span> : <span>Select a comparison entry to locate its source text.</span>}
@@ -80,9 +84,12 @@ function SourcePane({runId, kind, documents, cell, selected, missing, preferred,
   </section>;
 }
 
-export function QuickDocumentWorkspace({runId, sku, documents, selected, preferred, expanded, onExpanded, navigation, details}: {
+export function QuickDocumentWorkspace({runId, sku, documents, selected, preferred, expanded, onExpanded, navigation, details, marks, marksRevision}: {
   runId: string; sku: string; documents: QuickDocument[]; selected: QuickRow | null; preferred: Partial<Record<QuickKind,string>>;
   expanded: boolean; onExpanded: (value:boolean)=>void; navigation: ReactNode; details: ReactNode;
+  /** Draw the reviewers' check marks on each page. Off in review, on in the marked-up reader. */
+  marks?: boolean;
+  marksRevision?: string;
 }) {
   const [layout,setLayout] = useState<Layout>("three");
   const [pair,setPair] = useState(0);
@@ -141,7 +148,7 @@ export function QuickDocumentWorkspace({runId, sku, documents, selected, preferr
     {controls}{navigation}
     <div ref={grid} className="quick-reader-grid" style={{gridTemplateColumns:visible.map((k,n)=>`minmax(0,${weights[k]}fr)${n < visible.length-1 ? " 10px" : ""}`).join(" ")}}>
       {KINDS.map(k=><Fragment key={k}>
-        <SourcePane runId={runId} kind={k} documents={documents.filter(d=>d.doc_type === k)} cell={selected?.cells[k] ?? null} selected={!!selected} missing={!!selected && !selected.cells[k] && selected.status !== "neutral"} preferred={preferred[k]} view={views[k]} onView={patch=>setViews(old=>({...old,[k]:{...old[k],...patch}}))} onFocus={()=>focusPane(k)} hidden={!visible.includes(k)}/>
+        <SourcePane runId={runId} kind={k} documents={documents.filter(d=>d.doc_type === k)} cell={selected?.cells[k] ?? null} selected={!!selected} missing={!!selected && !selected.cells[k] && selected.status !== "neutral"} preferred={preferred[k]} view={views[k]} onView={patch=>setViews(old=>({...old,[k]:{...old[k],...patch}}))} onFocus={()=>focusPane(k)} hidden={!visible.includes(k)} marks={marks} marksRevision={marksRevision}/>
         {visible.includes(k) && visible.indexOf(k)<visible.length-1 && <Splitter left={k} right={visible[visible.indexOf(k)+1]} weights={weights} totalWeight={visible.reduce((sum,k)=>sum+weights[k],0)} onChange={setWeights}/>}
       </Fragment>)}
     </div>

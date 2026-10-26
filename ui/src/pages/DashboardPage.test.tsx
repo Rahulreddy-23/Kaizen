@@ -13,7 +13,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 function summary(): RunSummary {
   return {
     run_id: "run", name: "Test project", owner: "test@bd.com", permission: "owner", copied_from: "",
-    timestamp: "2026-10-01T00:00:00Z", input_root: "source", tool_version: "0.1.0", skus: 1, documents: 2,
+    timestamp: "2026-10-01T00:00:00Z", last_decided_at: null, input_root: "source", tool_version: "0.1.0", skus: 1, documents: 2,
     documents_by_type: { BOM: 1, LABEL: 1, DRAWING: 0, PCO: 0 }, unrecognised_files: [], rows: 12,
     reviewable_rows: 12, exempt_rows: 0, header_rows_needing_validation: 0,
     counts: { EXACT: 0, EQUIVALENT: 0, POTENTIAL: 0, MISMATCH: 12, MISSING: 0 }, needs_validation: 12, auto_cleared: 0,

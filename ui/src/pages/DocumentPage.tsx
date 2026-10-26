@@ -129,7 +129,13 @@ export default function DocumentPage() {
     setSp(n, { replace: true });
   };
 
-  const back = { to: `/runs/${enc(runId)}/documents`, label: "Documents" };
+  // Back goes where the reader came from. The quick view and the marked-up page both open documents
+  // from a pane, and sending those readers to the documents list drops them somewhere they never were.
+  // Only an in-app path is honoured: a `from` that is not one of ours falls back to the list.
+  const origin = sp.get("from") || "";
+  const back = origin.startsWith("/runs/") && !origin.startsWith("//")
+    ? { to: origin, label: origin.includes("/marked-up") ? "Marked-up documents" : origin.includes("/quick-view") ? "Quick view" : "Back" }
+    : { to: `/runs/${enc(runId)}/documents`, label: "Documents" };
   if (doc.error)
     return (
       <div>

@@ -32,6 +32,16 @@ export function fmtDate(iso: string | null | undefined): string {
   return d.toLocaleString(undefined, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+/** UTC dd-mm-yyyy, matching the date stamped on the marked-up PDFs. */
+export function fmtDayMonthYear(iso: string | null | undefined): string {
+  if (!iso) return "\u2014";
+  const normalized = /^\d{4}-\d{2}-\d{2}T[\d:.]+$/.test(iso) ? `${iso}Z` : iso;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getUTCDate())}-${pad(d.getUTCMonth() + 1)}-${d.getUTCFullYear()}`;
+}
+
 export function fmtQty(q: string | number | null | undefined): string {
   if (q === null || q === undefined || q === "") return "—";
   const n = Number(q);

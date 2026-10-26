@@ -12,6 +12,7 @@ const DiffPage = lazy(() => import("./pages/DiffPage"));
 const DocumentPage = lazy(() => import("./pages/DocumentPage"));
 const DocumentsPage = lazy(() => import("./pages/DocumentsPage"));
 const QuickViewPage = lazy(() => import("./pages/QuickViewPage"));
+const MarkedUpPage = lazy(() => import("./pages/MarkedUpPage"));
 const EvidencePage = lazy(() => import("./pages/EvidencePage"));
 const MiningPage = lazy(() => import("./pages/MiningPage"));
 const LearningPage = lazy(() => import("./pages/LearningPage"));
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/runs/:runId/rows/:rowId" element={<EvidencePage />} />
             <Route path="/runs/:runId/documents" element={<DocumentsPage />} />
             <Route path="/runs/:runId/quick-view" element={<QuickViewPage />} />
+            <Route path="/runs/:runId/marked-up" element={<MarkedUpPage />} />
             <Route path="/runs/:runId/documents/:docId" element={<DocumentPage />} />
             <Route path="/runs/:runId/mining" element={<MiningPage />} />
             <Route path="/runs/:runId/learning" element={<LearningPage />} />
