@@ -5,7 +5,7 @@ import re
 from collections import defaultdict
 
 from kaizen.checks.base import RowIdFactory, header_item, pair_token, unparsed_bom_rows
-from kaizen.checks.bom_label import below_top_level, comparable_bom_items
+from kaizen.checks.bom_label import below_top_level, comparable_bom_items, top_level
 from kaizen.checks.pairing import CheckPolicy, disc, run_pairing_check
 from kaizen.matching.components import PACKAGING_KINDS, component
 from kaizen.matching.ladder import MatchLadder
@@ -20,7 +20,8 @@ def drawing_relevant_bom_items(bom: Document):
     """Physical components plus packaging lines (tray, lid): packaging is shown on a tray drawing but a BOM
     packaging line without a callout is not a finding (soft)."""
     physical = comparable_bom_items(bom)
-    packaging = [i for i in bom.items if i.category is ItemCategory.PACKAGING and i.is_active and (i.quantity is None or i.quantity > 0) and not below_top_level(i, bom)]
+    top = top_level(bom)
+    packaging = [i for i in bom.items if i.category is ItemCategory.PACKAGING and i.is_active and (i.quantity is None or i.quantity > 0) and not below_top_level(i, top)]
     return physical + packaging
 _REV_RE = re.compile(r"\bREV\.?\s*([A-Z0-9]{1,3})\b", re.IGNORECASE)
 

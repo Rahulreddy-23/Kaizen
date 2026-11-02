@@ -100,3 +100,19 @@ def test_reviewer_approval_fills_status_and_names(run):
     end_cap = next(r for r in table(wb["Combined"], COMBINED_HEADERS) if r["BOM Component No"] == "2260001")
     assert (end_cap["Approved By Facilitator"], end_cap["Approved by IR"]) == ("facilitator@bd.com", "approver@bd.com")
     assert end_cap["Status"] == "Approved" and end_cap["Time stamp"] == "2026-11-02 10:00 UTC"
+
+
+def test_identical_label_lines_each_count_as_found(tmp_path):
+    kit = tmp_path / "kit"
+    rows = [BomRowSpec(item="2260001", description="END CAP", qty_per="1"), BomRowSpec(item="2260009", description="END CAP", qty_per="1")]
+    render_bom_pdf(BomSpec(parent_item="1234567NS", parent_description="KIT", rows=rows), kit / "bom.pdf")
+    render_label_pdf(LabelSpec(ref="1234567", product_name="Kit", contents=["1 Each - End Cap", "1 Each - End Cap"]), kit / "label.pdf")
+    wb = bcc_workbook(run_folder(kit, RelationshipStore.default()))
+    assert metrics(wb["Label VS BOM"])["Label components found in BOM"] == 2
+
+
+def test_reviewer_marking_a_pairing_missing_names_both_sides(run):
+    row = next(r for r in run.results if r.check.value == "BOM_LABEL" and r.source_a and r.source_a.item_number == "2260001")
+    decision = type("Decision", (), {"decision": "OVERRIDE", "override_classification": "MISSING", "reviewer": "r@bd.com", "decided_at": "2026-11-02T09:00:00+00:00", "comment": ""})()
+    label = table(bcc_workbook(run, ReviewBundle(decisions={row.row_id: {1: decision}}))["Label VS BOM"], LABEL_HEADERS)
+    assert next(r for r in label if r["BOM Component No"] == "2260001")["Description Match"] == "Missing data in BOM or Label"

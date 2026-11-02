@@ -10,7 +10,7 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from kaizen.checks.bom_label import is_comparable_bom_item
+from kaizen.checks.bom_label import is_comparable_bom_item, top_level
 from kaizen.models import Classification, DocType, DocumentItem, Run
 from kaizen.reporting.styles import BORDER, CLASS_FILLS, HEADER_FILL, HEADER_FONT, SECTION_FONT, SEVERITY_FILLS, TITLE_FONT, WRAP
 from kaizen.reporting.workbook import save_workbook
@@ -460,8 +460,9 @@ def _documents_sheet(ws, run: Run) -> None:
     for d in run.documents:
         if d.doc_type is not DocType.BOM:
             continue
+        top = top_level(d)
         for item in d.items:
-            ok, reason = is_comparable_bom_item(item, d)
+            ok, reason = is_comparable_bom_item(item, top)
             if ok:
                 continue
             row += 1

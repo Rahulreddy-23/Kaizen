@@ -416,6 +416,10 @@ def _spatial_header(page, lines, header, method, warnings):
     for line in lines:
         text = line_text(line)
         if m := _DWG_RE.search(text):
+            if header.get("identity_source") == "signature manifest" and m.group(1) != header.get("drawing_number"):
+                note = f"page {page.number + 1}: title block reads {m.group(1)} but the signature manifest controls {header.get('drawing_number')} — confirm the sheets belong to this document"
+                if note not in warnings:
+                    warnings.append(note)
             header.setdefault("drawing_number", m.group(1))
             header.setdefault("identity_evidence", {"page": page.number + 1, "bbox": line_bbox(line).model_dump(), "raw_text": text, "extraction_method": method})
             header.setdefault("identity_confidence", min(w.confidence for w in line))

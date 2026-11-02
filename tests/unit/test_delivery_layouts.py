@@ -287,3 +287,70 @@ def test_item_numbers_with_a_decimal_point_are_not_dropped(tmp_path):
     parsed = parse_bom_pdf(path)
     assert [i.item_number for i in parsed.items] == ["SA1234567", "RT-ABCDEF-3.5FR"]
     assert not parsed.header["unparsed_rows"]
+
+
+def test_orange_print_survives_while_red_ink_is_removed():
+    with pymupdf.open() as pdf:
+        page = pdf.new_page(width=400, height=120)
+        page.insert_text((20, 60), "REF 1234567", fontsize=24, color=(1.0, 0.43, 0.0))  # brand-orange print
+        page.insert_text((220, 60), "Checked", fontsize=24, color=(0.86, 0.2, 0.15))  # red pen
+        pixels = ocr.page_pixels(page, dpi=72)
+    assert (pixels[35:65, 20:180].min(axis=2) < 150).mean() > 0.03
+    assert (pixels[35:65, 220:380].min(axis=2) > 225).all()
+
+
+def test_red_ink_at_one_edge_does_not_clear_the_opposite_edge():
+    with pymupdf.open() as pdf:
+        page = pdf.new_page(width=200, height=100)
+        page.draw_rect(pymupdf.Rect(0, 20, 3, 80), color=(0.86, 0.2, 0.15), fill=(0.86, 0.2, 0.15))
+        page.draw_rect(pymupdf.Rect(197, 20, 200, 80), color=(0.6, 0.6, 0.6), fill=(0.6, 0.6, 0.6))  # pale grey print
+        pixels = ocr.page_pixels(page, dpi=72)
+    assert (pixels[25:75, 197:200].min(axis=2) < 200).all()
+
+
+def test_offset_text_layer_is_not_mistaken_for_lines_ocr_missed(tmp_path, monkeypatch):
+    path = tmp_path / "LAB1234567.pdf"
+    with pymupdf.open() as pdf:
+        page = pdf.new_page()
+        picture(page, page.rect)
+        # The scanner text layer sits half a line below the printed text.
+        for text, y in [("Kit - Contents:", 55), ("1 Each - Mask", 65), ("1 Each - Gown", 75), ("2 Each - Gloves", 85)]:
+            page.insert_text((10, y), text, fontsize=8, render_mode=3)
+        pdf.save(path)
+    lines = [("REF 1234567D", 10, 10), ("Kit - Contents:", 10, 43), ("1 Each - Mask", 10, 53), ("1 Each - Gown", 10, 63), ("2 Each - Gloves", 10, 73)]
+    words = []
+    for text, x, y in lines:
+        for token in text.split():
+            words.append((x, y, x + 4 * len(token), y + 8, token, .9))
+            x += 4 * (len(token) + 1)
+    monkeypatch.setattr("kaizen.ingest.label_pdf.ocr_available", lambda: True)
+    monkeypatch.setattr("kaizen.ingest.label_pdf.ocr_page", lambda page: OcrResult(words=words, engine="fake"))
+    label = parse_label_pdf(path)
+    assert [i.description for i in label.items] == ["Mask", "Gown", "Gloves"]
+
+
+def test_kit_components_under_a_non_physical_top_line_are_still_compared():
+    bom = bom_doc([("KIT1234567", "KIT ASSEMBLY, PROCEDURE", "0", ItemCategory.PROCESS), ("SA1234567", "MICROINTRO, 4FR X 5CM", "1"),
+                   ("RM7654321", "IV CATHETER, SAFETY, 22G", "1")])
+    for item, level in zip(bom.items, ("1", "2", "2")):
+        item.attributes["level"] = level
+    th = Thresholds()
+    label = label_doc([("Microintroducer, 4 F (5 cm Length)", "1"), ("IV Catheter, Safety, 22 G", "1")])
+    rows = run_bom_label_check(bom, label, MatchLadder(RelationshipStore.default(), th), th)
+    assert {r.source_a.item_number for r in rows if r.role == "item" and r.source_a} == {"SA1234567", "RM7654321"}
+
+
+def test_title_block_that_disagrees_with_the_manifest_is_reported(tmp_path, monkeypatch):
+    path = tmp_path / "DWG1234567.pdf"
+    with pymupdf.open() as pdf:
+        sheet = pdf.new_page(width=792, height=612)
+        picture(sheet, pymupdf.Rect(40, 40, 400, 300))
+        sheet.insert_text((420, 300), "Released", fontsize=40)
+        manifest = pdf.new_page(width=612, height=792)
+        for n, text in enumerate(["Signature Manifest", "Document Number: DWG1234567", "Revision: 16", "Name/Signature", "Meaning/Reason"]):
+            manifest.insert_text((40, 60 + 18 * n), text, fontsize=10)
+        pdf.save(path)
+    stub_ocr(monkeypatch, {1: [("END CAP", 60, 80), ("TAPON DEL EXTREMO", 60, 91), ("DWG7654321", 600, 560)]})
+    drawing = parse_drawing_pdf(path)
+    assert drawing.header["drawing_number"] == "DWG1234567"
+    assert any("DWG7654321" in w and "manifest" in w for w in drawing.warnings)

@@ -60,6 +60,8 @@ def description_match(row: CheckResult, review: ReviewBundle | None, missing_sid
     decision = _latest(review.decisions.get(row.row_id, {})) if review else None
     final = review.finals.get(row.row_id) if review else None
     override = decision.override_classification if decision and decision.decision == "OVERRIDE" else None
+    if override == "MISSING" and row.source_a and row.source_b:
+        return _missing(" or ".join(missing_side))  # the reviewer rejected the pairing itself
     if override == "MISSING" or (row.source_a is None) != (row.source_b is None) and not override:
         return _missing(missing_side[0] if row.source_a is None else missing_side[1])
     if override:
@@ -185,11 +187,10 @@ def _label_sheet(ws, rows: list[CheckResult], results: list[CheckResult], labels
     if not labels:
         ws.cell(last + 1, 2, "No label document in this set; nothing to compare.").font = BODY_FONT
         last += 1
-    paired = [t for t in table if t["Label Description"] and t["BOM Component No"]]
     _write_metrics(ws, last + 3, {
         "Total Label Components": sum(len(label.items) for label in labels),
         "Components Found in BOM": len(bom.items) if bom else 0,
-        "Label components found in BOM": len({t["Label Description"] for t in paired}),
+        "Label components found in BOM": len({r.source_b.id for r in rows if r.source_a and r.source_b}),
         "Description Mismatches": sum(t["Description Match"] == MISMATCH or t["Description Match"].startswith("Missing") for t in table),
         "Qty Mismatches": sum(t["Qty Match"] == QTY_DIFFERENT for t in table),
         "Fully Matched Components": sum(t["Description Match"] in (EXACT, PARTIAL) and t["Qty Match"] == QTY_EXACT for t in table),

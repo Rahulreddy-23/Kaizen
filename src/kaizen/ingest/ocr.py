@@ -235,15 +235,17 @@ def _ocr_pixmap(page: pymupdf.Page, dpi: int, clip: pymupdf.Rect | None = None) 
     pix = page.get_pixmap(dpi=dpi, clip=clip, colorspace=pymupdf.csRGB, alpha=False, annots=False)
     pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
     r, g, b = (pixels[..., channel].astype(np.int16) for channel in range(3))
-    red = (r >= 120) & (r - np.maximum(g, b) >= 60)
+    # Pen red only: orange and amber print (brand colour, warnings) has a much larger green share.
+    red = (r >= 120) & (r - np.maximum(g, b) >= 60) & (4 * np.abs(g - b) < r - np.minimum(g, b))
     if not red.any():
         return pix
     # The pale anti-aliased edge of a red stroke is still legible to OCR. Clear light pixels next to red ink;
     # dark print crossed by a tick keeps its dark pixels.
-    near = red.copy()
-    for dy in range(-2, 3):
-        for dx in range(-2, 3):
-            near |= np.roll(red, (dy, dx), axis=(0, 1))
+    padded = np.pad(red, 2)
+    near = np.zeros_like(red)
+    for dy in range(5):
+        for dx in range(5):
+            near |= padded[dy:dy + red.shape[0], dx:dx + red.shape[1]]
     pixels = pixels.copy()
     pixels[red | (near & (pixels.min(axis=2) >= 100))] = 255
     cleaned = pymupdf.Pixmap(pymupdf.csRGB, pix.width, pix.height, pixels.tobytes(), False)

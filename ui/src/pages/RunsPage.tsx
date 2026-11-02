@@ -107,7 +107,8 @@ export default function RunsPage() {
       if (result.failures.length) {
         runs.reload(); setProgress(null);
         setPath(result.failures[0].path);
-        setFailure({title: `Created ${result.runs.length} run${result.runs.length === 1 ? "" : "s"} · ${result.failures.length} folder${result.failures.length === 1 ? "" : "s"} could not be checked`, message: result.failures.map(f => `${f.path}: ${f.message}`).join("\n") + "\nOnly failed folders are listed. Run a failed folder's path to retry it."});
+        const skippedNote = result.skipped?.length ? `\nSkipped outside the kit folders: ${result.skipped.map(s => s.path).join(", ")}.` : "";
+        setFailure({title: `Created ${result.runs.length} run${result.runs.length === 1 ? "" : "s"} · ${result.failures.length} folder${result.failures.length === 1 ? "" : "s"} could not be checked`, message: result.failures.map(f => `${f.path}: ${f.message}`).join("\n") + "\nOnly failed folders are listed. Run a failed folder's path to retry it." + skippedNote});
         return;
       }
       const created = result.runs;

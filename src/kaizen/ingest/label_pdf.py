@@ -306,12 +306,14 @@ def _lines_missed_by_ocr(native_lines: list[list[Word]], recognised: list[Word])
     if anchor is None:
         return []
     missed = []
-    for line in _contents_region(native_lines[anchor + 1:]):
+    region = _contents_region(native_lines[anchor + 1:])
+    for line in region:
         top, bottom = min(w.y0 for w in line), max(w.y1 for w in line)
         covered = any(min(bottom, w.y1) - max(top, w.y0) >= .5 * (bottom - top) for w in recognised)
         if not covered and re.search(r"[A-Za-z]{3,}", line_text(line)):
             missed.append([replace(w, confidence=min(w.confidence, .8)) for w in line])
-    return missed
+    # A text layer offset from the image misses most lines at once; restoring them would duplicate the contents.
+    return missed if len(missed) * 3 <= len(region) else []
 
 
 def _contents_region(lines: list[list[Word]]) -> list[list[Word]]:
