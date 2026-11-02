@@ -50,7 +50,12 @@ export function ExcelExport({ runId, quickSku }: { runId: string; quickSku?: str
           <span className="font-medium">Complete details</span>
           <span className="excel-export-description">Every comparison, source evidence, decisions, approvals and supporting audit sheets.</span>
         </a>
-        <p className="excel-export-note">Both downloads use .xlsx. Decision and comment columns can be imported back.</p></>}
+        <p className="excel-export-note">Both downloads use .xlsx. Decision and comment columns can be imported back.</p>
+        <p className="excel-export-note">BD cross-check format · three sheets per SKU</p>
+        <a href={api.exportUrl(runId, "bcc")} download aria-label="Download BCC template Excel" onClick={() => setOpen(false)}>
+          <span className="font-medium">BCC template</span>
+          <span className="excel-export-description">Label VS BOM, Drawings VS BOM and Combined sheets with match results, counts and approvals. Read-only.</span>
+        </a></>}
       </div>}
     </div>
   );

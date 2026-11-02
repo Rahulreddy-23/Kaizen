@@ -12,7 +12,7 @@ import { ErrorBox } from "../components/Feedback";
 import { Button, Card, Dialog, EmptyState, PageHeader, TableSkeleton } from "../components/ui";
 import { enc, fmtDate, displayName } from "../lib/format";
 import { errorMessage, useAsync } from "../lib/useAsync";
-import { addFileSet, addFolders, folderProblem, supportedRunFiles, uploadProblem, type UploadFolder } from "../lib/uploads";
+import { addFileSet, addFolders, folderProblem, looseParentFiles, supportedRunFiles, uploadProblem, type UploadFolder } from "../lib/uploads";
 import { useDataRefresh } from "../lib/dataRefresh";
 import { useToast } from "../lib/toast";
 import type { RunSummary } from "../types";
@@ -38,6 +38,7 @@ export default function RunsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [path, setPath] = useState("");
   const [skippedFiles, setSkippedFiles] = useState(0);
+  const [looseFiles, setLooseFiles] = useState<string[]>([]);
   const [folders, setFolders] = useState<UploadFolder[]>([]);
   const folderInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
@@ -52,6 +53,7 @@ export default function RunsPage() {
     input.value = "";  // so choosing the same folder again still fires a change
     if (!picked.length) return;
     setSkippedFiles(picked.length - supportedRunFiles(picked).length);
+    setLooseFiles(looseParentFiles(picked).map(file => file.name));
     const next = addFolders(folders, picked);
     setFolders(next);
     setErr(next.length === folders.length ? (supportedRunFiles(picked).length ? "That folder is already added." : "That folder has no PDF, XLSX, XLSM or CSV documents.") : null);
@@ -61,6 +63,7 @@ export default function RunsPage() {
     input.value = "";
     if (!picked.length) return;
     setSkippedFiles(picked.length - supportedRunFiles(picked).length);
+    setLooseFiles([]);
     const added = addFileSet(folders, picked);
     setFolders(added.folders);
     setErr(added.problem);
@@ -108,10 +111,11 @@ export default function RunsPage() {
         return;
       }
       const created = result.runs;
+      const skipped = result.skipped?.length ? ` Skipped ${result.skipped.length} file${result.skipped.length === 1 ? "" : "s"} outside the kit folders.` : "";
       await showComplete();
-      if (created.length === 1) { nav(`/runs/${enc(created[0].run_id)}`); return; }
+      if (created.length === 1 && !skipped) { nav(`/runs/${enc(created[0].run_id)}`); return; }
       runs.reload(); setCreating(false);
-      toast({ tone: "ok", title: `Created ${created.length} runs`, description: "One run per folder." });
+      toast({ tone: "ok", title: `Created ${created.length} run${created.length === 1 ? "" : "s"}`, description: `One run per folder.${skipped}` });
     }
     catch (e) { setProgress(null); setErr(errorMessage(e)); }
     finally { setBusy(null); }
@@ -119,7 +123,7 @@ export default function RunsPage() {
   const all = runs.data ?? [];
   const visible = (tab === "deleted" ? deleted.data ?? [] : all).filter(r => (tab === "all" || tab === "deleted" || (tab === "mine" ? r.permission === "owner" : r.permission !== "owner")) && `${r.name} ${r.run_id} ${r.owner}`.toLowerCase().includes(search.toLowerCase()));
   const pagination = usePagedList(visible, `${tab}:${search}`);
-  const openCreate = () => { setErr(null); setFolders([]); setSkippedFiles(0); setFailure(null); setProgress(null); setRunName(""); setPath(""); setUploadStates({}); setCreating(true); };
+  const openCreate = () => { setErr(null); setFolders([]); setSkippedFiles(0); setLooseFiles([]); setFailure(null); setProgress(null); setRunName(""); setPath(""); setUploadStates({}); setCreating(true); };
 
   return <div className="workspace-page">
     <PageHeader title="Cross-checks" description="Open a run or upload documents to start a new check." actions={<Button variant="primary" onClick={openCreate} icon={<Plus size={18} />}>New cross-check</Button>} />
@@ -161,7 +165,7 @@ export default function RunsPage() {
         {!folders.length && <small className="document-picker-hint">PDF, XLSX, XLSM or CSV · Up to 250 MB per run</small>}
       </div>
       {!!folders.length && <section className="upload-selection" aria-label="Selected documents">
-        <div className="upload-selection-heading"><div><strong>{folders.length} run{folders.length === 1 ? "" : "s"}</strong><span>{fileCount} documents</span></div><Button variant="ghost" size="sm" disabled={!!busy} onClick={() => { setFolders([]); setSkippedFiles(0); setFailure(null); setErr(null); setUploadStates({}); }}>Clear all</Button></div>
+        <div className="upload-selection-heading"><div><strong>{folders.length} run{folders.length === 1 ? "" : "s"}</strong><span>{fileCount} documents</span></div><Button variant="ghost" size="sm" disabled={!!busy} onClick={() => { setFolders([]); setSkippedFiles(0); setLooseFiles([]); setFailure(null); setErr(null); setUploadStates({}); }}>Clear all</Button></div>
         <ul className="upload-file-list upload-folder-list" aria-label="Runs to create">{folders.map(folder => { const issue = folderProblem(folder), state = uploadStates[folder.name]; const Icon = folder.loose ? Files : FolderOpen; return <li key={folder.name}>
           <Icon size={20} aria-hidden />
           <div className="upload-file-name"><details><summary><strong>{folder.name || "(no folder)"}</strong><span>{issue ?? (state === "processing" ? "Processing…" : state === "saved" ? "Run saved" : state === "failed" ? "Could not process" : `${folder.files.length} documents · Ready`)}</span></summary><ul className="upload-document-names">{folder.files.map(file => <li key={file.name}>{file.name}</li>)}</ul></details></div>
@@ -169,6 +173,7 @@ export default function RunsPage() {
         </li>; })}</ul>
       </section>}
       {!!skippedFiles && <p className="upload-skipped" role="status">{skippedFiles} hidden or unsupported file{skippedFiles === 1 ? "" : "s"} skipped.</p>}
+      {!!looseFiles.length && <p className="upload-skipped" role="status">{looseFiles.length === 1 ? `${looseFiles[0]} was` : `${looseFiles.length} files were`} skipped because {looseFiles.length === 1 ? "it is" : "they are"} not inside a kit folder.</p>}
       {busy === "upload" && progress && <p className="upload-stage" role="status" aria-live="polite">{progress.stage}</p>}
       <div className="demo-option"><div><strong>Sample documents</strong><p>Use the demo to see how a review works.</p></div><div className="run-start-action"><Button disabled={!!busy} loading={busy === "demo"} onClick={() => start("demo", api.loadDemo)}>Try a demo</Button>{busy === "demo" && progress && <RunProgressIndicator value={progress} />}</div></div>
       {session?.is_admin && health.data && !health.data.hosted && <details className="advanced-options"><summary>Advanced: use a local folder path</summary><div className="space-y-3 pt-3"><p className="text-ink-3">Enter a folder path on the machine running Kaizen.</p><input className="input w-full mono" placeholder="/path/to/project-folder" disabled={!!busy} value={path} aria-label="Local folder path" onChange={e => setPath(e.target.value)} /><div className="run-start-action"><Button loading={busy === "path"} disabled={!!busy || !path.trim()} onClick={() => void runFromPath()}>Run folder</Button>{busy === "path" && progress && <RunProgressIndicator value={progress} />}</div></div></details>}

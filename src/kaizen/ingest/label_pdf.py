@@ -7,20 +7,21 @@ define the columns; continuation (wrapped) lines are merged into the entry above
 import re
 import statistics
 from collections import Counter
+from dataclasses import replace
 from difflib import SequenceMatcher
 from pathlib import Path
 
 import pymupdf
 
 from kaizen.ingest.hashing import document_id, sha256_file
-from kaizen.ingest.ocr import OCR_SETUP_HELP, OcrError, correct_fused_label_words, correct_ocr_text, ocr_available, ocr_page, ocr_words
+from kaizen.ingest.ocr import OCR_SETUP_HELP, OcrError, correct_confused_label_letters, correct_fused_label_words, correct_ocr_text, ocr_available, ocr_page, ocr_words
 from kaizen.ingest.pdf_words import Word, extract_words, group_lines, line_bbox, line_text, split_line_by_gaps
 from kaizen.ingest.quantity import parse_label_line
 from kaizen.ingest.text_lines import capture_text_lines, restore_supported_spacing
 from kaizen.models import BBox, DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "label_pdf"
-PARSER_VERSION = "6"
+PARSER_VERSION = "7"
 
 _REF_CODE_RE = re.compile(r"^[A-Z0-9]{5,12}$")
 _NUMBER_RE = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
@@ -149,6 +150,9 @@ def parse_label_pdf(path: Path | str) -> Document:
                         header["ocr_engine"] = result.engine
                         warnings.extend(f"page {page_no}: {notice}" for notice in result.notices)
                         warnings.append(f"page {page_no}: {'incomplete native text' if reread_for_contents else 'unreadable native REF' if native else 'no native text'}; OCR ({result.engine}, {result.dpi} dpi) produced {len(words)} words; REF and contents confidence are recorded separately — verify extracted fields against the page image")
+                        if native_contents and (missed := _lines_missed_by_ocr(native_lines, words)):
+                            words = words + [w for line in missed for w in line]
+                            warnings.append(f"page {page_no}: OCR skipped text that the PDF text layer holds; recovered {len(missed)} contents line{'s' if len(missed) != 1 else ''} from that layer — verify against the page image")
                     elif native:
                         warnings.append(f"page {page_no}: OCR re-read of the page image found no text; native text kept")
             elif native:
@@ -231,7 +235,7 @@ def parse_label_pdf(path: Path | str) -> Document:
                         spaced = restore_supported_spacing(structural_text, max(candidates)[2])
                 text = correct_ocr_text(spaced) if page_method == "ocr" else structural_text
                 if page_method == "ocr":
-                    text = correct_fused_label_words(text)
+                    text = correct_confused_label_letters(correct_fused_label_words(text))
                 parsed = parse_label_line(text)
                 if not parsed.matched:
                     warnings.append(f"page {page_no}: unparsed text in contents region skipped: '{raw_text[:60]}'")
@@ -295,6 +299,21 @@ def parse_label_pdf(path: Path | str) -> Document:
     )
 
 
+def _lines_missed_by_ocr(native_lines: list[list[Word]], recognised: list[Word]) -> list[list[Word]]:
+    """Whole contents lines the page OCR skipped although the PDF's own text layer holds them. Lines OCR
+    did read are never replaced; restored words carry reduced confidence so they are verified."""
+    anchor = next((i for i, line in enumerate(native_lines) if "contents" in line_text(line).lower()), None)
+    if anchor is None:
+        return []
+    missed = []
+    for line in _contents_region(native_lines[anchor + 1:]):
+        top, bottom = min(w.y0 for w in line), max(w.y1 for w in line)
+        covered = any(min(bottom, w.y1) - max(top, w.y0) >= .5 * (bottom - top) for w in recognised)
+        if not covered and re.search(r"[A-Za-z]{3,}", line_text(line)):
+            missed.append([replace(w, confidence=min(w.confidence, .8)) for w in line])
+    return missed
+
+
 def _contents_region(lines: list[list[Word]]) -> list[list[Word]]:
     heights = [max(w.y1 for w in l) - min(w.y0 for w in l) for l in lines] or [8.0]
     h = statistics.median(heights)
@@ -325,10 +344,14 @@ def _build_entries(region: list[list[Word]], columns: list[float]) -> list[list[
         per_col: dict[int, list[Word]] = {}
         for w in line:
             per_col.setdefault(_column_of(w.x0, columns), []).append(w)
-        for col_idx, words in per_col.items():
+        for col_idx, words in sorted(per_col.items()):
             words.sort(key=lambda w: w.x0)
             words = _expand_fused_tokens(words)
-            for group in _split_at_starters(words):
+            groups = _split_at_starters(words)
+            # Text ahead of this column's starter on the same line is the left entry running long.
+            if col_idx and len(groups) > 1 and groups[0] and not _is_entry_starter(groups[0], 0) and entries[col_idx - 1]:
+                entries[col_idx - 1][-1].extend(groups.pop(0))
+            for group in groups:
                 if not group:
                     continue
                 if _is_entry_starter(group, 0) or not entries[col_idx]:

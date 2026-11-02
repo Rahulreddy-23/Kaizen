@@ -21,6 +21,7 @@ KINDS = (
     ("glove_container", r"\bGLOVES?\s+(?:WALLET|BOX|POUCH)\b"),
     ("protective_tube", r"\b(?:PROTECTIVE|PROTECTION)\s+TUBE\b"),
     ("shipping_case", r"\b(?:SHIP(?:PING)?\s+CASE|CASE[ ,]+SHIP(?:PING)?)\b"),
+    ("carton", r"\bCARTON\b(?!\s+LABEL)"),
     ("spacer", r"\b(?:INSERT[ ,]+SPACING|INSERT\s+SPACER|SPACER\s+INSERT)\b"),
     ("tray", r"\bTRAY\b"),
     ("picc", r"\b(?:PICC|PPICC|POWERPICC)\b"),
@@ -151,4 +152,4 @@ def alternatives(text: str) -> tuple[str, ...]:
     return parts if len(parts) > 1 and all(component(p).kind for p in parts) else (text,)
 
 
-PACKAGING_KINDS = frozenset({"glove_container", "protective_tube", "shipping_case", "spacer", "tray", "case_sealing_tape"})
+PACKAGING_KINDS = frozenset({"glove_container", "protective_tube", "shipping_case", "carton", "spacer", "tray", "case_sealing_tape"})

@@ -33,12 +33,13 @@ class ParseOutcome:
 
 
 def _by_filename(path: Path) -> DocType | None:
-    # Released BD files use identifiers without a separator (for example DWG1234567, LAB1234567).
+    # Released BD files use identifiers without a separator (for example DWG1234567, DWG1234567D, LAB1234567,
+    # or BAW1234567 for label artwork); scanners may append text such as a timestamp after the number.
     # Content detection still takes precedence over these anchored fallbacks.
     stem = path.stem.upper()
-    if re.match(r"^DWG\d{5,}(?:\b|_)", stem):
+    if re.match(r"^DWG\d{5,}[A-Z]?(?![A-Z0-9])", stem):
         return DocType.DRAWING
-    if re.match(r"^LAB\d{5,}(?:\b|_)", stem):
+    if re.match(r"^(?:LAB|BAW)\d{5,}[A-Z]?(?![A-Z0-9])", stem):
         return DocType.LABEL
     tokens = set(re.split(r"[^a-z0-9]+", path.stem.lower()))
     for doc_type, keys in _FILENAME_TOKENS.items():

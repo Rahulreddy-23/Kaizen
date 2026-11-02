@@ -16,7 +16,7 @@ Read the [user tutorial](docs/user-guide.md) and [privacy/document-handling noti
 - SKU-grouped documents, searchable source/discrepancy lists, paginated review queues and source-page references. Labels/drawings offer comparison entries and a separate **All recognized text** view for headers, notes and unparsed text.
 - Invite-only BD accounts, private runs, rename/delete/restore and owner-only permanent deletion to reclaim stored files; View/Edit sharing, independent copies, decisions and explicit approvals.
 - Shared reviewer-approved terminology, with named approvals and optional account selections; independently verified closed-testing feedback. Uncertain component matches, assemblies, quantity bases and drawing applicability remain review-required.
-- Per-SKU Excel downloads (**Summary** or **Complete details**), decision imports, annotated BOM PDFs, certificates, action items and run comparisons.
+- Per-SKU Excel downloads (**Summary**, **Complete details** or BD's **BCC template**), decision imports, annotated BOM PDFs, certificates, action items and run comparisons.
 
 ## Quick start
 
@@ -80,7 +80,7 @@ and code, and creates a password. A BD address alone cannot register.
 
 1. On **All runs**, choose **New cross-check** and add a kit folder or exactly three files: one BOM, one label and one drawing. Each set creates its own run. A parent folder adds its kit subfolders. Choose **Try a demo** for synthetic examples.
 2. Open **Quick view**, choose a SKU and select an entry to compare its three sources. Use **Open document reader** for adjustable side-by-side reading or full-width focus. **Documents** shows extraction; **Review queue** records decisions.
-3. Save decisions and approve reviewed results. On **Overview**, use **Download Excel** for a summary or complete details, with each SKU on its own worksheet. Both support decision imports. View-only users cannot change or export runs.
+3. Save decisions and approve reviewed results. On **Overview**, use **Download Excel** for a summary or complete details, with each SKU on its own worksheet; both support decision imports. **BCC template** gives the Label VS BOM, Drawings VS BOM and Combined sheets in BD's cross-check format. View-only users cannot change or export runs.
 
 In **Terminology**, filter the **Shared library** by **Approved by**, then add the entire list or select
 individual entries. **My terminology** shows what your future uploads use. Approval adds the entry to its

@@ -10,11 +10,28 @@ from kaizen.ingest.grouping import identity_key
 from kaizen.matching.ladder import MatchLadder
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, Document, DocumentItem, ItemCategory, MatchLevel, Severity, Thresholds
 
-CHECK_VERSION = "4"
+CHECK_VERSION = "5"
 POLICY = CheckPolicy(check_type=CheckType.BOM_LABEL, row_letter="R", quantity_relevant=True, missing_a=DiscrepancyType.MISSING_IN_LABEL, missing_b=DiscrepancyType.MISSING_IN_BOM, a_label="BOM component", b_label="label line")
 
 
-def is_comparable_bom_item(item: DocumentItem) -> tuple[bool, str]:
+def top_level(bom: Document) -> int | None:
+    """The shallowest level of an indented BOM: its direct kit components."""
+    levels = [int(level) for i in bom.items if (level := str(i.attributes.get("level") or "")).isdigit()]
+    return min(levels) if levels else None
+
+
+def below_top_level(item: DocumentItem, bom: Document | None) -> str | None:
+    """Why a deeper line of an indented BOM is not a kit component (it is inside a sub-assembly), if it is."""
+    level = str(item.attributes.get("level") or "")
+    top = top_level(bom) if bom else None
+    if top is not None and level.isdigit() and int(level) > top:
+        return f"sub-assembly line at BOM level {level}; its level-{top} assembly is the kit component compared"
+    return None
+
+
+def is_comparable_bom_item(item: DocumentItem, bom: Document | None = None) -> tuple[bool, str]:
+    if reason := below_top_level(item, bom):
+        return False, reason
     if item.category is not ItemCategory.PHYSICAL_COMPONENT:
         return False, f"category {item.category.value}: {item.category_reason}"
     if item.quantity is None:
@@ -27,7 +44,7 @@ def is_comparable_bom_item(item: DocumentItem) -> tuple[bool, str]:
 
 
 def comparable_bom_items(bom: Document) -> list[DocumentItem]:
-    return merge_duplicate_items([i for i in bom.items if is_comparable_bom_item(i)[0]])
+    return merge_duplicate_items([i for i in bom.items if is_comparable_bom_item(i, bom)[0]])
 
 
 def run_bom_label_check(bom: Document, label: Document, ladder: MatchLadder, thresholds: Thresholds, assembly_rules: list | None = None) -> list[CheckResult]:
@@ -77,7 +94,7 @@ def _exempt_rows(bom: Document, sku: str, ids: RowIdFactory) -> list[CheckResult
     """Every BOM line excluded from the comparison is shown, with its reason, so exclusions are never silent."""
     out = []
     for item in bom.items:
-        ok, reason = is_comparable_bom_item(item)
+        ok, reason = is_comparable_bom_item(item, bom)
         if ok:
             continue
         out.append(CheckResult(row_id=ids.next(), sku=sku, check=CheckType.BOM_LABEL, role="exempt", source_a=item, source_b=None, classification=Classification.EXACT, match_level=MatchLevel.NONE, score=0.0, explanation=f"NOT COMPARED: {item.item_number} '{item.description}' — {reason}", requires_validation=False))

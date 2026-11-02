@@ -7,7 +7,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-NORMALIZER_VERSION = "5"
+NORMALIZER_VERSION = "6"
 
 _TRADEMARK_CHARS = "™®©℠"  # ™ ® © ℠ — stripped before NFKC (NFKC would turn ™ into "TM")
 # OCR writes the ™ sign as the letters TM, glued to the name (SherlockTM, 3CGTM) or as a separate word.
@@ -33,6 +33,8 @@ ABBREVIATIONS: dict[str, str] = {
     "MEASUARING": "MEASURING",
     "HCI": "HCL",
     "HCIL": "HCL",
+    # JDE shortens introducer on needle lines (NEEDLE, INTRO, ...).
+    "INTRO": "INTRODUCER",
 }
 
 _LENGTH_UNITS_INCHES = {"MM": 1 / 25.4, "CM": 1 / 2.54, "IN": 1.0, "FT": 12.0}

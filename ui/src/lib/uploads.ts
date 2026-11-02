@@ -27,14 +27,29 @@ export function supportedRunFiles(files: File[]): File[] {
 const ownFolder = (file: File) => (file.webkitRelativePath || "").split("/").slice(-2, -1)[0] ?? "";
 const signature = (folder: UploadFolder) => folder.files.map(f => `${ownFolder(f)}/${f.name}:${f.size}:${f.lastModified}`).sort().join("|");
 
-/** Adds one folder pick to the selection: one entry per directory that directly holds documents. */
-export function addFolders(current: UploadFolder[], picked: File[]): UploadFolder[] {
+function byDirectory(files: File[]): Map<string, File[]> {
   const byDir = new Map<string, File[]>();
-  for (const file of supportedRunFiles(picked)) {
+  for (const file of supportedRunFiles(files)) {
     const path = file.webkitRelativePath || file.name;
     const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
     byDir.set(dir, [...(byDir.get(dir) ?? []), file]);
   }
+  return byDir;
+}
+
+/** Documents beside kit folders in a parent pick (for example a terminology workbook). They are not a set of
+ * their own, so they are skipped instead of blocking every kit. A complete set in the parent is still a run. */
+export function looseParentFiles(picked: File[]): File[] {
+  const byDir = byDirectory(picked);
+  const dirs = [...byDir.keys()];
+  return [...byDir].filter(([dir, files]) => files.length !== FILES_PER_FOLDER && dirs.some(other => other.startsWith(`${dir}/`)))
+    .flatMap(([, files]) => files);
+}
+
+/** Adds one folder pick to the selection: one entry per directory that directly holds documents. */
+export function addFolders(current: UploadFolder[], picked: File[]): UploadFolder[] {
+  const loose = new Set(looseParentFiles(picked));
+  const byDir = byDirectory(picked.filter(file => !loose.has(file)));
   const next = [...current];
   const seen = new Set(current.map(signature));
   for (const [dir, files] of [...byDir].sort(([a], [b]) => a.localeCompare(b))) {

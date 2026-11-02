@@ -57,6 +57,7 @@ from kaizen.ingest.detect import detect_doc_type
 from kaizen.models import Classification, DocType, Run, Thresholds
 from kaizen.pipeline import SUPPORTED_SUFFIXES, discover_files, load_run, run_folder, save_run
 from kaizen.reporting.annotated import mark_document, write_annotated
+from kaizen.reporting.bcc import export_bcc
 from kaizen.reporting.certificate import write_certificate, write_run_certificate
 from kaizen.reporting.excel import ReviewBundle, export_with_review
 from kaizen.reporting.excel_import import import_decisions
@@ -131,15 +132,28 @@ def upload_folder_problems(root: Path, *, files: list[Path] | None = None) -> li
     return problems
 
 
+def loose_parent_documents(root: Path) -> list[Path]:
+    """Documents beside kit folders (for example a terminology workbook in the delivery folder). They are not a
+    set of their own, so they are skipped rather than refusing every kit. A complete set in a parent still runs."""
+    folders: dict[Path, list[Path]] = {}
+    for f in discover_files(root):
+        folders.setdefault(f.parent, []).append(f)
+    return sorted(f for folder, files in folders.items() if len(files) != len(UPLOAD_SET)
+                  and any(folder in other.parents for other in folders) for f in files)
+
+
 def document_sets(root: Path) -> list[Path]:
     """The folders to run separately, under the same rule as uploads: every folder holding documents must be
-    exactly one BOM, one label and one drawing, and each becomes its own run. Anything else is refused."""
+    exactly one BOM, one label and one drawing, and each becomes its own run. Anything else is refused,
+    except loose documents beside kit folders, which are skipped."""
     if not root.is_dir():
         raise HTTPException(400, f"Enter a folder path; '{root}' is not a folder on this machine.")
-    folders = sorted({f.parent for f in discover_files(root)})
+    loose = set(loose_parent_documents(root))
+    files = [f for f in discover_files(root) if f not in loose]
+    folders = sorted({f.parent for f in files})
     if not folders:
         raise HTTPException(400, f"No PDF, XLSX, XLSM or CSV documents found in '{root}'.")
-    if problems := upload_folder_problems(root):
+    if problems := upload_folder_problems(root, files=files):
         raise HTTPException(400, " ".join(problems))
     return folders
 
@@ -731,6 +745,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         root, name = Path(payload.path), payload.name.strip()
         # Validate every folder before creating any runs. Keep direct files separate from descendants.
         sets = document_sets(root)
+        skipped = [{'path': str(f), 'message': f"{f.name} is not inside a kit folder, so it is not part of any run."} for f in loose_parent_documents(root)]
         labels = [name if len(sets) == 1 else f"{name} · {folder.name}" if name else folder.name for folder in sets]
         if any(len(label) > 120 for label in labels):
             raise HTTPException(400, "Run name including the folder must contain at most 120 characters. Use a shorter name.")
@@ -752,7 +767,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                     failures.append({'path': str(folder), 'message': f'Cross-check failed. Error reference: {reference}'})
             if progress and not failures:
                 progress(100, 'Complete')
-            return {'runs': created, 'failures': failures}
+            return {'runs': created, 'failures': failures, 'skipped': skipped}
 
         return stream_run(work) if stream else work()
 
@@ -1245,7 +1260,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     # ---- exports -----------------------------------------------------------------------------
     @app.get("/api/runs/{run_id}/export.xlsx")
-    def export_run(run_id: str, detail: Literal["summary", "complete"] = "summary", session: ReviewSession | None = Depends(_identified)):
+    def export_run(run_id: str, detail: Literal["summary", "complete", "bcc"] = "summary", session: ReviewSession | None = Depends(_identified)):
         _refuse_if_blind(session)
         run = cache.get(run_id)
         # Each request owns its file until streaming ends; simultaneous downloads
@@ -1253,6 +1268,9 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         temporary = tempfile.TemporaryDirectory()
         try:
             filename = f"kaizen-{run_id}-{detail}.xlsx"
+            if detail == "bcc":
+                path = export_bcc(ws, run, Path(temporary.name) / filename)
+                return FileResponse(path, media_type=XLSX, filename=filename, background=BackgroundTask(temporary.cleanup))
             metrics_path = ws.runs_dir / run_id / "accuracy.json"
             metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else None
             path = export_with_review(ws, run, Path(temporary.name) / filename, metrics=metrics, detail=detail)

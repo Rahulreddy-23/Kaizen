@@ -46,7 +46,7 @@ export class ApiError extends Error {
 }
 
 export interface RunProgress { percent: number; stage: string }
-export interface PathRunResult { runs: RunSummary[]; failures: {path: string; message: string}[] }
+export interface PathRunResult { runs: RunSummary[]; failures: {path: string; message: string}[]; skipped?: {path: string; message: string}[] }
 
 type Params = Record<string, string | number | boolean | null | undefined>;
 
@@ -295,7 +295,7 @@ export const api = {
   verifyAndClose: (runId: string, against?: string) => request<VerifyOutcome>(`/api/runs/${enc(runId)}/verify-and-close${against ? `?against=${enc(against)}` : ""}`, { method: "POST" }),
 
   // ---- exports
-  exportUrl: (runId: string, detail: "summary" | "complete" = "summary") => `/api/runs/${enc(runId)}/export.xlsx?detail=${detail}`,
+  exportUrl: (runId: string, detail: "summary" | "complete" | "bcc" = "summary") => `/api/runs/${enc(runId)}/export.xlsx?detail=${detail}`,
 
   // ---- terminology
   terminology: {

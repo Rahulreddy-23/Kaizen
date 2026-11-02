@@ -14,6 +14,8 @@ describe("Excel download options", () => {
     const complete = screen.getByRole("link", { name: "Download complete details Excel" });
     expect(summary.getAttribute("href")).toBe("/api/runs/run%20with%20spaces/export.xlsx?detail=summary");
     expect(complete.getAttribute("href")).toBe("/api/runs/run%20with%20spaces/export.xlsx?detail=complete");
+    const bcc = screen.getByRole("link", { name: "Download BCC template Excel" });
+    expect(bcc.getAttribute("href")).toBe("/api/runs/run%20with%20spaces/export.xlsx?detail=bcc");
     expect(summary.hasAttribute("download")).toBe(true);
     expect(screen.getByText("One worksheet per SKU")).toBeTruthy();
     expect(document.activeElement).toBe(summary);

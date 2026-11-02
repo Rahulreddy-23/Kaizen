@@ -59,11 +59,11 @@ _STRUCTURAL_CORRECTIONS: tuple[tuple[re.Pattern, str], ...] = (
 _LABEL_WORDS = frozenset(
     """
     ABSORBENT ADHESIVE ALCOHOL AMPULE APPLICATOR ASSEMBLY ASPIRATION BAND BARRIER BENDABLE BLUE
-    BOUFFANT CAP CATHETER CHLORAPREP CONTROL DEVICE DILATOR DRAPE DRESSING DUAL EACH ECG ELECTRODE
+    BOUFFANT CAP CATHETER CHLORAPREP CONTROL DEVICE DILATOR DRAPE DRESSING DUAL EACH ECG ELASTIC ELECTRODE
     ELECTRODES END FENESTRATED FLEXURA FUNNEL GAUZE GLOVE GLOVES GUIDE GUIDEWIRE HOLDER HYPODERMIC
     ID INTRODUCER ISOPROPYL IV LEAD LEADS LENGTH LID LUMEN MASK MEASURE MEASURING MICROINTRODUCER
-    NEEDLE NITINOL OD PERIPHERAL PICC PROTECTIVE SAFETY SALINE SCALPEL SHERLOCK SOLUTION STRAIGHT
-    STYLET SURGICAL SYRINGE TAPE TIP TOURNIQUET TRIMMING VESSEL WITH
+    NEEDLE NITINOL OD PERIPHERAL PICC PROTECTIVE SAFETY SALINE SCALPEL SHERLOCK SOLUTION STABILIZATION
+    STRAIGHT STYLET SURGICAL SYRINGE TAPE TINTED TIP TOURNIQUET TRIMMING VESSEL WITH
     """.split()
 )
 _FUSED_LABEL_TOKEN_RE = re.compile(r"\b[A-Za-z]{8,}\b")
@@ -103,6 +103,39 @@ def _split_fused_label_token(token: str) -> str:
 def correct_fused_label_words(text: str) -> str:
     """Split only uniquely segmented OCR tokens made entirely of known label terms."""
     return _FUSED_LABEL_TOKEN_RE.sub(lambda match: _split_fused_label_token(match.group()), text)
+
+
+_CONFUSED_LETTERS = {"l": "t", "L": "T", "v": "w", "V": "W"}
+_CONFUSABLE_TOKEN_RE = re.compile(r"\b[A-Za-z]{4,}\b")
+
+
+def _confusion_variants(token: str) -> set[str]:
+    positions = [i for i, c in enumerate(token) if c in _CONFUSED_LETTERS]
+    if len(positions) > 5:
+        return set()
+    variants = set()
+    for mask in range(1, 1 << len(positions)):
+        chars = list(token)
+        for bit, i in enumerate(positions):
+            if mask >> bit & 1:
+                chars[i] = _CONFUSED_LETTERS[chars[i]]
+        variants.add("".join(chars))
+    return variants
+
+
+def correct_confused_label_letters(text: str) -> str:
+    """Some scans read t as l (Calheler for Catheter), w as v and cm as crn. Change an unknown word only when
+    exactly one substitution turns it into a known label term; other words keep the characters OCR read."""
+    text = re.sub(r"(?<=\d) ?crn\b", " cm", text)
+
+    def fix(match):
+        token = match.group()
+        if token.upper() in _LABEL_WORDS:
+            return token
+        known = {variant for variant in _confusion_variants(token) if variant.upper() in _LABEL_WORDS}
+        return known.pop() if len(known) == 1 else token
+
+    return _CONFUSABLE_TOKEN_RE.sub(fix, text)
 
 
 def correct_ocr_text(text: str) -> str:
@@ -190,6 +223,42 @@ def ocr_available() -> bool:
     return bool(available_engines())
 
 
+def _ocr_pixmap(page: pymupdf.Page, dpi: int, clip: pymupdf.Rect | None = None) -> pymupdf.Pixmap:
+    """Render the printed page for OCR.
+
+    Annotations and form fields are not drawn: document-control exports cover each sheet with a form field
+    that only their JavaScript viewer hides, and review comments are not page content. Strongly red ink
+    (review ticks, signatures, pen notes on checked copies) becomes paper; printed text is black, grey or
+    brand purple."""
+    import numpy as np
+
+    pix = page.get_pixmap(dpi=dpi, clip=clip, colorspace=pymupdf.csRGB, alpha=False, annots=False)
+    pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
+    r, g, b = (pixels[..., channel].astype(np.int16) for channel in range(3))
+    red = (r >= 120) & (r - np.maximum(g, b) >= 60)
+    if not red.any():
+        return pix
+    # The pale anti-aliased edge of a red stroke is still legible to OCR. Clear light pixels next to red ink;
+    # dark print crossed by a tick keeps its dark pixels.
+    near = red.copy()
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            near |= np.roll(red, (dy, dx), axis=(0, 1))
+    pixels = pixels.copy()
+    pixels[red | (near & (pixels.min(axis=2) >= 100))] = 255
+    cleaned = pymupdf.Pixmap(pymupdf.csRGB, pix.width, pix.height, pixels.tobytes(), False)
+    cleaned.set_origin(pix.x, pix.y)
+    return cleaned
+
+
+def page_pixels(page: pymupdf.Page, dpi: int, clip: pymupdf.Rect | None = None):
+    """The RGB pixels OCR reads (height x width x 3)."""
+    import numpy as np
+
+    pix = _ocr_pixmap(page, dpi, clip)
+    return np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
+
+
 @lru_cache(maxsize=2)
 def _rapid_engine(single_line: bool = False):
     RapidOCR = _rapid_module().RapidOCR
@@ -211,7 +280,7 @@ def ocr_page(page: pymupdf.Page, dpi: int = 240, *, clip: pymupdf.Rect | None = 
     if not engines:
         raise OcrError(f"No offline OCR engine is usable. {OCR_SETUP_HELP}")
     rect = clip or page.rect
-    pix = page.get_pixmap(dpi=dpi, clip=rect, colorspace=pymupdf.csRGB, alpha=False)
+    pix = _ocr_pixmap(page, dpi, rect)
     png = pix.tobytes("png")
     try:
         regions = outline_regions(page) if "rapidocr-onnxruntime" in engines and clip is None and not single_line else []
@@ -276,10 +345,7 @@ def _recover_outline_lines(page: pymupdf.Page, words: list[tuple], *, regions: l
         regions = outline_regions(page)
     if not regions:
         return words, 0, []
-    import numpy as np
-
-    pix = page.get_pixmap(dpi=400, colorspace=pymupdf.csRGB, alpha=False)
-    pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 3)
+    pixels = page_pixels(page, dpi=400)
     crops = []
     for rect in regions:
         x0, y0, x1, y1 = (round(v * 400 / 72) for v in rect)
