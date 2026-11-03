@@ -20,6 +20,7 @@ from kaizen.ingest.ocr import OcrResult, correct_fused_label_words
         ("NitinolwithStraightTip", "Nitinol with Straight Tip"),
         ("SAFETYPERIPHERALIVCATHETER", "SAFETY PERIPHERAL IV CATHETER"),
         ("1 Each - NitinolwithStraightTip, 10 CM", "1 Each - Nitinol with Straight Tip, 10 CM"),
+        ("1 Each - 30 in (76 cm)ProbeCover, Gel", "1 Each - 30 in (76 cm)Probe Cover, Gel"),
         ("Microintroducer Guidewire", "Microintroducer Guidewire"),
         ("SafetyPeripheralIVCatheter123", "SafetyPeripheralIVCatheter123"),
         ("123SafetyPeripheralIVCatheter", "123SafetyPeripheralIVCatheter"),

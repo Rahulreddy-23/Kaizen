@@ -10,7 +10,10 @@ from kaizen.ingest.grouping import identity_key
 from kaizen.matching.ladder import MatchLadder
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, Document, DocumentItem, ItemCategory, MatchLevel, Severity, Thresholds
 
-CHECK_VERSION = "5"
+CHECK_VERSION = "6"
+_OVERLAY_WORDS = "SALINE|SCISSORS|LIDOCAINE"
+# NO SALINE, NO-LIDOCAINE or NO LIDOCAINE/SALINE: an overlabel may remove each component it names.
+_OVERLAY_RE = re.compile(rf"\bNO[\s-]+((?:{_OVERLAY_WORDS})(?:\s*/\s*(?:{_OVERLAY_WORDS}))*)\b", re.I)
 POLICY = CheckPolicy(check_type=CheckType.BOM_LABEL, row_letter="R", quantity_relevant=True, missing_a=DiscrepancyType.MISSING_IN_LABEL, missing_b=DiscrepancyType.MISSING_IN_BOM, a_label="BOM component", b_label="label line")
 
 
@@ -78,8 +81,8 @@ def run_bom_label_check(bom: Document, label: Document, ladder: MatchLadder, thr
 
 def _overlay_findings(results, bom):
     """Distinguish unresolved label configuration from a verified missing part."""
-    overlays = [(item, match[1]) for item in bom.items if item.is_active and item.quantity and item.quantity > 0
-                if (match := re.search(r"\bNO\s+(SALINE|SCISSORS)\b", item.description, re.I))]
+    overlays = [(item, word) for item in bom.items if item.is_active and item.quantity and item.quantity > 0
+                if (match := _OVERLAY_RE.search(item.description)) for word in re.split(r"\s*/\s*", match[1])]
     for row in results:
         if row.role != "item" or row.source_a is not None or row.source_b is None:
             continue

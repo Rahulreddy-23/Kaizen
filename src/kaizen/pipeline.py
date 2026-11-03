@@ -211,7 +211,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         audit.append(AuditEvent(action="check.completed", detail=f"PCO_BOM {number}: {len(res)} rows against {len(boms)} BOM(s)"))
     snap = store.snapshot()
     parser_versions = {
-        "ocr": "4",
+        "ocr": "5",
         "pdf_geometry": "2",
         "grouping": "2",
         "bom_pdf": bom_pdf.PARSER_VERSION,
@@ -219,7 +219,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         "label_pdf": label_pdf.PARSER_VERSION,
         "normalizer": NORMALIZER_VERSION,
         "assignment": ASSIGNMENT_VERSION,
-        "component_candidates": "3",
+        "component_candidates": "4",
         "categorizer_rules": CATEGORIZER_VERSION,
         "check_bom_label": CHECK_VERSION,
         "pco": pco_parser.PARSER_VERSION,

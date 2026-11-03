@@ -5,6 +5,7 @@ import pytest
 from kaizen.checks.bom_drawing import run_bom_drawing_check
 from kaizen.checks.bom_label import run_bom_label_check
 from kaizen.checks.label_drawing import run_label_drawing_check
+from kaizen.matching.components import component
 from kaizen.matching.ladder import MatchLadder
 from kaizen.matching.normalize import normalize
 from kaizen.models import Classification, DiscrepancyType, ItemCategory, SubQuantity, Thresholds
@@ -27,6 +28,8 @@ def ladder():
     ('GAUZE PAD, 4X4 12 PLY', 'Gauze, 10 cm x 10 cm (4 in. x 4 in.)'),
     ('GAUZE PAD, 2X2 12 PLY', 'Gauze, 5 cm x 5 cm (2 in. × 2 in.)'),
     ('MICROINTRO, 4.5FR X 7CM', 'Microintroducer, 4.5 F (1.6 mm ID x 7 cm Length)'),
+    ('HAND SANITIZER, ONE DOSE', 'Hand Sanitizer Sachet'),
+    ('SECLOC21GX2.50 STRAIGHT', 'Introducer Needle, 21 G'),
 ])
 def test_short_wording_is_a_review_candidate_not_an_automatic_clear(erp, label):
     result = run_bom_label_check(bom_doc([('X100', erp, '1')]), label_doc([(label, '1')]), ladder(), TH)
@@ -41,9 +44,36 @@ def test_short_wording_is_a_review_candidate_not_an_automatic_clear(erp, label):
     ('PICC 5FR SL', 'Dual-Lumen PICC, 5 F'),
     ('NEEDLE 21G', 'Needle, 25 G'),
     ('SYRINGE 5ML', 'Syringe, saline, 10 mL'),
+    ('SECLOC22GX3.00 STRAIGHT', 'Introducer Needle, 21 G'),
 ])
 def test_known_specification_conflicts_cannot_be_assigned(erp, label):
     assert not ladder().match(erp, label).assignable
+
+
+def test_picc_stabilization_device_is_not_a_second_catheter():
+    bom = bom_doc([('X1', 'PICC 4FR SL', '1'), ('X2', 'STYLET ECG ASSY', '1'), ('X3', 'PICC PLUS STABILIZER PAD', '1')])
+    label = label_doc([('Single-Lumen PICC, 4 F, with Stylet Assembly', '1'), ('StatLock Stabilization Device', '1')])
+    rows = [r for r in run_bom_label_check(bom, label, ladder(), TH) if r.role == 'item']
+    assert {r.source_a.item_number: r.source_b.description for r in rows if r.source_a and r.source_b} == {
+        'X1': 'Single-Lumen PICC, 4 F, with Stylet Assembly', 'X2': 'Single-Lumen PICC, 4 F, with Stylet Assembly',
+        'X3': 'StatLock Stabilization Device'}
+
+
+def test_antimicrobial_and_transparent_dressings_pair_by_their_own_type():
+    bom = bom_doc([('X1', 'DRESSING, ANTIMICROBIAL, 1IN', '1'), ('X2', 'STERILE TRANSPARENT', '1')])
+    label = label_doc([('Adhesive Film Dressing', '1'), ('BIOPATCHTM Protective Disk with CHG', '1')])
+    rows = [r for r in run_bom_label_check(bom, label, ladder(), TH) if r.role == 'item']
+    assert {r.source_a.item_number: r.source_b.description for r in rows if r.source_a and r.source_b} == {
+        'X1': 'BIOPATCHTM Protective Disk with CHG', 'X2': 'Adhesive Film Dressing'}
+    assert all(r.classification is Classification.POTENTIAL and r.requires_validation for r in rows)
+
+
+@pytest.mark.parametrize('text,kind', [
+    ('GUARDIVA CHG DRESSING', 'antimicrobial_dressing'),
+    ('TAPE, TRANSPARENT, 1IN', 'tape'),
+])
+def test_dressing_types_do_not_capture_other_components(text, kind):
+    assert component(normalize(text).normalized).kind == kind
 
 
 def test_funnel_cannot_consume_a_complete_picc_assembly():
@@ -83,6 +113,19 @@ def test_overlabel_is_a_configuration_question_not_a_confirmed_absence():
     assert row.classification is Classification.POTENTIAL and row.requires_validation
     assert [d.type for d in row.discrepancies] == [DiscrepancyType.LABEL_CONFIGURATION_REVIEW]
     assert not relationship_eligible(row)
+
+
+@pytest.mark.parametrize('sticker,covered', [
+    ('OVERLABEL, NO-LIDOCAINE', {'Lidocaine 1%, 2 mL Vial'}),
+    ('OVERLABEL, NO LIDOCAINE/SALINE', {'Lidocaine 1%, 2 mL Vial', 'Syringe, sodium chloride (saline), 10 mL'}),
+])
+def test_overlabel_wording_variants_cover_each_component_they_name(sticker, covered):
+    bom = bom_doc([('X1', 'SYRINGE 5ML', '1'), ('O1', sticker, '1', ItemCategory.LABEL)])
+    label = label_doc([('Lidocaine 1%, 2 mL Vial', '1'), ('Syringe, sodium chloride (saline), 10 mL', '1')])
+    rows = [r for r in run_bom_label_check(bom, label, ladder(), TH) if r.role == 'item' and r.source_b]
+    flagged = {r.source_b.description for r in rows if [d.type for d in r.discrepancies] == [DiscrepancyType.LABEL_CONFIGURATION_REVIEW]}
+    assert flagged == covered
+    assert all(r.source_a.item_number == 'O1' for r in rows if r.source_b.description in covered)
 
 
 def test_a_different_referenced_drawing_blocks_component_findings():
