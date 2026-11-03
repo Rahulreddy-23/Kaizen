@@ -19,7 +19,8 @@ KINDS = (
     ("cover", r"\bCOVER\b"),
     ("needle_holder", r"\bNEEDLE\s+HOLDER\b"),
     ("glove_container", r"\bGLOVES?\s+(?:WALLET|BOX|POUCH)\b"),
-    ("protective_tube", r"\b(?:PROTECTIVE|PROTECTION)\s+TUBE\b"),
+    # JDE puts the noun first, so a tube line may name what it protects before PROTECTIVE (TUBE, SYRINGE, PROTECTIVE).
+    ("protective_tube", r"\b(?:PROTECTIVE|PROTECTION)\s+TUBE\b|^TUBE\b.*\b(?:PROTECTIVE|PROTECTION)\b"),
     ("shipping_case", r"\b(?:SHIP(?:PING)?\s+CASE|CASE[ ,]+SHIP(?:PING)?)\b"),
     ("carton", r"\bCARTON\b(?!\s+LABEL)"),
     ("spacer", r"\b(?:INSERT[ ,]+SPACING|INSERT\s+SPACER|SPACER\s+INSERT)\b"),

@@ -182,6 +182,32 @@ def test_drawing_assignment_uses_object_identity_independent_of_order_and_item_c
     assert all(r.requires_validation and r.classification is Classification.POTENTIAL for r in paired.values())
 
 
+@pytest.mark.parametrize('erp', ['TUBE, PROTECTIVE, 6IN', 'TUBE, SYRINGE, PROTECTIVE'])
+def test_noun_first_packaging_line_pairs_with_its_drawing_callout(erp):
+    bom = bom_doc([('PK1', erp, '1', ItemCategory.PACKAGING)])
+    rows = [r for r in run_bom_drawing_check(bom, drawing_doc(['PROTECTIVE TUBE']), ladder(), TH) if r.role == 'item']
+    assert len(rows) == 1 and rows[0].source_a and rows[0].source_b
+    assert rows[0].classification is Classification.POTENTIAL and rows[0].requires_validation
+
+
+@pytest.mark.parametrize('check,source', [
+    (run_bom_drawing_check, bom_doc([('X1', 'SECLOC21GX2.50 STRAIGHT', '1')])),
+    (run_label_drawing_check, label_doc([('Introducer Needle, 21 G', '1')])),
+])
+def test_a_bare_needle_callout_may_show_the_introducer_needle(check, source):
+    rows = [r for r in check(source, drawing_doc(['NEEDLE']), ladder(), TH) if r.role == 'item']
+    assert len(rows) == 1 and rows[0].source_a and rows[0].source_b
+    assert rows[0].classification is Classification.POTENTIAL and rows[0].requires_validation
+
+
+def test_a_qualified_needle_callout_names_its_own_needle():
+    bom = bom_doc([('X1', 'SECLOC21GX2.50 STRAIGHT', '1'), ('X2', 'NEEDLE 25G', '1')])
+    rows = run_bom_drawing_check(bom, drawing_doc(['INTRODUCER NEEDLE', 'SAFETY NEEDLE']), ladder(), TH)
+    paired = {r.source_a.item_number: r for r in rows if r.role == 'item' and r.source_a and r.source_b}
+    assert {key: row.source_b.description for key, row in paired.items()} == {'X1': 'INTRODUCER NEEDLE', 'X2': 'SAFETY NEEDLE'}
+    assert not any(d.type is DiscrepancyType.AMBIGUOUS_MATCH for row in paired.values() for d in row.discrepancies)
+
+
 def test_both_barrier_variants_remain_ambiguous_without_specific_evidence():
     rows = run_label_drawing_check(label_doc([('Full body fenestrated drape', '1')]),
         drawing_doc(['PICC barrier drape', 'Other catheter barrier drape']), ladder(), TH)

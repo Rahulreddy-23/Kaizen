@@ -219,7 +219,7 @@ def run_checks(ing: Ingested, store: RelationshipStore, thresholds: Thresholds =
         "label_pdf": label_pdf.PARSER_VERSION,
         "normalizer": NORMALIZER_VERSION,
         "assignment": ASSIGNMENT_VERSION,
-        "component_candidates": "5",
+        "component_candidates": "6",
         "categorizer_rules": CATEGORIZER_VERSION,
         "check_bom_label": CHECK_VERSION,
         "pco": pco_parser.PARSER_VERSION,
