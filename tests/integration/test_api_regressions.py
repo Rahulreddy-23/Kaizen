@@ -340,6 +340,22 @@ def test_local_path_with_several_sets_makes_one_run_per_folder(env, tmp_path):
     assert sorted((r['name'], r['documents']) for r in response.json()['runs']) == [('Batch · Batch 7', 3), ('Batch · Kit A', 3)]
 
 
+def test_loose_file_beside_kit_folders_is_skipped_not_a_failed_set(env, tmp_path):
+    ws, client, run, source = env
+    batch = tmp_path / 'Delivery'
+    for folder in ('Kit A', 'Kit B'):
+        (batch / folder).mkdir(parents=True)
+        for kind in ('bom.pdf', 'label.pdf', 'drawing.pdf'):
+            (batch / folder / kind).write_bytes((source / kind).read_bytes())
+    (batch / 'Relationship Workbook.xlsx').write_bytes(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1' + 'EncryptedPackage'.encode('utf-16le'))
+    response = client.post('/api/runs/from-path', json={'path': str(batch)})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert sorted(r['name'] for r in result['runs']) == ['Kit A', 'Kit B'] and not result['failures']
+    assert [Path(s['path']).name for s in result['skipped']] == ['Relationship Workbook.xlsx']
+    assert 'not inside a kit folder' in result['skipped'][0]['message']
+
+
 def test_local_path_follows_the_upload_rule(env, tmp_path):
     ws, client, run, source = env
     batch = tmp_path / 'Broken - to see errors'

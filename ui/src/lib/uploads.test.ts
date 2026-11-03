@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { addFileSet, addFolders, folderProblem, MAX_RUN_BYTES, supportedRunFiles, uploadProblem, type UploadFolder } from "./uploads";
+import { addFileSet, addFolders, folderProblem, looseParentFiles, MAX_RUN_BYTES, supportedRunFiles, uploadProblem, type UploadFolder } from "./uploads";
 
 const inFolder = (path: string, size = 4) => {
   const file = new File(["x".repeat(size)], path.split("/").pop()!, { lastModified: 1 });
@@ -17,6 +17,15 @@ describe("upload selection", () => {
   it("groups a folder pick by directory, whatever the names", () => {
     const folders = addFolders([], [...three("Anything/x"), ...three("Anything/y"), inFolder("Anything/notes.txt")]);
     expect(folders.map(f => [f.name, f.files.length])).toEqual([["Anything/x", 3], ["Anything/y", 3]]);
+  });
+  it("skips loose documents beside kit folders instead of making them a run", () => {
+    const picked = [...three("Delivery/Kit A"), ...three("Delivery/Kit B"), inFolder("Delivery/Relationship Workbook.xlsx")];
+    expect(addFolders([], picked).map(f => [f.name, f.files.length])).toEqual([["Delivery/Kit A", 3], ["Delivery/Kit B", 3]]);
+    expect(looseParentFiles(picked).map(f => f.name)).toEqual(["Relationship Workbook.xlsx"]);
+    // A complete set in the parent folder is still a run of its own.
+    const nested = [...three("Parent"), ...three("Parent/Child")];
+    expect(addFolders([], nested).map(f => f.name)).toEqual(["Parent", "Parent/Child"]);
+    expect(looseParentFiles(nested)).toEqual([]);
   });
   it("keeps same-named folders apart and ignores the same folder picked twice", () => {
     const first = addFolders([], three("Kit"));

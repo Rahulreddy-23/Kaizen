@@ -21,7 +21,7 @@ from kaizen.ingest.quantity import parse_decimal
 from kaizen.models import DocType, Document, DocumentItem, Evidence
 
 PARSER_NAME = "bom_pdf"
-PARSER_VERSION = f"2+cat{CATEGORIZER_VERSION}"
+PARSER_VERSION = f"3+cat{CATEGORIZER_VERSION}"
 
 # Column labels in left-to-right order, as token sequences.
 HEADER_LABELS: list[tuple[str, tuple[str, ...]]] = [
@@ -51,7 +51,8 @@ _HEADER_PATTERNS = {
     "as_of_date": re.compile(r"As of Date\s+(\S+)"),
     "report_id": re.compile(r"^(R\d{5})\b"),
 }
-_ITEM_RE = re.compile(r"^[A-Z0-9][A-Z0-9\-]*$")
+# Item numbers may carry a decimal size inside them (for example RT-NAME-3.5FR).
+_ITEM_RE = re.compile(r"^[A-Z0-9](?:[A-Z0-9\-.]*[A-Z0-9])?$")
 _OCR_ITEM_RE = re.compile(r"^[A-Z]{0,5}\d{4,}[A-Z]{0,5}$")
 
 

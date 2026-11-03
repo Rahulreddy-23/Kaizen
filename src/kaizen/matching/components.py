@@ -21,8 +21,11 @@ KINDS = (
     ("glove_container", r"\bGLOVES?\s+(?:WALLET|BOX|POUCH)\b"),
     ("protective_tube", r"\b(?:PROTECTIVE|PROTECTION)\s+TUBE\b"),
     ("shipping_case", r"\b(?:SHIP(?:PING)?\s+CASE|CASE[ ,]+SHIP(?:PING)?)\b"),
+    ("carton", r"\bCARTON\b(?!\s+LABEL)"),
     ("spacer", r"\b(?:INSERT[ ,]+SPACING|INSERT\s+SPACER|SPACER\s+INSERT)\b"),
     ("tray", r"\bTRAY\b"),
+    # StatLock PICC Plus holds a PICC in place; it is not a second catheter.
+    ("securement", r"\bPICC\s+PLUS\b"),
     ("picc", r"\b(?:PICC|PPICC|POWERPICC)\b"),
     ("iv_catheter", r"\bIV\b.*\bCATH|\bCATH(?:ETER)?\b.*\bIV\b"),
     ("securement", r"\bSTATLOCK\b|\bCATH(?:ETER)?\s+SECUREM|\bSTABILIZATION\s+DEVICE\b"),
@@ -35,6 +38,7 @@ KINDS = (
     ("measuring_tape", r"\b(?:MEASURING|MEASUARING)\s+(?:PAPER\s+)?TAPE\b|\bTAPE[,\s]+(?:MEASURE|MEASURING|MEASUARING)\b"),
     ("antiseptic", r"\b(?:CHLORAPREP|CPREP)\b"),
     ("alcohol_wipe", r"\bWIPES?\b.*\b(?:ALCOHOL|ISOPROPYL)\b"),
+    ("hand_sanitizer", r"\bSANITI[ZS]ERS?\b"),
     ("lidocaine", r"\bLIDOCAINE\b"),
     ("stylet", r"\bSTYLET\b"),
     ("introducer_needle", r"\bSEC(?:URE)?LOC\s*\d|\bNEEDLE\b.*\bINTRODUCER\b|\bINTRODUCER\s+NEEDLE\b"),
@@ -46,6 +50,7 @@ KINDS = (
     ("glove", r"\bGLOVES?\b"),
     ("tourniquet", r"\bTOURNIQUET[EA]?\b"),
     ("elastic_band", r"\bBAND\b.*\b(?:POLYISOPRENE|ELASTIC|BLUE)\b|\bELASTIC\s+BANDS?\b"),
+    ("antimicrobial_dressing", r"\bBIOPATCH(?:TM)?\b|\bGUARDIVA\b|\bANTIMICROBIAL\b"),
     ("dressing", r"\b(?:DRESSING|DRSG)\b"),
     ("scalpel", r"\bSCALPEL\b"),
     ("scissors", r"\bSCISSORS?\b"),
@@ -79,7 +84,8 @@ def component(text: str) -> Component:
         kind = "document_or_label"
     values = {}
     for key, pattern in (("volume_ml", rf"({NUMBER})\s*ML\b"),
-                         ("gauge", rf"({NUMBER})\s*(?:G|GA|GAUGE)\b"),
+                         # 20GX1.25 is gauge by length, so a gauge may run straight into the X.
+                         ("gauge", rf"({NUMBER})\s*(?:G|GA|GAUGE)(?:\b|(?=X\s*{NUMBER}))"),
                          ("french", rf"({NUMBER})\s*(?:FR|F)\b"),
                          ("concentration_pct", rf"({NUMBER})\s*%")):
         if match := re.search(pattern, head):
@@ -151,4 +157,4 @@ def alternatives(text: str) -> tuple[str, ...]:
     return parts if len(parts) > 1 and all(component(p).kind for p in parts) else (text,)
 
 
-PACKAGING_KINDS = frozenset({"glove_container", "protective_tube", "shipping_case", "spacer", "tray", "case_sealing_tape"})
+PACKAGING_KINDS = frozenset({"glove_container", "protective_tube", "shipping_case", "carton", "spacer", "tray", "case_sealing_tape"})

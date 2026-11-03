@@ -20,7 +20,7 @@ from kaizen.ingest.text_lines import capture_text_lines
 from kaizen.models import DocType, Document, DocumentItem, Evidence, ItemCategory
 
 PARSER_NAME = "drawing_pdf"
-PARSER_VERSION = "7"
+PARSER_VERSION = "8"
 
 ES_MARKERS = set(
     """CON DE DEL LA EL LOS LAS PARA SEGUN SI O Y EN UN UNA TUBO AGUJA JERINGA JERINGAS TIJERAS ALAMBRE GUIA CINTA METRICA
@@ -43,9 +43,16 @@ EN_MARKERS = set(
 _NOISE_RE = re.compile(
     r"^(NOTES?|NOTAS?)\b|^CAVITY\b|^CAVIDAD\b|^TOLERANCES?\b|^INCHES\b|^ANGLES\b|^THIRD ANGLE|^UNLESS OTHERWISE|^INTERPRET DRAWING|^NOTICE:|^UNAUTHORIZED|"
     r"^DRAWING NO|^SCALE\b|^DO NOT SCALE|^SHEET\b|^TITLE\b|^SIZE\b|^PART NO|^REV\.|^DWN\b|^CHK\b|^Checked by|^BD$|^\d+\.\s|^\.?X{1,3}\s*±|^ALTERNATIVE VIEW|^ALTERNATE UNITS|^VISTA ALTERNA|"
-    r"^[A-Z .]+,\s*(MEXICO|USA|MX)$|^DWG\d{5,}\b|^\d{1,3}$|^\s*(FOR COMPONENT|LA ORDEN|PARA LA COLOCACION)",
+    r"^[A-Z .]+,\s*(MEXICO|USA|MX)$|^DWG\d{5,}[A-Z]?\b|^\d{1,3}$|^\s*(FOR COMPONENT|LA ORDEN|PARA LA COLOCACION)|"
+    # Document-control watermark, and the header/footer of drawings authored in a document template.
+    r"^RELEASED$|^MDS\b|^(OWNED|USED) BY\b|^DOCUMENT (TYPE|NO|NUMBER)\b|^PAGE NO\b|^\d+ OF \d+$|^REVISION (NO|HISTORY)\b|"
+    r"SUBJECT MATTER IS RESTRICTED|BECTON DICKINSON AND COMPANY|\[TEMPLATE\]|^DWG_",
     re.IGNORECASE,
 )
+_TEMPLATE_TITLE_RE = re.compile(r"^Title:\s*(.+?)\s*$", re.MULTILINE)
+_TEMPLATE_REV_RE = re.compile(r"Revision No:\s*([A-Z0-9]{1,3})\b")
+# A document-control export appends its signature manifest: controlled number, revision, title and approvals.
+_MANIFEST_RE = re.compile(r"\bSignature Manifest\b|Name/Signature[\s\S]*Meaning/Reason", re.IGNORECASE)
 _COND_EN = re.compile(r"\(\s*(?:IF|WHEN) APPLICABLE(?:\s+(?:AS\s+)?PER BOM)?\s*\)", re.IGNORECASE)
 _PLACEMENT_RE = re.compile(r"\(\s*(PLACE IN [^)]*)\)", re.IGNORECASE)
 _PLACED_ON_TRAY_RE = re.compile(r"\s+(PLACED\s+ON\s+(?:THE\s+)?TRAY)\s*$", re.IGNORECASE)
@@ -55,14 +62,18 @@ _LEBELING_TYPO_RE = re.compile(r"\bLEBELING\b", re.IGNORECASE)
 # Other parentheses (plural suffixes, dimensions, identifiers) are source content.
 _PAREN_RE = re.compile(r"\(\s*(?:(?:SI|CUANDO|COLOCAR)\s+[^)]*|\d+)\s*\)", re.IGNORECASE)
 _DRAWING_NO_RE = re.compile(r"DRAWING NO\.?\s*([A-Z0-9][A-Z0-9\-]{4,})", re.IGNORECASE)
-_DWG_RE = re.compile(r"\b(DWG[0-9]{5,})\b")
+_DWG_RE = re.compile(r"\b(DWG[0-9]{5,}[A-Z]?)\b")
 _REV_RE = re.compile(r"(?<![A-Z])REV\.?\s*([A-Z0-9]{1,3})(?![A-Z0-9])")
 _TITLE_RE = re.compile(r"\bTITLE\s*\n?\s*([^\n]+)")
 _PLANT_RE = re.compile(r"^([A-Z][A-Z .]{2,},\s*(?:MEXICO|USA|PUERTO RICO|MX))$", re.MULTILINE)
 
 _EXTRA_EN = set("PROTECTIVE HOLDER MAGNETS AMPULE BREAKER REMOTE COVER ELASTIC BANDS DRESSING COMPONENTS BAGGED SECUREMENT CONNECTOR ANCHOR BIOPATCH IV PICC MAX BARRIER POWERHOHN GLOVE WALLET ITEMS CHLORAPREP TINTED STICKER SUTURE WING FULL BODY GOWN CSR WRAP TUCK ECG ELECTRODE ELECTRODES LEAD ASSEMBLY SENSOR FFS POUCH INSERT SPACER SHIP CASE LITERATURE ELECTRONIC LABELING NOTICE GENERIC INFO SIDE TRIMMING FIRST SECOND FOLD TOP LOWER STEP PLACE WRAPPED ONTO TOP STACK BAG ZIP CLOSED INTO AS PRINT FACING UP TIP BOTH ALWAYS REFER WORK ORDER COMPONENT APPLICABILITY QUANTITY CORRECT PLACEMENT IMAGES REFERENCE ONLY CAN DIFFERENT PLEASE NO LIDOCAINE SALINE AND WHEN".split())
 _EXTRA_ES = set("SUJETADOR PROTECTOR COLGANTE METRICA MEDICA IMANES CUBIERTA REMOTA BANDAS ELASTICAS BOLSA HULE ESPUMA ROMPEDOR AMPOLLETA VENDAJE EMBOLSADOS ASEGURAMIENTO ALA SUTURA CONECTOR FIJADORA TOALLA ALCOHOL SABANA COFIA MASCARA ARTICULOS ESTUCHE GUANTE TINTA ENVUELTA ENSAMBLAJE CABLE ELECTRODOS INSERTO ESPACIADOR CAJA ENVIO ETIQUETADO ELECTRONICO SUPERIOR INFERIOR APILAMIENTO GENERICA UNITARIA LATERAL PASO DOBLEZ PRIMER SEGUNDO BANDEJA COLOCAR ORDEN TRABAJO APLICABILIDAD CANTIDAD IMAGENES REFERENCIA SOLAMENTE COMPONENTES DIFERENTES FAVOR SIEMPRE BATA AMBOS PUNTA SOBRE ENVOLVER MUESTRA COMO DIAGRAMA DOBLADO ENVOLTURA COLOCADA AVISO CUANDO APLIQUE".split())
-_VOCAB = EN_MARKERS | ES_MARKERS | _EXTRA_EN | _EXTRA_ES | {"PLACED", "ON"}
+# Pouch-packaging wording seen joined by OCR; used only to separate joins, never to decide the language.
+_SPLIT_ONLY = set("TO DO NOT BE OF NO INNER OUTER SEALED UNDER SPLASH APPROXIMATE APPROXIMATELY LOCATION PRINTING POLY SEAL SEALING FINAL MUST "
+                  "PARALLEL EDGE CORNERS SHOULD TOUCH CHEVRON LABELS IFU UBICACION APROXIMADA APROXIMADAMENTE CUBRIR IMPRESION SELLADO "
+                  "SELLADA SELLO TIENE QUE ESTAR PARALELO BORDE BAJO INTERNA EXTERNA ESQUINAS DEBEN TOCAR LADO PLASTICO".split())
+_VOCAB = EN_MARKERS | ES_MARKERS | _EXTRA_EN | _EXTRA_ES | _SPLIT_ONLY | {"PLACED", "ON"}
 
 
 @lru_cache(maxsize=2048)
@@ -141,13 +152,53 @@ def _header(text: str) -> dict:
         header["drawing_number"] = m.group(1).upper()
     elif m := _DWG_RE.search(flat):
         header["drawing_number"] = m.group(1)
-    if m := _REV_RE.search(flat):
+    if m := _TEMPLATE_REV_RE.search(flat) or _REV_RE.search(flat):
         header["revision"] = m.group(1)
-    if m := _TITLE_RE.search(text):
+    if m := _TITLE_RE.search(text) or _TEMPLATE_TITLE_RE.search(text):
         header["title"] = m.group(1).strip()
     if m := _PLANT_RE.search(text):
         header["plant"] = m.group(1).strip()
     return header
+
+
+def _manifest_header(pdf) -> tuple[dict, set[int]]:
+    """The controlled identity from a signature manifest, and the manifest pages (approvals, not callouts)."""
+    header: dict = {}
+    pages: set[int] = set()
+    for page in pdf:
+        text = page.get_text()
+        if not _MANIFEST_RE.search(text):
+            continue
+        pages.add(page.number + 1)
+        if "drawing_number" not in header and (m := re.search(r"Document Number:\s*(DWG[0-9]{5,}[A-Z]?)\b", text, re.IGNORECASE)):
+            line = next((l for l in group_lines(extract_words(page), y_tol=2.5) if m.group(1).upper() in line_text(l).upper()), None)
+            header.update(drawing_number=m.group(1).upper(), identity_confidence=1.0, identity_source="signature manifest")
+            if line:
+                header["identity_evidence"] = {"page": page.number + 1, "bbox": line_bbox(line).model_dump(), "raw_text": line_text(line), "extraction_method": "pdf_text"}
+        if "revision" not in header and (m := re.search(r"^Revision:\s*([A-Z0-9]{1,3})\s*$", text, re.MULTILINE)):
+            header.update(revision=m.group(1), revision_confidence=1.0)
+        if "title" not in header and (m := _TEMPLATE_TITLE_RE.search(text)):
+            header["title"] = m.group(1)
+    return header, pages
+
+
+def _picture_callout_regions(page, words: list[Word]) -> list[pymupdf.Rect]:
+    """Large pictures without text-layer words: a drawing pasted into a document template keeps its callouts in
+    the picture. A full-page image with a text layer is a scan whose text was already recognised."""
+    area = page.rect.get_area()
+    rects = []
+    for xref in {image[0] for image in page.get_images(full=True)}:
+        for rect in page.get_image_rects(xref):
+            rect = rect * page.rotation_matrix
+            rect.normalize()
+            rects.append(rect)
+    if any(rect.get_area() >= .8 * area for rect in rects):
+        return []
+
+    def covered(rect):
+        return sum((pymupdf.Rect(w.x0, w.y0, w.x1, w.y1) & rect).get_area() for w in words) / rect.get_area()
+
+    return [rect for rect in rects if rect.get_area() >= .15 * area and covered(rect) < .05]
 
 
 def parse_drawing_pdf(path: Path | str) -> Document:
@@ -162,8 +213,15 @@ def parse_drawing_pdf(path: Path | str) -> Document:
     n_callouts = 0
     page_methods = []
     header["pages"] = len(pdf)
+    manifest, manifest_pages = _manifest_header(pdf)
+    header.update(manifest)
     for page in pdf:
         page_no = page.number + 1
+        if page_no in manifest_pages:
+            # Approvals and signatures stay readable as recognised text; they are never callouts.
+            text_lines.extend(capture_text_lines(extract_words(page), doc_id=doc_id, doc_type=DocType.DRAWING, file=str(path), sha=sha, page=page_no, method="pdf_text"))
+            page_methods.append("pdf_text")
+            continue
         text = page.get_text()
         for k, v in _header(text).items():
             header.setdefault(k, v)
@@ -174,12 +232,29 @@ def parse_drawing_pdf(path: Path | str) -> Document:
         native = words
         native_lines = group_lines(native, y_tol=2.5)
         native_body, _ = _split_notes(native_lines, page)
-        # A scanned drawing may carry only a searchable native title block. It
-        # still needs OCR for the callouts, just like a fully scanned sheet.
-        raster_body_only = bool(native) and bool(page.get_images()) and not any(
+        # A scanned or vector-outlined drawing may carry only a searchable title block or a document-control
+        # watermark. It still needs OCR for the callouts, just like a fully scanned sheet.
+        raster_body_only = bool(native) and not any(
             re.search(r"[A-Za-z]{2,}", line_text(line)) and not _NOISE_RE.search(line_text(line))
             for line in native_body
-        )
+        ) and bool(page.get_images() or page.get_drawings())
+        pictures = [] if not words or raster_body_only else _picture_callout_regions(page, native)
+        ocr_ids: set[int] = set()
+        if pictures and ocr_available():
+            try:
+                result = ocr_page(page)
+            except Exception as exc:
+                warnings.append(f"page {page_no}: OCR of pictured callouts failed ({str(exc) if isinstance(exc, OcrError) else type(exc).__name__}); text layer kept")
+            else:
+                # The text layer stays authoritative; OCR adds only words it does not already hold.
+                extra = [w for w in ocr_words(result) if any(r.x0 <= w.cx <= r.x1 and r.y0 <= w.cy <= r.y1 for r in pictures)
+                         and not any(pymupdf.Rect(w.x0, w.y0, w.x1, w.y1).intersects(pymupdf.Rect(n.x0, n.y0, n.x1, n.y1)) for n in native)]
+                if extra:
+                    words, ocr_ids, page_method = native + extra, {id(w) for w in extra}, "mixed"
+                    header["ocr_engine"] = result.engine
+                    warnings.append(f"page {page_no}: OCR ({result.engine}, {result.dpi} dpi) read {len(extra)} words inside pictures — verify callouts against the image")
+        elif pictures:
+            warnings.append(f"page {page_no}: pictures may hold callouts, but no usable OCR engine can read them. {OCR_SETUP_HELP}")
         if not words or raster_body_only:
             if not ocr_available():
                 warnings.append(f"page {page_no}: no extractable text and no usable OCR engine; page skipped. {OCR_SETUP_HELP}")
@@ -221,14 +296,15 @@ def parse_drawing_pdf(path: Path | str) -> Document:
         page_notes = [line_text(l) for l in note_lines]
         # OCR also reads the printing inside product photographs. On a bilingual sheet a real callout carries
         # its translation, so unpaired English is rejected there; an English-only sheet keeps its callouts.
-        bilingual = page_method == "ocr" and not outlined and any(is_spanish_line(line_text(l)) for l in body)
+        bilingual = page_method in ("ocr", "mixed") and not outlined and any(is_spanish_line(line_text(l)) for l in body)
         if page_notes:
             header.setdefault("notes", []).append({"page": page_no, "text": "\n".join(page_notes)})
             if "IMAGESFORREFERENCEONLY" in re.sub(r"\W", "", " ".join(page_notes).upper()):
                 header["reference_only"] = True
         for cluster in _clusters(body):
+            cluster_method = "ocr" if page_method == "ocr" or any(id(w) in ocr_ids for l in cluster for w in l) else "pdf_text"
             raw_texts = [line_text(l) for l in cluster]
-            texts = [_clean_ocr_line(t) for t in raw_texts] if page_method == "ocr" else raw_texts
+            texts = [_clean_ocr_line(t) for t in raw_texts] if cluster_method == "ocr" else raw_texts
             if any(_NOISE_RE.search(t.strip()) for t in texts):
                 continue
             en: list[str] = []
@@ -245,7 +321,7 @@ def parse_drawing_pdf(path: Path | str) -> Document:
                 continue
             # OCR inside the product photographs is evidence on the image, not a callout.
             # Real raster callouts use a paired translation; keep unpaired text as a warning.
-            if bilingual and not es and en_text not in {"BIOPATCH", "CHLORAPREP"} and not _is_instruction(en_text):
+            if bilingual and cluster_method == "ocr" and not es and en_text not in {"BIOPATCH", "CHLORAPREP"} and not _is_instruction(en_text):
                 if re.search(r"[A-Z]{3,}", en_text) and any(t in EN_MARKERS | _EXTRA_EN for t in en_text.split()):
                     warnings.append(f"page {page_no}: unpaired OCR text not accepted as callout: {en_text[:100]}")
                 continue
@@ -260,7 +336,7 @@ def parse_drawing_pdf(path: Path | str) -> Document:
             if not en_text or not re.search(r"[A-Z]{2,}", en_text):
                 continue
             es_text = " ".join(_PAREN_RE.sub("", " ".join(es)).split())
-            if page_method == "ocr" and re.search(r"\bETIQUETADO\b", es_text, re.IGNORECASE):
+            if cluster_method == "ocr" and re.search(r"\bETIQUETADO\b", es_text, re.IGNORECASE):
                 en_text = _LEBELING_TYPO_RE.sub("LABELING", en_text)
             depicted_count = None
             if m := re.search(r"\s*\((\d+)\)$", en_text):
@@ -279,7 +355,7 @@ def parse_drawing_pdf(path: Path | str) -> Document:
                     category=ItemCategory.PROCESS if instruction else ItemCategory.PHYSICAL_COMPONENT, category_reason="drawing instruction; not a component comparison" if instruction else "drawing callout (presence only; the drawing is not a quantity source)",
                     attributes={"kind": "instruction" if instruction else "callout", "es_text": es_text, "conditional": conditional, "placement": placement, "depicted_count": depicted_count, "callout_index": n_callouts, "sheet": page_no},
                     extraction_confidence=min(w.confidence for l in cluster for w in l),
-                    evidence=Evidence(file=str(path), file_sha256=sha, page=page_no, bbox=bbox, raw_text=" / ".join(raw_texts), locator=f"sheet {page_no}, callout {n_callouts}", extraction_method=page_method),
+                    evidence=Evidence(file=str(path), file_sha256=sha, page=page_no, bbox=bbox, raw_text=" / ".join(raw_texts), locator=f"sheet {page_no}, callout {n_callouts}", extraction_method=cluster_method),
                 )
             )
     pdf.close()
@@ -340,6 +416,10 @@ def _spatial_header(page, lines, header, method, warnings):
     for line in lines:
         text = line_text(line)
         if m := _DWG_RE.search(text):
+            if header.get("identity_source") == "signature manifest" and m.group(1) != header.get("drawing_number"):
+                note = f"page {page.number + 1}: title block reads {m.group(1)} but the signature manifest controls {header.get('drawing_number')} — confirm the sheets belong to this document"
+                if note not in warnings:
+                    warnings.append(note)
             header.setdefault("drawing_number", m.group(1))
             header.setdefault("identity_evidence", {"page": page.number + 1, "bbox": line_bbox(line).model_dump(), "raw_text": text, "extraction_method": method})
             header.setdefault("identity_confidence", min(w.confidence for w in line))

@@ -27,6 +27,8 @@ kaizen-workspace/
 /Attachment I- BOM/
 /BOM cross check Folder/
 /SKUs/
+/Test data/
+/BCC final Template format*.xlsx
 
 # The hackathon brief is BD-internal material; keep it local, never in the public repo.
 docs/reference/*.pdf

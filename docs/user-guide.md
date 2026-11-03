@@ -32,7 +32,7 @@ Each run needs exactly one BOM, one PDF label and one PDF drawing. Keep each kit
 
 1. **Start a cross-check.** In All runs, choose New cross-check. Run name is optional; folder names are used by default. When adding several folders, the entered name is added to each folder’s name.
 
-2. **Choose the documents.** Choose folder adds a kit folder or a parent containing several kit folders. Choose 3 files adds one set of three documents selected together. Each folder or set becomes its own run.
+2. **Choose the documents.** Choose folder adds a kit folder or a parent containing several kit folders. Choose 3 files adds one set of three documents selected together. Each folder or set becomes its own run; loose files beside the kit folders, such as a terminology workbook, are skipped.
 
 3. **Review your selection.** Expand a folder row to check its filenames. Add a folder or Add 3 files appends another set. Remove a set or use Clear all to start over. Cancelling a picker keeps the current selection.
 
@@ -86,7 +86,7 @@ Publishing terminology makes those terms and notes visible to all approved appli
 
 Use Excel for a review handoff or offline decisions, then import changes into the same run.
 
-1. **Choose a download.** On Overview, use Download Excel → Summary for totals and attention rows, or Complete details for every comparison and supporting audit sheets. Both include SKU worksheets and editable decision/comment columns.
+1. **Choose a download.** On Overview, use Download Excel → Summary for totals and attention rows, or Complete details for every comparison and supporting audit sheets. Both include SKU worksheets and editable decision/comment columns. BCC template gives BD's cross-check format: Label VS BOM, Drawings VS BOM and Combined sheets with match results, counts, status and approvers (read-only).
 
 2. **Review offline.** Edit the provided decision and comment fields. Keep the workbook’s run and row identifiers intact; source and engine evidence are not editable through decision import.
 

@@ -62,7 +62,7 @@
         },
         {
           "title": "Choose the documents",
-          "body": "Choose folder adds a kit folder or a parent containing several kit folders. Choose 3 files adds one set of three documents selected together. Each folder or set becomes its own run."
+          "body": "Choose folder adds a kit folder or a parent containing several kit folders. Choose 3 files adds one set of three documents selected together. Each folder or set becomes its own run; loose files beside the kit folders, such as a terminology workbook, are skipped."
         },
         {
           "title": "Review your selection",
@@ -203,7 +203,7 @@
       "steps": [
         {
           "title": "Choose a download",
-          "body": "On Overview, use Download Excel → Summary for totals and attention rows, or Complete details for every comparison and supporting audit sheets. Both include SKU worksheets and editable decision/comment columns."
+          "body": "On Overview, use Download Excel → Summary for totals and attention rows, or Complete details for every comparison and supporting audit sheets. Both include SKU worksheets and editable decision/comment columns. BCC template gives BD's Label VS BOM, Drawings VS BOM and Combined sheets."
         },
         {
           "title": "Review offline",

@@ -97,7 +97,7 @@ verification, candidate evaluation and dataset exports additionally require Edit
 | Method | Path | Input / result |
 | --- | --- | --- |
 | GET | `/api/runs` | Accessible run records with names, ownership, permissions, original summary and current review progress. Missing saved runs are marked unavailable. `deleted=true` instead lists only the actor’s deleted runs with `deleted_at`/`deleted_by` and stored summaries. |
-| POST | `/api/runs/from-path` | `{path, name?}`; administrator-only and disabled in hosted mode. Returns `{runs: RunSummary[], failures: [{path, message}]}`. Every document folder becomes a separate run; nested folders are independent. Invalid sets are rejected before any runs are created; runtime failures report saved runs and failed paths. |
+| POST | `/api/runs/from-path` | `{path, name?}`; administrator-only and disabled in hosted mode. Returns `{runs: RunSummary[], failures: [{path, message}], skipped: [{path, message}]}`. Every document folder becomes a separate run; nested folders are independent. Loose documents beside kit folders (for example a terminology workbook in the delivery folder) are skipped, not refused. Invalid sets are rejected before any runs are created; runtime failures report saved runs and failed paths. |
 | POST | `/api/runs/upload` | Multipart `files`, optional `name`; one folder containing exactly one BOM, one label and one drawing. Three individually selected files use a synthetic folder prefix. Safe relative paths, readable document types and the 250 MB per-run limit are validated. Submit additional folders separately. |
 | POST | `/api/demo/load` | Loads the synthetic fixture run. |
 | GET | `/api/runs/{run_id}` | Run summary, groups, source counts, warnings, thresholds, terminology version and review progress. |
@@ -232,7 +232,7 @@ All review downloads require Edit access. Source-page previews remain available 
 
 | Method | Path | Input / result |
 | --- | --- | --- |
-| GET | `/api/runs/{run_id}/export.xlsx` | `detail=summary` (default) or `complete`; per-SKU XLSX download. Invalid detail returns 422. |
+| GET | `/api/runs/{run_id}/export.xlsx` | `detail=summary` (default), `complete` or `bcc`; per-SKU XLSX download. Invalid detail returns 422. |
 | GET | `/api/runs/{run_id}/annotated/{doc_id}` | PDF; `X-Kaizen-Fallback` marks a geometry fallback and `X-Kaizen-Marks` reports mark count. |
 | GET | `/api/runs/{run_id}/annotated.zip` | Optional `sku`; every marked BOM, label and drawing. One folder per SKU set, flat when one `sku` is asked for. |
 | GET | `/api/runs/{run_id}/certificate.pdf` | Optional `sku`; one page per SKU, with hashes, review counts and open action items. |
@@ -247,6 +247,11 @@ Summary includes check totals, current status and attention rows. Complete detai
 comparison, original/source evidence, approvals and supporting audit sheets. Both use SKU worksheets
 and importable decision/comment columns. XLSX business text is stored as literal text. Filenames include
 the selected detail. The CLI/portable workbook layouts remain import-compatible.
+
+`detail=bcc` follows BD's BOM cross-check (BCC) template: Label VS BOM, Drawings VS BOM and Combined
+sheets per SKU (prefixed with the SKU when a run has several), with Exact / Partial / Potential Match,
+Mismatch and Missing data results, quantity matches, summary counts, review status and approvers. It is
+read-only and cannot be imported as decisions.
 
 Imports require this run's metadata, stable row IDs and valid decisions. Only the session's reviewer
 columns are applied. Values changed after export are conflicts unless explicitly forced; original engine

@@ -10,7 +10,7 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from kaizen.checks.bom_label import is_comparable_bom_item
+from kaizen.checks.bom_label import is_comparable_bom_item, top_level
 from kaizen.models import Classification, DocType, DocumentItem, Run
 from kaizen.reporting.styles import BORDER, CLASS_FILLS, HEADER_FILL, HEADER_FONT, SECTION_FONT, SEVERITY_FILLS, TITLE_FONT, WRAP
 from kaizen.reporting.workbook import save_workbook
@@ -51,20 +51,24 @@ def _review_cells(review: ReviewBundle | None, r) -> list[Any]:
     ]
 
 
+def review_store(workspace, run: Run):
+    """The review store that holds this run's decisions, and whether the run is a shared web run."""
+    from kaizen.review.store import ReviewStore
+
+    record = workspace.runs.get(run.metadata.run_id)
+    if record and record.get('owner'):
+        from kaizen.review.collaborative import CollaborativeReviewStore
+        return CollaborativeReviewStore(workspace.db), True
+    return ReviewStore(workspace.db), False
+
+
 def export_with_review(workspace, run: Run, path: Path | str, metrics: dict[str, Any] | None = None, *, detail: Literal["summary", "complete"] | None = None) -> Path:
     """Workbook with the workspace's reviewer decisions, action items and business case merged in."""
     from kaizen.review.action_items import ActionItemStore
     from kaizen.review.business import business_case
-    from kaizen.review.store import ReviewStore
 
     rid = run.metadata.run_id
-    record = workspace.runs.get(rid)
-    collaborative = bool(record and record.get('owner'))
-    if collaborative:
-        from kaizen.review.collaborative import CollaborativeReviewStore
-        review = CollaborativeReviewStore(workspace.db)
-    else:
-        review = ReviewStore(workspace.db)
+    review, collaborative = review_store(workspace, run)
     if metrics is None:
         sidecar = Path(path).parent / "accuracy.json"  # written by `kaizen demo` / `kaizen eval` beside the run
         if sidecar.exists():
@@ -456,8 +460,9 @@ def _documents_sheet(ws, run: Run) -> None:
     for d in run.documents:
         if d.doc_type is not DocType.BOM:
             continue
+        top = top_level(d)
         for item in d.items:
-            ok, reason = is_comparable_bom_item(item)
+            ok, reason = is_comparable_bom_item(item, top)
             if ok:
                 continue
             row += 1

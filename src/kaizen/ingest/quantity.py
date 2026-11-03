@@ -14,7 +14,8 @@ _UOM_CANONICAL = {
     "SET": "SET", "SETS": "SET",
 }
 _LINE_RE = re.compile(
-    r"^\s*(?P<qty>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?P<uom>" + "|".join(_UOM_CANONICAL) + r")?\s*[-–—:]\s*(?P<desc>.+?)\s*$",
+    # Scanner text layers sometimes record the printed dash as a bullet.
+    r"^\s*(?P<qty>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?P<uom>" + "|".join(_UOM_CANONICAL) + r")?\s*[-–—:•·]\s*(?P<desc>.+?)\s*$",
     re.IGNORECASE,
 )
 

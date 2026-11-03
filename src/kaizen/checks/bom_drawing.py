@@ -5,14 +5,14 @@ import re
 from collections import defaultdict
 
 from kaizen.checks.base import RowIdFactory, header_item, pair_token, unparsed_bom_rows
-from kaizen.checks.bom_label import comparable_bom_items
+from kaizen.checks.bom_label import below_top_level, comparable_bom_items, top_level
 from kaizen.checks.pairing import CheckPolicy, disc, run_pairing_check
 from kaizen.matching.components import PACKAGING_KINDS, component
 from kaizen.matching.ladder import MatchLadder
 from kaizen.matching.normalize import normalize
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, DocType, Document, ItemCategory, MatchLevel, Severity, Thresholds
 
-CHECK_VERSION = "4"
+CHECK_VERSION = "5"
 POLICY = CheckPolicy(check_type=CheckType.BOM_DRAWING, row_letter="D", quantity_relevant=False, missing_a=DiscrepancyType.MISSING_IN_DRAWING, missing_b=DiscrepancyType.EXTRA_ON_DRAWING, a_label="BOM component", b_label="drawing callout", conditional_b_exempt=True, soft_a_categories=(ItemCategory.PACKAGING,), exempt_b_categories=(ItemCategory.LABEL, ItemCategory.DOCUMENT))
 
 
@@ -20,7 +20,8 @@ def drawing_relevant_bom_items(bom: Document):
     """Physical components plus packaging lines (tray, lid): packaging is shown on a tray drawing but a BOM
     packaging line without a callout is not a finding (soft)."""
     physical = comparable_bom_items(bom)
-    packaging = [i for i in bom.items if i.category is ItemCategory.PACKAGING and i.is_active and (i.quantity is None or i.quantity > 0)]
+    top = top_level(bom)
+    packaging = [i for i in bom.items if i.category is ItemCategory.PACKAGING and i.is_active and (i.quantity is None or i.quantity > 0) and not below_top_level(i, top)]
     return physical + packaging
 _REV_RE = re.compile(r"\bREV\.?\s*([A-Z0-9]{1,3})\b", re.IGNORECASE)
 

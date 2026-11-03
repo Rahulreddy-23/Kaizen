@@ -375,6 +375,18 @@ def test_excel_download_modes_are_distinct_and_preserve_the_saved_report(env):
     assert client.get(f"/api/runs/{run_id}/export.xlsx?detail=unknown").status_code == 422
 
 
+def test_bcc_template_download_has_three_sheets_per_sku(env):
+    client, _, ws, run_id = env
+    response = client.get(f"/api/runs/{run_id}/export.xlsx?detail=bcc")
+    assert response.status_code == 200 and "-bcc.xlsx" in response.headers["content-disposition"]
+    wb = openpyxl.load_workbook(io.BytesIO(response.content))
+    run = json.loads((ws.runs_dir / run_id / "run.json").read_text(encoding="utf-8"))
+    sku = run["groups"][0]["sku"]
+    assert wb.sheetnames[:3] == [f"{sku} Label VS BOM", f"{sku} Drawings VS BOM", f"{sku} Combined"]
+    assert len(wb.sheetnames) == 3 * len(run["groups"])
+    assert wb[f"{sku} Combined"]["A1"].value == f"SKU Number - {sku} (BOM Parent Item number)"
+
+
 def test_index_page_is_served_with_no_cache(tmp_path):
     """A rebuilt bundle must show up on the next load: index.html is never cached, hashed assets may be."""
     ui = tmp_path / "dist"

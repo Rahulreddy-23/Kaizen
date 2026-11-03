@@ -10,11 +10,36 @@ from kaizen.ingest.grouping import identity_key
 from kaizen.matching.ladder import MatchLadder
 from kaizen.models import CheckResult, CheckType, Classification, DiscrepancyType, Document, DocumentItem, ItemCategory, MatchLevel, Severity, Thresholds
 
-CHECK_VERSION = "4"
+CHECK_VERSION = "6"
+_OVERLAY_WORDS = "SALINE|SCISSORS|LIDOCAINE"
+# NO SALINE, NO-LIDOCAINE or NO LIDOCAINE/SALINE: an overlabel may remove each component it names.
+_OVERLAY_RE = re.compile(rf"\bNO[\s-]+((?:{_OVERLAY_WORDS})(?:\s*/\s*(?:{_OVERLAY_WORDS}))*)\b", re.I)
 POLICY = CheckPolicy(check_type=CheckType.BOM_LABEL, row_letter="R", quantity_relevant=True, missing_a=DiscrepancyType.MISSING_IN_LABEL, missing_b=DiscrepancyType.MISSING_IN_BOM, a_label="BOM component", b_label="label line")
 
 
-def is_comparable_bom_item(item: DocumentItem) -> tuple[bool, str]:
+def top_level(bom: Document) -> int | None:
+    """The kit level of an indented BOM: the shallowest level holding physical components. Lines above it
+    (a procedure or phantom kit line) do not hide the components below them."""
+    def level(item):
+        value = str(item.attributes.get("level") or "")
+        return int(value) if value.isdigit() else None
+
+    physical = [n for i in bom.items if i.category is ItemCategory.PHYSICAL_COMPONENT and (n := level(i)) is not None]
+    return min(physical) if physical else None
+
+
+def below_top_level(item: DocumentItem, top: int | None) -> str | None:
+    """Why a deeper line of an indented BOM is not a kit component (it is inside a sub-assembly), if it is."""
+    level = str(item.attributes.get("level") or "")
+    if top is not None and level.isdigit() and int(level) > top:
+        return f"sub-assembly line at BOM level {level}; its level-{top} assembly is the kit component compared"
+    return None
+
+
+def is_comparable_bom_item(item: DocumentItem, top: int | None = None) -> tuple[bool, str]:
+    """`top` is the BOM's kit level (see top_level); lines below it belong to sub-assemblies."""
+    if reason := below_top_level(item, top):
+        return False, reason
     if item.category is not ItemCategory.PHYSICAL_COMPONENT:
         return False, f"category {item.category.value}: {item.category_reason}"
     if item.quantity is None:
@@ -27,7 +52,8 @@ def is_comparable_bom_item(item: DocumentItem) -> tuple[bool, str]:
 
 
 def comparable_bom_items(bom: Document) -> list[DocumentItem]:
-    return merge_duplicate_items([i for i in bom.items if is_comparable_bom_item(i)[0]])
+    top = top_level(bom)
+    return merge_duplicate_items([i for i in bom.items if is_comparable_bom_item(i, top)[0]])
 
 
 def run_bom_label_check(bom: Document, label: Document, ladder: MatchLadder, thresholds: Thresholds, assembly_rules: list | None = None) -> list[CheckResult]:
@@ -55,8 +81,8 @@ def run_bom_label_check(bom: Document, label: Document, ladder: MatchLadder, thr
 
 def _overlay_findings(results, bom):
     """Distinguish unresolved label configuration from a verified missing part."""
-    overlays = [(item, match[1]) for item in bom.items if item.is_active and item.quantity and item.quantity > 0
-                if (match := re.search(r"\bNO\s+(SALINE|SCISSORS)\b", item.description, re.I))]
+    overlays = [(item, word) for item in bom.items if item.is_active and item.quantity and item.quantity > 0
+                if (match := _OVERLAY_RE.search(item.description)) for word in re.split(r"\s*/\s*", match[1])]
     for row in results:
         if row.role != "item" or row.source_a is not None or row.source_b is None:
             continue
@@ -76,8 +102,9 @@ def _overlay_findings(results, bom):
 def _exempt_rows(bom: Document, sku: str, ids: RowIdFactory) -> list[CheckResult]:
     """Every BOM line excluded from the comparison is shown, with its reason, so exclusions are never silent."""
     out = []
+    top = top_level(bom)
     for item in bom.items:
-        ok, reason = is_comparable_bom_item(item)
+        ok, reason = is_comparable_bom_item(item, top)
         if ok:
             continue
         out.append(CheckResult(row_id=ids.next(), sku=sku, check=CheckType.BOM_LABEL, role="exempt", source_a=item, source_b=None, classification=Classification.EXACT, match_level=MatchLevel.NONE, score=0.0, explanation=f"NOT COMPARED: {item.item_number} '{item.description}' — {reason}", requires_validation=False))
