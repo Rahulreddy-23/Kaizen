@@ -159,6 +159,10 @@ class ComponentMatcher:
         if not ca.kind or ca.kind == "document_or_label" or not cb.kind:
             return None
         conflicts, shared = compatible(ca, cb, generic_catheter=drawing)
+        # A drawing callout that is only a family noun (NEEDLE) may show any part of that family.
+        if drawing and ca.kind != cb.kind and family(ca.kind) == cb.kind and b.sorted_key == cb.kind.upper():
+            conflicts = [c for c in conflicts if not c.startswith("component type")]
+            support += "; the drawing callout names only the part's family"
         if any(c.startswith("component type") for c in conflicts):
             return None
         score = min(.97, .90 + .02 * len(shared))

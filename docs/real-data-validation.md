@@ -108,6 +108,7 @@ instead of callouts, and indented sub-assembly lines were reported as missing fr
 | Labels | 217 of 217 entries in the correct order with the correct quantity, against a manual transcription. |
 | Drawings | All seven distinct drawings yield bilingual callouts; the plain and document-control copies of one drawing agree (67 and 68 callouts). |
 | BOM ↔ label pairing | Kaizen makes 214 of the 215 pairings judged correct against the documents and no wrong ones. Of 53 flagged rows, 14 are genuine differences (11 issues: quantities, a syringe volume, a needle gauge and overlabel questions), 21 are lines that labels do not print or that need a BD rule, and 18 wait on BD terminology: two label names, and a BOM line whose description names no part. |
+| Drawing pairing | Judged against the documents: 197 BOM ↔ drawing pairs are correct and 1 is wrong (a carton paired with a carton-flap instruction); 153 label ↔ drawing pairs are correct, none wrong. Of 123 unmatched BOM ↔ drawing rows, 14 are genuine differences, 40 wait on BD terminology, 18 are callouts for other configurations on shared drawings, 20 are instructions or headings, 8 are parts drawings do not call out, and 23 are left for review because each pattern appears on only one drawing design or needs a BD rule (the guidewire hoop). |
 | Accuracy gate | Synthetic golden set unchanged at 1.000 pairing and classification accuracy. |
 
 Most comparisons still need reviewer confirmation, as designed. Two kits supply a drawing that their BOM
