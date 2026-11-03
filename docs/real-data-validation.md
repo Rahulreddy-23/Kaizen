@@ -107,7 +107,7 @@ instead of callouts, and indented sub-assembly lines were reported as missing fr
 | BOM extraction | 778 of 778 rows agree with an independent layout reading (item, description, quantity, unit, dates). |
 | Labels | 217 of 217 entries in the correct order with the correct quantity, against a manual transcription. |
 | Drawings | All seven distinct drawings yield bilingual callouts; the plain and document-control copies of one drawing agree (67 and 68 callouts). |
-| BOM ↔ label pairing | 215 of 215 pairings judged correct against the documents. Of 51 flagged rows, 14 are genuine differences (11 issues: quantities, a syringe volume, a needle gauge and overlabel questions), 21 are lines that labels do not print or that need a BD rule, and 16 wait on BD terminology for two label names. |
+| BOM ↔ label pairing | Kaizen makes 214 of the 215 pairings judged correct against the documents and no wrong ones. Of 53 flagged rows, 14 are genuine differences (11 issues: quantities, a syringe volume, a needle gauge and overlabel questions), 21 are lines that labels do not print or that need a BD rule, and 18 wait on BD terminology: two label names, and a BOM line whose description names no part. |
 | Accuracy gate | Synthetic golden set unchanged at 1.000 pairing and classification accuracy. |
 
 Most comparisons still need reviewer confirmation, as designed. Two kits supply a drawing that their BOM

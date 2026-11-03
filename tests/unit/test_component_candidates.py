@@ -59,13 +59,20 @@ def test_picc_stabilization_device_is_not_a_second_catheter():
         'X3': 'StatLock Stabilization Device'}
 
 
-def test_antimicrobial_and_transparent_dressings_pair_by_their_own_type():
-    bom = bom_doc([('X1', 'DRESSING, ANTIMICROBIAL, 1IN', '1'), ('X2', 'STERILE TRANSPARENT', '1')])
+def test_antimicrobial_dressing_pairs_by_its_own_type():
+    bom = bom_doc([('X1', 'DRESSING, ANTIMICROBIAL, 1IN', '1')])
     label = label_doc([('Adhesive Film Dressing', '1'), ('BIOPATCHTM Protective Disk with CHG', '1')])
-    rows = [r for r in run_bom_label_check(bom, label, ladder(), TH) if r.role == 'item']
-    assert {r.source_a.item_number: r.source_b.description for r in rows if r.source_a and r.source_b} == {
-        'X1': 'BIOPATCHTM Protective Disk with CHG', 'X2': 'Adhesive Film Dressing'}
-    assert all(r.classification is Classification.POTENTIAL and r.requires_validation for r in rows)
+    paired = [r for r in run_bom_label_check(bom, label, ladder(), TH) if r.role == 'item' and r.source_a and r.source_b]
+    assert {r.source_a.item_number: r.source_b.description for r in paired} == {'X1': 'BIOPATCHTM Protective Disk with CHG'}
+    assert all(r.classification is Classification.POTENTIAL and r.requires_validation for r in paired)
+
+
+def test_an_erp_line_that_names_no_part_is_left_for_review():
+    # Only an approved relationship anchored on the item number may say what a cut-off description is.
+    rows = [r for r in run_bom_label_check(bom_doc([('X1', 'STERILE TRANSPARENT', '1')]),
+                                           label_doc([('Adhesive Film Dressing', '1')]), ladder(), TH) if r.role == 'item']
+    assert not any(r.source_a and r.source_b for r in rows)
+    assert {d.type for r in rows for d in r.discrepancies} == {DiscrepancyType.MISSING_IN_LABEL, DiscrepancyType.MISSING_IN_BOM}
 
 
 @pytest.mark.parametrize('text,kind', [

@@ -59,8 +59,6 @@ KINDS = (
     ("towel", r"\bTOWEL\b"),
     ("case_sealing_tape", r"\bCASE\s+SEALING\s+TAPE\b"),
     ("tape", r"\bTAPE\b"),
-    # Last resort: an ERP line cut off after TRANSPARENT names no noun; in these kits that is the film dressing.
-    ("dressing", r"\bTRANSPARENT\b"),
 )
 
 
