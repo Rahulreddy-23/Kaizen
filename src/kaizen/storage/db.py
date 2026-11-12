@@ -310,6 +310,10 @@ class Database:
         self._ensure_column("runs", "copied_from", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("runs", "deleted_at", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("runs", "deleted_by", "TEXT NOT NULL DEFAULT ''")
+        # A rerun reprocesses its original run's stored sources. It is listed under that original,
+        # never as a run of its own, and takes access from it.
+        self._ensure_column("runs", "rerun_of", "TEXT NOT NULL DEFAULT ''")
+        self._ensure_column("runs", "rerun_number", "INTEGER NOT NULL DEFAULT 0")
         self._ensure_column("finals", "self_approved", "INTEGER NOT NULL DEFAULT 0")
         self.conn.execute("INSERT OR IGNORE INTO profiles (email,status,is_admin,created_at) SELECT email,'pending',0,created_at FROM users")
         self.conn.execute("UPDATE runs SET name = 'BOM review · ' || substr(created_at,1,10) WHERE name = ''")

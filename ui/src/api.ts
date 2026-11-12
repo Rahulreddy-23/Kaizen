@@ -30,6 +30,7 @@ import type {
   RowDetail,
   RunListItem,
   RunSummary,
+  RunVersion,
   VerifyOutcome,
   ViewerParams,
 } from "./types";
@@ -234,6 +235,9 @@ export const api = {
     return request<RunSummary>("/api/runs/upload", { method: "POST", body: fd }, onProgress);
   },
   getRun: (runId: string) => request<RunSummary>(`/api/runs/${enc(runId)}`),
+  // Reprocesses the original run's stored source files; the result is listed under the original.
+  rerunRun: (runId: string, onProgress?: (value: RunProgress) => void) => request<RunSummary>(`/api/runs/${enc(runId)}/rerun`, { method: "POST" }, onProgress),
+  runVersions: (runId: string) => request<RunVersion[]>(`/api/runs/${enc(runId)}/versions`),
   quickView: (runId: string, query: {sku?: string; view?: "components" | "text"; status?: string; search?: string; offset?: number}) =>
     request<QuickView>(`/api/runs/${enc(runId)}/quick-view${qs(query)}`),
   quickExportUrl: (runId: string, sku?: string) => `/api/runs/${enc(runId)}/quick-view/export.xlsx${qs({sku})}`,

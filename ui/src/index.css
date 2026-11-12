@@ -948,6 +948,8 @@
   .excel-export-description { color: rgb(var(--c-ink-2)); font-size: 13px; line-height: 1.5; }
   .excel-export-note { margin: 4px 12px; color: rgb(var(--c-ink-3)); font-size: 12px; line-height: 1.5; }
   .excel-export-note:last-child { padding-top: 8px; border-top: 1px solid rgb(var(--c-line)); }
+  .excel-export-version { display: flex; flex-direction: column; gap: 6px; margin: 4px 4px 8px; padding: 8px 8px 12px; border-bottom: 1px solid rgb(var(--c-line)); }
+  .excel-export-version label { color: rgb(var(--c-ink)); font-size: 13px; font-weight: 550; }
   .queue-count { display: inline-flex; align-items: center; justify-content: center; padding: 1px 6px; border-radius: 4px; background: rgb(var(--c-accent-ink) / .1); font-size: 12px; font-variant-numeric: tabular-nums; }
   .profile-page { max-width: 1040px; }
   .profile-identity { display: flex; align-items: center; gap: var(--space-lg); padding: var(--space-lg); margin-bottom: var(--space-lg); }

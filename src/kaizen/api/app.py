@@ -275,7 +275,7 @@ def _queue_sort_key(r):
 def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, accounts: LocalAccounts | SupabaseAccounts | None = None) -> FastAPI:
     ws = workspace or Workspace.resolve(None)
     app = FastAPI(title="Kaizen Cross-Check", version=__version__)
-    app.add_middleware(RunRequestGuard)
+    app.add_middleware(RunRequestGuard, original_id=ws.runs.original_id)
     resume_cleanup(ws)
     source_fingerprint = _source_fingerprint()
     page_images = PageImageCache()
@@ -402,13 +402,15 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if session is not None and session.blind:
             raise HTTPException(403, BLIND_REFUSAL)
 
-    def process_path(path: Path, actor: str, name: str = "", *, files: list[Path] | None = None, progress: Progress | None = None) -> dict[str, Any]:
+    def process_path(path: Path, actor: str, name: str = "", *, files: list[Path] | None = None, progress: Progress | None = None, rerun_of: str | None = None, require_kit: bool = True) -> dict[str, Any]:
         if not path.is_dir():
             raise HTTPException(400, f"folder not found: {path}")
         if len(name.strip()) > 120:
             raise HTTPException(400, "Run name must contain at most 120 characters.")
         run = run_folder(path.resolve(), catalog.store(actor), Thresholds(), files=files, progress=progress)
-        if files is not None and sorted(d.doc_type.value for d in run.documents) != sorted(t.value for t in UPLOAD_SET):
+        # A rerun of a single-kit run is held to the same three-document rule as a new upload; a
+        # whole-dataset run (the demo) spans many kits.
+        if require_kit and files is not None and sorted(d.doc_type.value for d in run.documents) != sorted(t.value for t in UPLOAD_SET):
             raise HTTPException(400, "Could not read all three documents. Each run needs a readable BOM, label and PDF drawing. " + " ".join(run.warnings[:3]))
         if not any(doc.items or (doc.doc_type is DocType.DRAWING and (doc.sku or doc.header.get('drawing_number'))) for doc in run.documents):
             warnings = run.warnings + [warning for doc in run.documents for warning in doc.warnings]
@@ -417,26 +419,39 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         label = name.strip()[:120] or f"{path.name.replace('_', ' ').replace('-', ' ').title()} · Review · {datetime.now(timezone.utc):%d %b %Y}"
         try:
             with ws.db.transaction():
+                if rerun_of is not None:
+                    require_run(rerun_of, actor, edit=True)
+                    original = ws.runs.get(rerun_of)
                 cache.put(run)
-                ws.db.conn.execute('UPDATE runs SET owner=?, name=? WHERE run_id=?', (actor, label, run.metadata.run_id))
+                if rerun_of is None:
+                    ws.db.conn.execute('UPDATE runs SET owner=?, name=? WHERE run_id=?', (actor, label, run.metadata.run_id))
+                else:
+                    number = ws.db.conn.execute('SELECT COALESCE(MAX(rerun_number),0)+1 FROM runs WHERE rerun_of=?', (original['run_id'],)).fetchone()[0]
+                    suffix = f' · Rerun {number}'
+                    original_name = original['name'] or 'Review'
+                    label = original_name[:120 - len(suffix)].rstrip() + suffix
+                    ws.db.conn.execute('UPDATE runs SET owner=?, name=?, rerun_of=?, rerun_number=? WHERE run_id=?',
+                                       (original['owner'], label, original['run_id'], number, run.metadata.run_id))
+                    ws.db.audit(actor, 'run.rerun', f"{run.metadata.run_id}: rerun {number} of {original['run_id']}")
                 learning.ensure_enrolled(run, actor)
+                info = run_info(run.metadata.run_id, actor)
         except Exception:
-            cache._runs.pop(run.metadata.run_id, None)
+            cache.discard(run.metadata.run_id)
             shutil.rmtree(ws.runs_dir / run.metadata.run_id, ignore_errors=True)
             raise
-        result = _summary(run, review) | run_info(run.metadata.run_id, actor)
+        result = _summary(run, review) | info
         if progress:
             progress(100, "Complete")
         return result
 
     processing_lock = threading.Lock()
 
-    def run_path(path: Path, actor: str, name: str = "", *, files: list[Path] | None = None, progress: Progress | None = None) -> dict[str, Any]:
+    def run_path(path: Path, actor: str, name: str = "", *, files: list[Path] | None = None, progress: Progress | None = None, rerun_of: str | None = None, require_kit: bool = True) -> dict[str, Any]:
         # A single-instance OCR pilot must not start multiple memory-heavy uploads together.
         if not processing_lock.acquire(blocking=False):
             raise HTTPException(429, 'Another cross-check is processing. Wait for it to finish, then try your upload again.')
         try:
-            return process_path(path, actor, name, files=files, progress=progress)
+            return process_path(path, actor, name, files=files, progress=progress, rerun_of=rerun_of, require_kit=require_kit)
         finally:
             processing_lock.release()
 
@@ -498,7 +513,16 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     def run_info(run_id, actor):
         rec = ws.runs.get(run_id)
-        return {key: rec[key] for key in ('name', 'owner', 'copied_from')} | {'permission': access.permission(run_id, actor)}
+        return {key: rec[key] for key in ('name', 'owner', 'copied_from', 'rerun_of', 'rerun_number')} | {'permission': access.permission(run_id, actor)}
+
+    def run_versions(run_id: str) -> list[dict[str, Any]]:
+        """The original run followed by its reruns, oldest first."""
+        rec = ws.runs.get(run_id)
+        if rec is None:
+            raise HTTPException(404, 'Run not found.')
+        original = rec['rerun_of'] or run_id
+        rows = ws.db.conn.execute("SELECT run_id,name,created_at,rerun_number FROM runs WHERE (run_id=? OR rerun_of=?) AND deleted_at='' ORDER BY rerun_number", (original, original)).fetchall()
+        return [dict(r) for r in rows]
 
     @app.get('/api/profiles')
     def profiles():
@@ -544,11 +568,14 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
 
     @app.get('/api/runs/{run_id}/sharing')
     def get_sharing(run_id: str):
+        run_id = ws.runs.original_id(run_id)
         return [dict(r) for r in ws.db.conn.execute('SELECT email,permission,shared_by,shared_at FROM run_shares WHERE run_id=? ORDER BY email', (run_id,))]
 
     @app.put('/api/runs/{run_id}/sharing')
     def share_run(run_id: str, payload: RunShare, session=Depends(_identified)):
         payload = payload.model_dump()
+        if ws.runs.original_id(run_id) != run_id:
+            raise HTTPException(400, 'Reruns use the original run\'s sharing. Share the original run instead.')
         try:
             access.share(run_id, payload.get('email', ''), payload.get('permission'), session.reviewer)
         except ValueError as e:
@@ -581,6 +608,9 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         # Retain source evidence, decisions and sharing for owner-controlled recovery. AccessStore
         # excludes deleted runs, so every document, export and review route becomes inaccessible.
         with ws.db.transaction():
+            require_run(run_id, session.reviewer, owner=True)
+            if ws.runs.original_id(run_id) != run_id:
+                raise HTTPException(400, 'Delete the original run to delete its reruns.')
             ws.db.conn.execute('UPDATE runs SET deleted_at=?,deleted_by=? WHERE run_id=?',
                                (datetime.now(timezone.utc).isoformat(), session.reviewer, run_id))
             ws.db.audit(session.reviewer, 'run.deleted', run_id)
@@ -592,7 +622,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
         if confirmation != run_id:
             raise HTTPException(400, 'Confirm the selected run before deleting it permanently.')
         with learning_lock:
-            if run_id in learning_running:
+            version_ids = ws.runs.version_ids(run_id)
+            if learning_running.intersection(version_ids):
                 raise HTTPException(409, 'Closed-testing processing is still finishing. Wait, then try again.')
             try:
                 result = purge_run(ws, run_id, session.reviewer)
@@ -600,8 +631,9 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                 raise HTTPException(404, 'Deleted run not found.')
             except ValueError as e:
                 raise HTTPException(409, str(e))
-            cache.discard(run_id)
-            page_images.discard_run(run_id)
+            for version_id in version_ids:
+                cache.discard(version_id)
+                page_images.discard_run(version_id)
         return result
 
     @app.post('/api/runs/{run_id}/restore')
@@ -610,6 +642,8 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
             record = ws.runs.get(run_id, include_deleted=True)
             if not record or record['owner'] != session.reviewer:
                 raise HTTPException(404, 'Deleted run not found.')
+            if record['rerun_of']:
+                raise HTTPException(400, 'Restore the original run to restore its reruns.')
             if record['deleted_at']:
                 ws.db.conn.execute("UPDATE runs SET deleted_at='',deleted_by='' WHERE run_id=?", (run_id,))
                 ws.db.audit(session.reviewer, 'run.restored', run_id)
@@ -713,7 +747,12 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.get("/api/runs")
     def list_runs(deleted: bool = False, session=Depends(_identified)):
         out = []
-        for record in ws.runs.list(deleted=deleted):
+        records = ws.runs.list(deleted=deleted)
+        reruns = dict(ws.db.conn.execute("SELECT rerun_of,COUNT(*) FROM runs WHERE rerun_of != '' AND deleted_at = '' GROUP BY rerun_of"))
+        for record in records:
+            if record['rerun_of']:
+                continue  # listed under (and chosen from) the original run
+            record['reruns'] = reruns.get(record['run_id'], 0)
             if deleted:
                 if record['owner'] == session.reviewer:
                     out.append(record | {'permission': 'owner'})
@@ -757,7 +796,7 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
                     if progress:
                         progress(min(99, int((100 * index + percent) / len(sets))), f"{folder.name}: {stage}")
                 try:
-                    direct = [f for f in discover_files(folder) if f.parent == folder]
+                    direct = discover_files(folder, recursive=False)
                     created.append(run_path(folder, session.reviewer, label, files=direct, progress=report))
                 except HTTPException as exc:
                     failures.append({'path': str(folder), 'message': str(exc.detail)})
@@ -835,6 +874,50 @@ def create_app(workspace: Workspace | None = None, ui_dir: Path | None = None, a
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str, session: ReviewSession | None = Depends(_identified)):
         return _summary(cache.get(run_id), review) | run_info(run_id, session.reviewer)
+
+    @app.get("/api/runs/{run_id}/versions")
+    def get_run_versions(run_id: str):
+        return run_versions(run_id)
+
+    @app.post("/api/runs/{run_id}/rerun")
+    def rerun(run_id: str, stream: bool = False, session=Depends(_identified)):
+        """A complete new cross-check of the run's document folder, exactly as if it were submitted again.
+
+        The folder is scanned afresh (files added, changed or removed since are picked up), every document
+        is parsed again and every check runs again with the current engine and terminology. Nothing from
+        an earlier run is reused. The result is numbered under the original run and starts unreviewed.
+        """
+        def work(progress=None):
+            require_run(run_id, session.reviewer, edit=True)
+            original_id = ws.runs.original_id(run_id)
+            previous = cache.get(original_id)
+            source = Path(previous.metadata.input_root)
+            root = source.resolve()
+            if not root.is_dir() or (source.is_absolute() and source != root):
+                raise HTTPException(400, 'The document folder for this run is no longer available, so it cannot be rerun. Upload the folder again as a new run.')
+
+            # Uploads and local runs use a single kit folder. Copies can store the kit's files
+            # in separate subfolders, and whole-dataset runs use the full tree.
+            single_kit = sorted(d.doc_type.value for d in previous.documents) == sorted(t.value for t in UPLOAD_SET)
+            parents = {(root / Path(i.path)).parent for i in previous.metadata.inputs}
+            one_folder = single_kit and len(parents) == 1
+            scan = next(iter(parents)) if one_folder else root
+            if not scan.is_relative_to(root) or scan.resolve() != scan:
+                raise HTTPException(400, 'The original kit folder is outside the stored document folder or has been replaced by a link.')
+            found = discover_files(scan, recursive=not one_folder)
+            if not found:
+                raise HTTPException(400, 'No PDF, XLSX, XLSM or CSV documents were found in this run\'s folder.')
+            if any(not f.resolve().is_relative_to(scan) for f in found):
+                raise HTTPException(400, 'The document folder contains a file linked outside it. Remove the link before rerunning.')
+
+            if single_kit:
+                types = [detect_doc_type(f) for f in found]
+                if len(found) != len(UPLOAD_SET) or sorted(t.value for t in types if t) != sorted(t.value for t in UPLOAD_SET):
+                    listed = ", ".join(f"{f.name} ({t.value if t else 'not recognised'})" for f, t in zip(found, types))
+                    raise HTTPException(400, f"The run's folder must hold exactly one BOM, one label and one drawing; it now has {len(found)} document{'s' if len(found) != 1 else ''}: {listed}.")
+            return run_path(root, session.reviewer, files=found, progress=progress, rerun_of=original_id, require_kit=single_kit)
+
+        return stream_run(work) if stream else work()
 
     @app.get("/api/runs/{run_id}/results")
     def get_results(run_id: str, check: str | None = None, sku: str | None = None, classification: str | None = None, engine_classification: str | None = None, severity: str | None = None, discrepancy: str | None = None, needs_validation: bool | None = None, unresolved: bool | None = None, state: str | None = None, role: str | None = None, viewer: int = 1, blind: bool = False, limit: int = Query(500, ge=1, le=5000), offset: int = Query(0, ge=0), search: str | None = None, session: ReviewSession | None = Depends(_identified)):

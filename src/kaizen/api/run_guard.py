@@ -5,14 +5,17 @@ if the run is in use, and blocks new requests until its response completes.
 """
 import re
 import threading
+from collections.abc import Callable
 from urllib.parse import unquote
 
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 
 class RunRequestGuard:
-    def __init__(self, app):
+    def __init__(self, app, original_id: Callable[[str], str] | None = None):
         self.app = app
+        self._original_id = original_id
         self._lock = threading.Lock()
         self._active: dict[str, int] = {}
         self._purging: set[str] = set()
@@ -22,6 +25,8 @@ class RunRequestGuard:
         if not match:
             return await self.app(scope, receive, send)
         rid = unquote(match[1])
+        if self._original_id is not None:
+            rid = await run_in_threadpool(self._original_id, rid)
         purge = scope['method'] == 'DELETE' and match[2] == '/permanent'
         with self._lock:
             conflict = rid in self._purging or (purge and self._active.get(rid, 0) > 0)

@@ -50,7 +50,7 @@ export function RunActions({ run, compact = false, onChanged, onDeleted }: {
     </>}>
       {action === "rename" ? <Field label="Run name"><input className="input w-full" value={name} maxLength={120} disabled={busy} onChange={event => setName(event.target.value)} /></Field> : <div className="space-y-3">
         <p>Move <strong className="break-words">{label}</strong> to Deleted runs?</p>
-        <p className="text-ink-2">It will no longer be accessible to you or anyone you shared it with. Documents and review history are retained so you can restore it from All runs → Deleted runs.</p>
+        <p className="text-ink-2">This run and its reruns will become inaccessible to everyone. You can restore the run and its review history from All runs → Deleted runs.</p>
       </div>}
       {error && <ErrorBox error={error} />}
     </Dialog>
