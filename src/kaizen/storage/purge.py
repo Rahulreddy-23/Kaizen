@@ -84,11 +84,13 @@ def purge_run(ws, run_id: str, actor: str) -> dict:
         record = ws.runs.get(run_id, include_deleted=True)
         if not record or record['owner'] != actor:
             raise KeyError(run_id)
+        if record['rerun_of']:
+            raise ValueError('Delete the original run to permanently delete its reruns.')
         if not record['deleted_at']:
             raise ValueError('Move this run to Deleted runs before deleting it permanently.')
         root = ws.path.resolve()
         # Reruns belong to their original and are inaccessible without it, so they go with it.
-        run_ids = [run_id, *(r['run_id'] for r in ws.db.conn.execute('SELECT run_id FROM runs WHERE rerun_of=?', (run_id,)))]
+        run_ids = ws.runs.version_ids(run_id)
         candidates = [root / 'runs' / rid for rid in run_ids]
         source = Path(record['input_root']).resolve()
         # Uploaded sources have an isolated UUID directory. Never erase local
@@ -99,7 +101,7 @@ def purge_run(ws, run_id: str, actor: str) -> dict:
                 candidates.append(root / 'uploads' / upload_id)
         except (ValueError, IndexError):
             pass
-        others = [dict(r) for r in ws.db.conn.execute(f'SELECT * FROM runs WHERE run_id NOT IN ({",".join("?" for _ in run_ids)})', run_ids)]
+        others = [dict(r) for r in ws.db.conn.execute('SELECT * FROM runs WHERE run_id != ? AND rerun_of != ?', (run_id, run_id))]
         references = [_references(r) for r in others]
         paths = [p for p in candidates if _managed(ws, p) and all(
             refs is not None and not any(ref == p or p in ref.parents for ref in refs)

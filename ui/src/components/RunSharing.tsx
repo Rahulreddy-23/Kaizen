@@ -4,12 +4,13 @@ import { api } from "../api";
 import { useAsync } from "../lib/useAsync";
 import { enc } from "../lib/format";
 import type { RunSummary } from "../types";
-import { AnchorButton, Button, Card, Field } from "./ui";
+import { AnchorButton, Button, Card, Field, LinkButton } from "./ui";
 import { ErrorBox } from "./Feedback";
 
 export function RunSharing({ run, onChanged }: {run: RunSummary; onChanged: () => void}) {
   const nav = useNavigate();
   const owner = run.permission === "owner";
+  const canShare = owner && !run.rerun_of;
   const [open, setOpen] = useState(false);
   const profiles = useAsync(() => open && owner ? api.profiles() : Promise.resolve([]), [open, owner]);
   const shares = useAsync(() => open && owner ? api.shares(run.run_id) : Promise.resolve([]), [open, owner, run.run_id]);
@@ -26,7 +27,8 @@ export function RunSharing({ run, onChanged }: {run: RunSummary; onChanged: () =
   return <Card className="p-4 mb-5 space-y-3">
     <div className="flex flex-wrap items-center gap-3">
       <span className="text-sm flex-1">{owner ? "You own this run" : run.owner ? `Shared by ${run.owner}` : "Run access"} · <b>{run.permission === "view" ? "View only" : run.permission === "edit" ? "Can edit and approve" : owner ? "Full access" : "Access details unavailable"}</b></span>
-      {owner && <Button onClick={() => setOpen(!open)}>{open ? "Close sharing" : "Share run"}</Button>}
+      {canShare && <Button onClick={() => setOpen(!open)}>{open ? "Close sharing" : "Share run"}</Button>}
+      {run.rerun_of && <LinkButton to={`/runs/${enc(run.rerun_of)}`}>Open original run</LinkButton>}
       {run.permission !== "view" && <>
         <Button loading={busy} onClick={() => action(async () => { const copy = await api.copyRun(run.run_id); nav(`/runs/${enc(copy.run_id)}`); })}>Make a copy</Button>
         <AnchorButton href={api.downloadUrl(run.run_id)} download>Download independent copy</AnchorButton>

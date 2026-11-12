@@ -1,5 +1,7 @@
 """Index of runs in the workspace database (the full run stays in run.json)."""
 
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,3 +34,10 @@ class RunIndex:
         if r and r['deleted_at'] and not include_deleted:
             return None
         return dict(r) | {"summary": json.loads(r["summary"])} if r else None
+
+    def original_id(self, run_id: str) -> str:
+        row = self.conn.execute('SELECT rerun_of FROM runs WHERE run_id=?', (run_id,)).fetchone()
+        return (row['rerun_of'] or run_id) if row else run_id
+
+    def version_ids(self, original_id: str) -> list[str]:
+        return [r['run_id'] for r in self.conn.execute('SELECT run_id FROM runs WHERE run_id=? OR rerun_of=?', (original_id, original_id))]

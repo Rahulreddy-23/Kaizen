@@ -1,8 +1,12 @@
 """Reruns reprocess a run's stored sources and are offered as versions of the original run."""
+import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 
+from kaizen.api import app as api_module
 from kaizen.datasets.pdf_bom import BomRowSpec, BomSpec, render_bom_pdf
 from kaizen.review.access import AccessStore
 from tests.integration.test_api_regressions import EMAIL, upload
@@ -28,9 +32,11 @@ def test_rerun_creates_numbered_versions_listed_under_the_original(env):
     assert first['owner'] == EMAIL and first['permission'] == 'owner'
     assert first['name'].endswith('· Rerun 1')
     assert first['rows'] == created['rows']
+    assert client.patch(f'/api/runs/{rid}', json={'name': 'A' * 120}).status_code == 200
     # Rerunning a rerun still numbers under the original and reuses the original's stored sources.
     second = client.post(f"/api/runs/{first['run_id']}/rerun").json()
     assert second['rerun_of'] == rid and second['rerun_number'] == 2
+    assert len(second['name']) == 120 and second['name'].endswith('· Rerun 2')
     assert ws.runs.get(second['run_id'])['input_root'] == ws.runs.get(rid)['input_root']
 
     versions = client.get(f'/api/runs/{rid}/versions').json()
@@ -65,9 +71,12 @@ def test_reruns_follow_the_original_access_and_deletion(env):
     ws.db.conn.execute("INSERT INTO run_shares VALUES (?,?,?,?,?)", (rid, OTHER, 'view', EMAIL, 'now'))
     ws.db.conn.commit()
     assert access.permission(rerun, OTHER) == 'view'
+    assert client.get(f'/api/runs/{rerun}/sharing').json() == client.get(f'/api/runs/{rid}/sharing').json()
     assert client.put(f'/api/runs/{rerun}/sharing', json={'email': OTHER, 'permission': 'edit'}).status_code == 400
+    assert client.delete(f'/api/runs/{rerun}').status_code == 400
 
     assert client.delete(f'/api/runs/{rid}').status_code == 200
+    assert client.get('/api/runs', params={'deleted': 'true'}).json()[0]['reruns'] == 1
     assert client.get(f'/api/runs/{rerun}').status_code == 404
     assert client.post(f'/api/runs/{rid}/restore').status_code == 200
     assert client.get(f'/api/runs/{rerun}').status_code == 200
@@ -79,6 +88,33 @@ def test_reruns_follow_the_original_access_and_deletion(env):
     assert response.json()['cleanup_pending'] is False
     assert ws.runs.get(rerun, include_deleted=True) is None
     assert not (ws.runs_dir / rerun).exists() and not uploads.exists()
+
+
+def test_purge_waits_for_a_rerun_in_progress_and_deleted_original_blocks_save(env, monkeypatch):
+    ws, client, _, source = env
+    rid = upload(client, source).json()['run_id']
+    version_id = client.post(f'/api/runs/{rid}/rerun').json()['run_id']
+    started, release = Event(), Event()
+    run_folder = api_module.run_folder
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return run_folder(*args, **kwargs)
+
+    monkeypatch.setattr(api_module, 'run_folder', delayed)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        rerun = pool.submit(client.post, f'/api/runs/{version_id}/rerun')
+        try:
+            assert started.wait(10)
+            assert client.delete(f'/api/runs/{rid}').status_code == 200
+            assert client.request('DELETE', f'/api/runs/{rid}/permanent', json={'confirmation': rid}).status_code == 409
+        finally:
+            release.set()
+        assert rerun.result(timeout=10).status_code == 404
+
+    assert set(ws.runs.version_ids(rid)) == {rid, version_id}
+    assert client.request('DELETE', f'/api/runs/{rid}/permanent', json={'confirmation': rid}).status_code == 200
 
 
 def test_rerun_reads_the_folder_again_from_scratch(env):
@@ -112,6 +148,22 @@ def test_rerun_applies_the_upload_rules_to_the_folder(env):
     response = client.post(f'/api/runs/{rid}/rerun')
     assert response.status_code == 400
     assert 'No PDF, XLSX, XLSM or CSV documents' in response.json()['detail']
+
+
+def test_rerun_cannot_fill_missing_kit_documents_from_a_nested_folder_or_link(env):
+    ws, client, _, source = env
+    rid = upload(client, source).json()['run_id']
+    label = next(Path(ws.runs.get(rid)['input_root']).rglob('label.pdf'))
+    nested = label.parent / 'other-kit'
+    nested.mkdir()
+    shutil.move(label, nested / label.name)
+    response = client.post(f'/api/runs/{rid}/rerun')
+    assert response.status_code == 400
+    assert 'exactly one BOM, one label and one drawing' in response.json()['detail']
+    label.symlink_to(source / 'label.pdf')
+    response = client.post(f'/api/runs/{rid}/rerun')
+    assert response.status_code == 400
+    assert 'file linked outside' in response.json()['detail']
 
 
 def test_rerun_of_a_demo_dataset_rescans_every_kit(env):

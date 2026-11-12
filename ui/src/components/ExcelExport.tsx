@@ -2,34 +2,41 @@ import { CaretDown, FileXls } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
 import { fmtDate } from "../lib/format";
+import { useAsync } from "../lib/useAsync";
 import type { RunVersion } from "../types";
+import { ErrorBox } from "./Feedback";
 import { Button } from "./ui";
 
-export function versionLabel(version: RunVersion) {
+function versionLabel(version: RunVersion) {
   return `${version.rerun_number ? `Rerun ${version.rerun_number}` : "Original run"} · ${fmtDate(version.created_at)}`;
 }
 
-export function ExcelExport({ runId, quickSku }: { runId: string; quickSku?: string }) {
+export function ExcelExport({ runId, quickSku, onOpenVersion }: { runId: string; quickSku?: string; onOpenVersion?: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const selectId = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLDivElement>(null);
-  const [versions, setVersions] = useState<RunVersion[]>([]);
+  const panel = useRef<HTMLDivElement>(null);
   const [picked, setPicked] = useState<string | null>(null);
-  // Reruns are listed under the original run. Reload them each time the panel opens so a rerun that
-  // just finished is offered; the newest version is selected unless the reviewer picked another.
+  const versionRequest = useAsync(() => open && quickSku === undefined ? api.runVersions(runId) : Promise.resolve([]), [open, runId, quickSku]);
+  const versions = versionRequest.data ?? [];
+  const current = versions.find(v => v.run_id === runId);
+  const defaultRunId = current?.rerun_number ? runId : versions[versions.length - 1]?.run_id ?? runId;
+  const exportRunId = picked && versions.some(v => v.run_id === picked) ? picked : defaultRunId;
+  const loadingVersions = quickSku === undefined && versionRequest.loading;
+  const versionError = quickSku === undefined ? versionRequest.error : null;
+
   useEffect(() => {
-    if (!open || quickSku !== undefined) return;
-    let current = true;
-    Promise.resolve().then(() => api.runVersions(runId)).then(list => { if (current) setVersions(list); }, () => { if (current) setVersions([]); });
-    return () => { current = false; };
-  }, [open, runId, quickSku]);
-  const exportRunId = (picked && versions.some(v => v.run_id === picked) ? picked : versions[versions.length - 1]?.run_id) ?? runId;
+    if (!open || !panel.current) return;
+    const first = panel.current.querySelector<HTMLElement>("select, a, button");
+    if (document.activeElement === panel.current || !panel.current.contains(document.activeElement)) {
+      (first ?? panel.current).focus();
+    }
+  }, [open, loadingVersions, versionError]);
 
   useEffect(() => {
     if (!open) return;
-    root.current?.querySelector<HTMLAnchorElement>("a")?.focus();
     const dismiss = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -53,18 +60,21 @@ export function ExcelExport({ runId, quickSku }: { runId: string; quickSku?: str
           Download Excel
         </Button>
       </div>
-      {open && <div id={id} className="excel-export-panel" role="region" aria-label="Excel download options">
+      {open && <div id={id} ref={panel} tabIndex={-1} className="excel-export-panel" role="region" aria-label="Excel download options">
         {quickSku !== undefined ? <>
         <p className="excel-export-note">BOM, Label and Diagram side by side</p>
         <a href={api.quickExportUrl(runId, quickSku)} download aria-label="Download this SKU comparison Excel" onClick={() => setOpen(false)}><span className="font-medium">This SKU · {quickSku}</span><span className="excel-export-description">All entries, matching status and original source text.</span></a>
         <a href={api.quickExportUrl(runId)} download aria-label="Download all SKUs comparison Excel" onClick={() => setOpen(false)}><span className="font-medium">All SKUs</span><span className="excel-export-description">One comparison worksheet per SKU, plus source details.</span></a>
         <p className="excel-export-note">Includes all entries. Screen filters are not applied. Read-only .xlsx; this comparison cannot be imported as decisions.</p>
-        </> : <>{versions.length > 1 && <div className="excel-export-version">
+        </> : loadingVersions ? <p className="excel-export-note" role="status">Loading run versions…</p>
+        : versionError ? <ErrorBox title="Could not load run versions" error={versionError} onRetry={versionRequest.reload} />
+        : <>{versions.length > 1 && <div className="excel-export-version">
           <label htmlFor={selectId}>Run version</label>
           <select id={selectId} className="input w-full" value={exportRunId} onChange={event => setPicked(event.target.value)}>
             {versions.map(v => <option key={v.run_id} value={v.run_id}>{versionLabel(v)}</option>)}
           </select>
-          <p className="excel-export-description">Reruns process the same documents again. Review decisions stay with the version where they were made.</p>
+          <p className="excel-export-description">Review decisions stay with the version where they were made.</p>
+          {onOpenVersion && exportRunId !== runId && <Button size="sm" variant="ghost" onClick={() => { setOpen(false); onOpenVersion(exportRunId); }}>Open selected version</Button>}
         </div>}
         <p className="excel-export-note">One worksheet per SKU</p>
         <a href={api.exportUrl(exportRunId, "summary")} download aria-label="Download summary Excel" onClick={() => setOpen(false)}>

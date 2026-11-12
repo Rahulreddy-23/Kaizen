@@ -62,9 +62,10 @@ CAPABILITIES = {
 }
 
 
-def discover_files(root: Path | str) -> list[Path]:
+def discover_files(root: Path | str, *, recursive: bool = True) -> list[Path]:
     root = Path(root)
-    return sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES and not p.name.startswith("~$"))
+    paths = root.rglob('*') if recursive else root.glob('*')
+    return sorted(p for p in paths if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES and not p.name.startswith("~$"))
 
 
 _OLD_TOKENS = {"old", "prev", "previous", "superseded", "before", "current-release"}

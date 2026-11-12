@@ -8,7 +8,7 @@ import { ErrorBox } from "./Feedback";
 import { Button, Dialog, Field } from "./ui";
 
 export function PermanentDeleteRun({ run, onDeleted }: {
-  run: Pick<RunListItem, "run_id" | "name" | "permission">;
+  run: Pick<RunListItem, "run_id" | "name" | "permission" | "reruns">;
   onDeleted: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,7 +36,7 @@ export function PermanentDeleteRun({ run, onDeleted }: {
       <Button variant="danger" loading={busy} disabled={busy || confirmation !== "DELETE"} onClick={() => void remove()}>Delete permanently</Button>
     </>}>
       <div className="space-y-4">
-        <p><strong className="break-words">{label}</strong> will be removed for everyone. This cannot be undone.</p>
+        <p><strong className="break-words">{label}</strong>{run.reruns ? ` and ${run.reruns} rerun${run.reruns === 1 ? "" : "s"}` : ""} will be removed for everyone. This cannot be undone.</p>
         <p className="text-ink-2">Deletes this run’s stored uploads, extracted results, exports, review history and closed-testing records to free storage.</p>
         <p className="text-ink-2">Independent copies, files still used by another run, approved shared terminology and original local folders are kept.</p>
         <Field label="Type DELETE to confirm"><input className="input w-full" autoComplete="off" spellCheck={false} value={confirmation} disabled={busy} onChange={e => setConfirmation(e.target.value)}/></Field>

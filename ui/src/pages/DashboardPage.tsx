@@ -95,7 +95,9 @@ export default function DashboardPage() {
         }
         actions={<><LinkButton to={`${base}/quick-view`}>Quick view</LinkButton>
           <LinkButton variant="primary" to={queue({ nv: "1" })} iconRight={<ArrowRight size={16} />}>Review queue <span className="queue-count">{flagged}</span></LinkButton>
-          {r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RerunButton run={r} /><RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
+          {r.permission !== "view" && <ExcelExport key={runId} runId={runId} onOpenVersion={id => nav(`/runs/${enc(id)}`)} />}
+          <RerunButton key={`rerun-${runId}`} run={r} />
+          {!r.rerun_of && <RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} />}</>}
       />
       <details className="run-management">
         <summary>Run settings and exports</summary>
