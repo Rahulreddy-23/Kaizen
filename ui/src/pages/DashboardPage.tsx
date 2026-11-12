@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BulkReviewActions } from "../components/BulkReviewActions";
 import { RunActions } from "../components/RunActions";
+import { RerunButton } from "../components/RerunButton";
 import { RunSharing } from "../components/RunSharing";
 import { ExcelExport } from "../components/ExcelExport";
 import { api } from "../api";
@@ -94,7 +95,7 @@ export default function DashboardPage() {
         }
         actions={<><LinkButton to={`${base}/quick-view`}>Quick view</LinkButton>
           <LinkButton variant="primary" to={queue({ nv: "1" })} iconRight={<ArrowRight size={16} />}>Review queue <span className="queue-count">{flagged}</span></LinkButton>
-          {r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
+          {r.permission !== "view" && <ExcelExport key={runId} runId={runId} />}<RerunButton run={r} /><RunActions key={`actions-${runId}`} run={r} onChanged={run.reload} onDeleted={() => nav("/")} /></>}
       />
       <details className="run-management">
         <summary>Run settings and exports</summary>

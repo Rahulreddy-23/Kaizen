@@ -87,7 +87,9 @@ def purge_run(ws, run_id: str, actor: str) -> dict:
         if not record['deleted_at']:
             raise ValueError('Move this run to Deleted runs before deleting it permanently.')
         root = ws.path.resolve()
-        candidates = [root / 'runs' / run_id]
+        # Reruns belong to their original and are inaccessible without it, so they go with it.
+        run_ids = [run_id, *(r['run_id'] for r in ws.db.conn.execute('SELECT run_id FROM runs WHERE rerun_of=?', (run_id,)))]
+        candidates = [root / 'runs' / rid for rid in run_ids]
         source = Path(record['input_root']).resolve()
         # Uploaded sources have an isolated UUID directory. Never erase local
         # folders, demo inputs, or the shared uploads/runs parent itself.
@@ -97,7 +99,7 @@ def purge_run(ws, run_id: str, actor: str) -> dict:
                 candidates.append(root / 'uploads' / upload_id)
         except (ValueError, IndexError):
             pass
-        others = [dict(r) for r in ws.db.conn.execute('SELECT * FROM runs WHERE run_id != ?', (run_id,))]
+        others = [dict(r) for r in ws.db.conn.execute(f'SELECT * FROM runs WHERE run_id NOT IN ({",".join("?" for _ in run_ids)})', run_ids)]
         references = [_references(r) for r in others]
         paths = [p for p in candidates if _managed(ws, p) and all(
             refs is not None and not any(ref == p or p in ref.parents for ref in refs)
@@ -106,15 +108,16 @@ def purge_run(ws, run_id: str, actor: str) -> dict:
         # Keeping the queue and erasure in one commit makes retries crash-safe.
         # A retained shared source can be reclaimed when its last run is purged.
         ws.db.conn.execute('INSERT INTO run_file_cleanup VALUES (?,?)', (run_id, json.dumps([str(p) for p in paths])))
-        for table in RUN_TABLES:
-            ws.db.conn.execute(f'DELETE FROM {table} WHERE run_id=?', (run_id,))
-        ws.db.conn.execute("UPDATE action_items SET resolved_in_run='' WHERE resolved_in_run=?", (run_id,))
-        ws.db.conn.execute("UPDATE runs SET copied_from='' WHERE copied_from=?", (run_id,))
-        ws.db.conn.execute('DELETE FROM runs WHERE run_id=?', (run_id,))
-        # Keep a minimal deletion receipt, without retaining old run-specific
-        # audit details (which can contain annotation/review text).
-        ws.db.conn.execute('DELETE FROM audit WHERE instr(detail,?) > 0', (run_id,))
-        ws.db.audit(actor, 'run.permanently_deleted', run_id)
+        for rid in run_ids:
+            for table in RUN_TABLES:
+                ws.db.conn.execute(f'DELETE FROM {table} WHERE run_id=?', (rid,))
+            ws.db.conn.execute("UPDATE action_items SET resolved_in_run='' WHERE resolved_in_run=?", (rid,))
+            ws.db.conn.execute("UPDATE runs SET copied_from='' WHERE copied_from=?", (rid,))
+            ws.db.conn.execute('DELETE FROM runs WHERE run_id=?', (rid,))
+            # Keep a minimal deletion receipt, without retaining old run-specific
+            # audit details (which can contain annotation/review text).
+            ws.db.conn.execute('DELETE FROM audit WHERE instr(detail,?) > 0', (rid,))
+        ws.db.audit(actor, 'run.permanently_deleted', run_id + (f' and {len(run_ids) - 1} rerun(s)' if len(run_ids) > 1 else ''))
     complete = cleanup_files(ws, run_id)
     return {'run_id': run_id, 'deleted': True, 'cleanup_pending': not complete,
             'files_retained': any(p.exists() for p in candidates if p not in paths)}

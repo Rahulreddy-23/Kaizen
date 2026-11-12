@@ -69,6 +69,14 @@ export interface Health {
   hosted?: boolean;
 }
 
+/** The original run (rerun_number 0) or one of its reruns. */
+export interface RunVersion {
+  run_id: string;
+  name: string;
+  created_at: string;
+  rerun_number: number;
+}
+
 export interface RunListItem {
   deleted_at?: string;
   deleted_by?: string;
@@ -77,6 +85,8 @@ export interface RunListItem {
   owner: string;
   permission: "owner" | "edit" | "view";
   copied_from: string;
+  /** Number of reruns listed under this run. */
+  reruns?: number;
   run_id: string;
   created_at: string;
   input_root: string;
@@ -129,6 +139,9 @@ export interface RunSummary {
   owner: string;
   permission: "owner" | "edit" | "view";
   copied_from: string;
+  /** The original run's ID when this run is a rerun of it, otherwise empty. */
+  rerun_of?: string;
+  rerun_number?: number;
   run_id: string;
   timestamp: string;
   /** The newest review decision in the run, or null when nobody has decided anything yet. */

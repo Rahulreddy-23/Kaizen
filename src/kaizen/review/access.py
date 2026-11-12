@@ -78,9 +78,12 @@ class AccessStore:
         return self.profile(email)
 
     def permission(self, run_id: str, email: str) -> str | None:
-        row = self.conn.execute("SELECT owner FROM runs WHERE run_id = ? AND deleted_at = ''", (run_id,)).fetchone()
+        row = self.conn.execute("SELECT owner, rerun_of FROM runs WHERE run_id = ? AND deleted_at = ''", (run_id,)).fetchone()
         if not row:
             return None
+        if row['rerun_of']:
+            # Reruns share their original's access, so deleting or sharing the original covers them.
+            return self.permission(row['rerun_of'], email)
         if row['owner'] == email:
             return 'owner'
         grant = self.conn.execute('SELECT permission FROM run_shares WHERE run_id = ? AND email = ?', (run_id, email)).fetchone()
